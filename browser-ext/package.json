@@ -1,0 +1,17 @@
+{
+  "name": "szurubooru-companion-ext",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Right-click to send media to the Szurubooru Companion CCC.",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "build:firefox": "wxt build --browser firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip --browser firefox"
+  },
+  "devDependencies": {
+    "wxt": "^0.19.0",
+    "typescript": "^5.7.0"
+  }
+}

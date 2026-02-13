@@ -1,0 +1,32 @@
+{
+  "name": "szurubooru-companion",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "start": "react-native start",
+    "build:apk": "node -e \"require('child_process').execSync((process.platform==='win32'?'gradlew.bat':'./gradlew')+' assembleRelease',{stdio:'inherit',cwd:require('path').join(process.cwd(),'android')})\"",
+    "build:apk:debug": "node -e \"require('child_process').execSync((process.platform==='win32'?'gradlew.bat':'./gradlew')+' assembleDebug',{stdio:'inherit',cwd:require('path').join(process.cwd(),'android')})\"",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.1.0",
+    "@react-native-documents/picker": "^10.1.0",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/native-stack": "^7.0.0",
+    "react": "^18.2.0",
+    "react-native": "^0.77.0",
+    "react-native-fs": "^2.20.0",
+    "react-native-receive-sharing-intent": "^2.0.0",
+    "react-native-safe-area-context": "^5.1.0",
+    "react-native-screens": "4.5.0"
+  },
+  "devDependencies": {
+    "@react-native-community/cli": "^20.1.1",
+    "@react-native-community/cli-platform-android": "^20.1.1",
+    "@tsconfig/react-native": "^3.0.5",
+    "@types/react": "^18.2.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,13 @@
+# GPU-enabled variant – requires NVIDIA Container Toolkit.
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir wd14-tagger-api onnxruntime-gpu
+
+ENV PYTHONUNBUFFERED=1
+ENV PORT=21435
+
+EXPOSE 21435
+
+CMD ["python", "-m", "wd14_tagger_api", "--port", "21435"]

@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Node
+node_modules/
+.output/
+.wxt/
+
+# Build artifacts
+ccc/frontend/dist/
+browser-ext/.output/
+mobile-app/android/app/build/
+mobile-app/ios/build/
+
+# Env files
+.env
+ccc/backend/.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data / local dev volumes
+/data/
+/local-dev/
+*.log
+
+# mobile app
+mobile-app/android
+mobile-app/ios

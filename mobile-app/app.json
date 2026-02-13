@@ -1,0 +1,8 @@
+{
+  "name": "SzurubooruCompanion",
+  "displayName": "Szurubooru Companion",
+  "android": {
+    "package": "com.szuruboorucompanion",
+    "packageName": "com.szuruboorucompanion"
+  }
+}
