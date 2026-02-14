@@ -51,8 +51,6 @@ cp ccc/backend/.env.example ccc/backend/.env
 docker compose up -d
 ```
 
-Builds use BuildKit (cache mounts for pip/npm). From the repo root, build all images with `docker compose build`.
-
 This starts:
 
 - **ccc-backend** on port 21425 (API + worker; AI tagging via wdtagger in-process)
@@ -60,18 +58,7 @@ This starts:
 - **postgres** (job database, internal only)
 - **redis** (queue/cache, internal only)
 
-Point your Nginx Proxy Manager (or other reverse proxy) at these ports as needed.
-
-### Dashboard behind a reverse proxy
-
-The dashboard (frontend) uses relative `/api` URLs. If you expose the app via a single host (e.g. `https://ccc.example.com`), you **must** route `/api` to the backend and `/` to the frontend; otherwise the dashboard will get HTML instead of JSON and show: "API returned HTML instead of JSON".
-
-**Nginx Proxy Manager:** add a proxy host for your domain, then add two **Custom locations**:
-
-- Path: `/api` -> Forward to: `ccc-backend:21425` (or `http://host-ip:21425` if NPM is not in Docker).
-- Path: `/` (or leave default) -> Forward to: `ccc-frontend:21430`.
-
-Alternatively, build the frontend with the API on a separate URL: set `VITE_API_BASE=https://api.ccc.example.com` (or `http://host:21425` for same-machine access) when running `npm run build` in `ccc/frontend`, then the dashboard will call that URL instead of relative `/api`.
+Point your Nginx Proxy Manager (or other reverse proxy) at these ports as needed (more information at the bottom of README).
 
 ### Browser Extension
 
@@ -86,8 +73,7 @@ npm install
 |---------|--------|----------|
 | `npm run build` | Unpacked Chrome extension | `.output/chrome-mv3/` |
 | `npm run build:firefox` | Unpacked Firefox extension | `.output/firefox-mv2/` |
-| `npm run zip` | Chrome `.zip` for store upload | `.output/` |
-| `npm run zip:firefox` | Firefox `.zip` for store upload | `.output/` |
+
 
 **Loading in Chrome:** go to `chrome://extensions`, enable Developer Mode, click "Load unpacked", and point it at `browser-ext/.output/chrome-mv3/`.
 
@@ -95,7 +81,7 @@ npm install
 
 Open the extension popup to configure your CCC URL and API key.
 
-### Mobile App
+### Mobile App | Currently a WIP
 
 The `mobile-app/` folder in this repo contains **release builds only**: the Android APK and (when built) the iOS package are placed at the root of `mobile-app/`. Development sources (React Native project, `android/`, `ios/`, etc.) are not tracked in the repo.
 
@@ -110,10 +96,10 @@ After installing, open the app and set the CCC URL in Settings. Use the system s
 
 | Service | Port | Description |
 |---------|------|-------------|
-| ccc-backend | 21425 | FastAPI REST API + background worker (wdtagger in-process) |
-| ccc-frontend | 21430 | React dashboard (static file server) |
-| postgres | internal | PostgreSQL (not exposed to host by default) |
-| redis | internal | Redis (not exposed to host by default) |
+| ccc-backend | 21425 | FastAPI REST API + background worker + wdtagger |
+| ccc-frontend | 21430 | React dashboard |
+| postgres | internal | PostgreSQL |
+| redis | internal | Redis |
 
 ## Configuration
 
@@ -131,6 +117,20 @@ All backend configuration is done via environment variables (see `ccc/backend/.e
 | `GALLERY_DL_SANKAKU_USERNAME` | Sankaku (sankaku.app / sankakucomplex.com) login username; used when job URL is Sankaku |
 | `GALLERY_DL_SANKAKU_PASSWORD` | Sankaku login password |
 | `API_KEY` | Optional API key for client auth |
+
+## Confirmed sites
+
+The following have been confirmed working with full tag extraction and download. An asterisk (\*) indicates caveats (see sections below).
+
+| Site |
+|------|
+| Sankaku\* |
+| Yande.re |
+| X / Twitter |
+| Danbooru |
+| Moeview\* |
+
+In addition, any site [supported by gallery-dl](https://github.com/mikf/gallery-dl) may work; the list above is only what has been explicitly tested.
 
 ## Sites requiring extra configuration
 
@@ -151,3 +151,14 @@ Some sites are aggregators or viewers that display content from other sources. g
 ## WD14 Tagger
 
 WD14 runs in-process in the CCC backend using the `wdtagger` library. No separate tagger container is required. The backend uses CPU by default; if the host has a CUDA-capable GPU and PyTorch sees it, the tagger will use it automatically.
+
+## Dashboard behind a reverse proxy
+
+The dashboard (frontend) uses relative `/api` URLs. If you expose the app via a single host (e.g. `https://ccc.example.com`), you **must** route `/api` to the backend and `/` to the frontend; otherwise the dashboard will get HTML instead of JSON and show: "API returned HTML instead of JSON".
+
+**Nginx Proxy Manager:** add a proxy host for your domain, then add two **Custom locations**:
+
+- Path: `/api` -> Forward to: `ccc-backend:21425` (or `http://host-ip:21425` if NPM is not in Docker).
+- Path: `/` (or leave default) -> Forward to: `ccc-frontend:21430`.
+
+Alternatively, build the frontend with the API on a separate URL: set `VITE_API_BASE=https://api.ccc.example.com` (or `http://host:21425` for same-machine access) when running `npm run build` in `ccc/frontend`, then the dashboard will call that URL instead of relative `/api`.
