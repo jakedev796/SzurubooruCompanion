@@ -121,6 +121,8 @@ All backend configuration is done via environment variables (see `ccc/backend/.e
 | `REDIS_URL` | Redis connection string |
 | `WD14_ENABLED` | Enable/disable in-process AI tagging |
 | `WD14_MODEL` | Hugging Face model repo (default: SmilingWolf/wd-swinv2-tagger-v3) |
+| `GALLERY_DL_SANKAKU_USERNAME` | Sankaku (sankaku.app / sankakucomplex.com) login username; used when job URL is Sankaku |
+| `GALLERY_DL_SANKAKU_PASSWORD` | Sankaku login password |
 | `API_KEY` | Optional API key for client auth |
 
 ## WD14 Tagger

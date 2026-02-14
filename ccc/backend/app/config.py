@@ -43,6 +43,9 @@ class Settings:
     gallery_dl_timeout: int = int(os.getenv("GALLERY_DL_TIMEOUT", "120"))
     # Optional gallery-dl config file; if set, passed as -c to gallery-dl. Else we pass per-extractor options (e.g. extractor.yandere.tags) for known sites.
     gallery_dl_config_file: Optional[str] = os.getenv("GALLERY_DL_CONFIG_FILE")
+    # Sankaku (sankaku.app / sankakucomplex.com) login; passed as -o extractor.sankaku.username/password when URL is Sankaku.
+    gallery_dl_sankaku_username: Optional[str] = os.getenv("GALLERY_DL_SANKAKU_USERNAME")
+    gallery_dl_sankaku_password: Optional[str] = os.getenv("GALLERY_DL_SANKAKU_PASSWORD")
     ytdlp_timeout: int = int(os.getenv("YTDLP_TIMEOUT", "300"))
     max_retries: int = int(os.getenv("MAX_RETRIES", "3"))
     retry_delay: float = float(os.getenv("RETRY_DELAY", "5.0"))

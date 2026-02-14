@@ -50,14 +50,26 @@ async def download_url(url: str, dest_dir: str) -> DownloadResult:
 # gallery-dl
 # ---------------------------------------------------------------------------
 
+def _is_sankaku_url(url: str) -> bool:
+    """True if URL is a Sankaku image board (sankaku.app or sankakucomplex.com subdomains)."""
+    lower = url.lower()
+    return "sankaku.app" in lower or ".sankakucomplex.com" in lower
+
+
 def _gallery_dl_options(url: str) -> List[str]:
-    """Build optional gallery-dl args: config file and/or per-extractor options for categorized tags."""
+    """Build optional gallery-dl args: config file, per-extractor options, and Sankaku login when applicable."""
     opts: List[str] = []
     if settings.gallery_dl_config_file:
         opts.extend(["-c", settings.gallery_dl_config_file])
-    elif "yande.re" in url:
-        # Get artist/character/copyright etc. in metadata (one extra request per post). See gallery-dl#92.
+    if not settings.gallery_dl_config_file and "yande.re" in url:
         opts.extend(["-o", "extractor.yandere.tags=true"])
+    if _is_sankaku_url(url):
+        username = (settings.gallery_dl_sankaku_username or "").strip()
+        password = (settings.gallery_dl_sankaku_password or "").strip()
+        if username:
+            opts.extend(["-o", f"extractor.sankaku.username={username}"])
+        if password:
+            opts.extend(["-o", f"extractor.sankaku.password={password}"])
     return opts
 
 
