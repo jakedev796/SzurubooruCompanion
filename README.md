@@ -1,8 +1,15 @@
 # Szurubooru Companion
 
+[![Status: WIP](https://img.shields.io/badge/status-WIP-orange)](.) [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](.) [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](.) [![License](https://img.shields.io/badge/license-MIT-green)](.)
+
 A multi-component workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) from various sources (browser, mobile) with automatic AI tagging via WD14 Tagger and metadata parsing via gallery-dl / yt-dlp.
 
-**Disclaimer:** This project is a very early work in progress. APIs and behaviour may change; use at your own risk.
+---
+
+> **Disclaimer — Early work in progress**  
+> This project is in early development. APIs and behaviour may change. Use at your own risk.
+
+---
 
 ## TODO
 
