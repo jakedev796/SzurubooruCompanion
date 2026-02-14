@@ -4,6 +4,12 @@ A multi-component workflow for uploading media to [Szurubooru](https://github.co
 
 **Disclaimer:** This project is a very early work in progress. APIs and behaviour may change; use at your own risk.
 
+## TODO
+
+- Finetune browser extension for popular sites
+- Get mobile app working
+- Further enhancements to performance
+
 ## Architecture
 
 ```
