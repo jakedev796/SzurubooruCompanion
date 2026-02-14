@@ -125,6 +125,14 @@ All backend configuration is done via environment variables (see `ccc/backend/.e
 | `GALLERY_DL_SANKAKU_PASSWORD` | Sankaku login password |
 | `API_KEY` | Optional API key for client auth |
 
+## Sites requiring extra configuration
+
+Some sources need additional backend configuration (env vars) for gallery-dl to succeed. Without them, jobs from these sites may fail with "Unsupported URL" or similar.
+
+| Site | Domains | Required configuration |
+|------|---------|------------------------|
+| **Sankaku** | sankaku.app, chan.sankakucomplex.com, idol.sankakucomplex.com, www.sankakucomplex.com | Set `GALLERY_DL_SANKAKU_USERNAME` and `GALLERY_DL_SANKAKU_PASSWORD` in `ccc/backend/.env`. Login is required for the extractor to work. |
+
 ## WD14 Tagger
 
 WD14 runs in-process in the CCC backend using the `wdtagger` library. No separate tagger container is required. The backend uses CPU by default; if the host has a CUDA-capable GPU and PyTorch sees it, the tagger will use it automatically.
