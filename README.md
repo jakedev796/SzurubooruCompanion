@@ -133,6 +133,14 @@ Some sources need additional backend configuration (env vars) for gallery-dl to 
 |------|---------|------------------------|
 | **Sankaku** | sankaku.app, chan.sankakucomplex.com, idol.sankakucomplex.com, www.sankakucomplex.com | Set `GALLERY_DL_SANKAKU_USERNAME` and `GALLERY_DL_SANKAKU_PASSWORD` in `ccc/backend/.env`. Login is required for the extractor to work. |
 
+## Sites requiring special handling
+
+Some sites are aggregators or viewers that display content from other sources. gallery-dl may not support the aggregator URL; you need to send the **underlying source link** to CCC instead of the page you are on.
+
+| Site | What to do |
+|------|------------|
+| **Moeview / moebooru** (moeview.app, etc.) | Do not "Send page URL to Szurubooru" from the Moeview page. Use the **source** link (e.g. in the top-right: "Source: yande.re" or similar). Right-click that source link and choose "Send link to Szurubooru" so CCC receives the actual booru URL (e.g. yande.re) that gallery-dl supports. |
+
 ## WD14 Tagger
 
 WD14 runs in-process in the CCC backend using the `wdtagger` library. No separate tagger container is required. The backend uses CPU by default; if the host has a CUDA-capable GPU and PyTorch sees it, the tagger will use it automatically.
