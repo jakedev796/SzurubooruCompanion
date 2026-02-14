@@ -126,7 +126,9 @@ All backend configuration is done via environment variables (see `ccc/backend/.e
 
 ## Confirmed sites
 
-The following have been confirmed working with full tag extraction and download. An asterisk (\*) indicates caveats (see sections below).
+The following sites have been confirmed working.
+- An asterisk (\*) indicates caveats (see sections below).
+- Double asterisk (\**) indicates no tag extraction is available (see sections below).
 
 | Site |
 |------|
@@ -135,6 +137,7 @@ The following have been confirmed working with full tag extraction and download.
 | X / Twitter |
 | Danbooru |
 | Moeview\* |
+| 4chan\** |
 
 In addition, any site [supported by gallery-dl](https://github.com/mikf/gallery-dl) may work; the list above is only what has been explicitly tested.
 
@@ -153,6 +156,7 @@ Some sites are aggregators or viewers that display content from other sources. g
 | Site | What to do |
 |------|------------|
 | **Moeview / moebooru** (moeview.app, etc.) | Do not "Send page URL to Szurubooru" from the Moeview page. Use the **source** link (e.g. in the top-right: "Source: yande.re" or similar). Right-click that source link and choose "Send link to Szurubooru" so CCC receives the actual booru URL (e.g. yande.re) that gallery-dl supports. |
+| **4chan** | Do not send the thread page URL. Either have the **specific media open in a tab by itself** (e.g. the image/video URL) and use "Send page URL to Szurubooru", or right-click the **link to the media** (the image or video link on the thread) and choose "Send link to Szurubooru". Same idea as Moeview: CCC must receive the direct media URL, not the thread. **No tag extraction available for obvious reasons.** |
 
 ## WD14 Tagger
 
