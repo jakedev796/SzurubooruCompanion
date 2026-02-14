@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import init_db
+from app.migrations import run_migrations
 from app.api.jobs import router as jobs_router
 from app.api.stats import router as stats_router
 from app.api.health import router as health_router
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("Initializing database...")
     await init_db()
+    await run_migrations()
     logger.info("Database ready.")
 
     logger.info("Starting background worker...")

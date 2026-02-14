@@ -6,3 +6,12 @@ aiohttp>=3.9.0
 aiofiles>=23.2.0
 pydantic>=2.5.0
 python-multipart>=0.0.6
+
+# WD14 in-process tagging
+torch>=2.0.0
+torchvision>=0.15.0
+wdtagger>=0.3.0
+Pillow>=9.0.0
+numpy>=1.21.0
+timm>=0.9.12
+transformers>=4.20.0

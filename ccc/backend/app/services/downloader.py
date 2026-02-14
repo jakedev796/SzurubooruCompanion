@@ -50,6 +50,17 @@ async def download_url(url: str, dest_dir: str) -> DownloadResult:
 # gallery-dl
 # ---------------------------------------------------------------------------
 
+def _gallery_dl_options(url: str) -> List[str]:
+    """Build optional gallery-dl args: config file and/or per-extractor options for categorized tags."""
+    opts: List[str] = []
+    if settings.gallery_dl_config_file:
+        opts.extend(["-c", settings.gallery_dl_config_file])
+    elif "yande.re" in url:
+        # Get artist/character/copyright etc. in metadata (one extra request per post). See gallery-dl#92.
+        opts.extend(["-o", "extractor.yandere.tags=true"])
+    return opts
+
+
 async def _try_gallery_dl(url: str, dest_dir: str) -> DownloadResult:
     result = DownloadResult(source_url=url, used_tool="gallery-dl")
     try:
@@ -58,6 +69,7 @@ async def _try_gallery_dl(url: str, dest_dir: str) -> DownloadResult:
             "--dest", dest_dir,
             "--write-metadata",
             "--no-mtime",
+            *_gallery_dl_options(url),
             url,
         ]
         proc = await asyncio.create_subprocess_exec(

@@ -49,12 +49,34 @@ export default function JobDetail() {
           <dt>Szuru Post ID</dt>
           <dd>{job.szuru_post_id ?? "-"}</dd>
 
-          <dt>Tags Applied</dt>
+          <dt>Tags from source</dt>
           <dd>
-            {job.tags_applied && job.tags_applied.length > 0
-              ? job.tags_applied.join(", ")
-              : "-"}
+            {job.tags_from_source && job.tags_from_source.length > 0 ? (
+              <span className="tag-list tag-list--source">
+                {job.tags_from_source.map((t) => (
+                  <span key={t} className="tag tag--source">{t}</span>
+                ))}
+              </span>
+            ) : "-"}
           </dd>
+
+          <dt>Tags from AI</dt>
+          <dd>
+            {job.tags_from_ai && job.tags_from_ai.length > 0 ? (
+              <span className="tag-list tag-list--ai">
+                {job.tags_from_ai.map((t) => (
+                  <span key={t} className="tag tag--ai">{t}</span>
+                ))}
+              </span>
+            ) : "-"}
+          </dd>
+
+          {(!job.tags_from_source?.length && !job.tags_from_ai?.length) && job.tags_applied?.length > 0 && (
+            <>
+              <dt>Tags applied</dt>
+              <dd>{job.tags_applied.join(", ")}</dd>
+            </>
+          )}
 
           <dt>Error</dt>
           <dd style={{ color: job.error_message ? "var(--red)" : undefined }}>

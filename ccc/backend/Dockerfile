@@ -1,3 +1,6 @@
+# syntax=docker/dockerfile:1
+# Use BuildKit for cache mounts: DOCKER_BUILDKIT=1 or default in Docker 23+
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -7,10 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps
+# Python deps: cache pip downloads across builds; install PyTorch CPU wheels first.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir gallery-dl yt-dlp
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r requirements.txt \
+    && pip install gallery-dl yt-dlp
 
 # Application code
 COPY app/ ./app/

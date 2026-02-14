@@ -2,6 +2,8 @@
 
 A multi-component workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) from various sources (browser, mobile) with automatic AI tagging via WD14 Tagger and metadata parsing via gallery-dl / yt-dlp.
 
+**Disclaimer:** This project is a very early work in progress. APIs and behaviour may change; use at your own risk.
+
 ## Architecture
 
 ```
@@ -9,15 +11,12 @@ Clients (Browser Ext, Mobile App)
         |
         v
    CCC Backend  -->  gallery-dl / yt-dlp  (download)
-        |
-        v
-   WD14 Tagger  (AI tagging, CPU by default)
-        |
+        |             wdtagger (in-process AI tagging)
         v
    Szurubooru   (upload)
 ```
 
-All media flows through the **CCC (Command & Control Center)** backend. Clients never talk to Szurubooru directly. Use your existing reverse proxy (e.g. Nginx Proxy Manager) to expose services publicly.
+All media flows through the **CCC** backend. Clients never talk to Szurubooru directly. Use your existing reverse proxy (e.g. Nginx Proxy Manager) to expose services publicly.
 
 ## Repository Layout
 
@@ -25,12 +24,10 @@ All media flows through the **CCC (Command & Control Center)** backend. Clients 
 SzurubooruCompanion/
   docker-compose.yml    Root-level compose for the full stack
   ccc/
-    backend/            Python (FastAPI) - API + background worker
+    backend/            Python (FastAPI) - API + background worker (includes wdtagger)
     frontend/            React + Vite dashboard
-    wd14-tagger/        Dockerfile for the WD14 tagger sidecar
   browser-ext/          WXT browser extension (Chrome, Firefox, Edge)
   mobile-app/           Release builds only (APK and iOS package in folder root)
-  reference/             Prior implementation (reference only)
 ```
 
 ## Quick Start
@@ -41,11 +38,12 @@ cp ccc/backend/.env.example ccc/backend/.env
 docker compose up -d
 ```
 
+Builds use BuildKit (cache mounts for pip/npm). From the repo root, build all images with `docker compose build`.
+
 This starts:
 
-- **ccc-backend** on port 21425 (API + worker)
+- **ccc-backend** on port 21425 (API + worker; AI tagging via wdtagger in-process)
 - **ccc-frontend** on port 21430 (dashboard)
-- **wd14-tagger** on port 21435 (AI tagging, CPU)
 - **postgres** (job database, internal only)
 - **redis** (queue/cache, internal only)
 
@@ -99,9 +97,8 @@ After installing, open the app and set the CCC URL in Settings. Use the system s
 
 | Service | Port | Description |
 |---------|------|-------------|
-| ccc-backend | 21425 | FastAPI REST API + background worker |
+| ccc-backend | 21425 | FastAPI REST API + background worker (wdtagger in-process) |
 | ccc-frontend | 21430 | React dashboard (static file server) |
-| wd14-tagger | 21435 | WD14 Tagger API (CPU) |
 | postgres | internal | PostgreSQL (not exposed to host by default) |
 | redis | internal | Redis (not exposed to host by default) |
 
@@ -116,39 +113,10 @@ All backend configuration is done via environment variables (see `ccc/backend/.e
 | `SZURU_TOKEN` | Szurubooru API token |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `REDIS_URL` | Redis connection string |
-| `WD14_TAGGER_URL` | WD14 Tagger API URL |
-| `WD14_ENABLED` | Enable/disable AI tagging |
+| `WD14_ENABLED` | Enable/disable in-process AI tagging |
+| `WD14_MODEL` | Hugging Face model repo (default: SmilingWolf/wd-swinv2-tagger-v3) |
 | `API_KEY` | Optional API key for client auth |
 
 ## WD14 Tagger
 
-The WD14 tagger runs on CPU by default as a companion container. For GPU acceleration, use `ccc/wd14-tagger/Dockerfile.gpu` instead and uncomment the NVIDIA deploy block in `docker-compose.yml`.
-
-## API
-
-### Create job (URL)
-
-```
-POST /api/jobs
-{ "url": "https://example.com/image.jpg" }
-```
-
-### Create job (file upload)
-
-```
-POST /api/jobs/upload
-Content-Type: multipart/form-data
-file=@image.jpg
-```
-
-### List jobs
-
-```
-GET /api/jobs?status=completed&offset=0&limit=50
-```
-
-### Get stats
-
-```
-GET /api/stats
-```
+WD14 runs in-process in the CCC backend using the `wdtagger` library. No separate tagger container is required. The backend uses CPU by default; if the host has a CUDA-capable GPU and PyTorch sees it, the tagger will use it automatically.

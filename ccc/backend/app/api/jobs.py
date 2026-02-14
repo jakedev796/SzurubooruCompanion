@@ -34,8 +34,19 @@ settings = get_settings()
 class JobCreateURL(BaseModel):
     url: str
     source: Optional[str] = None
+    tags: Optional[List[str]] = None
     safety: Optional[str] = "unsafe"
     skip_tagging: Optional[bool] = False
+
+
+def _parse_json_tags(raw: Optional[str]) -> Optional[List[str]]:
+    if not raw:
+        return None
+    try:
+        out = json.loads(raw)
+        return out if isinstance(out, list) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 class JobOut(BaseModel):
@@ -50,6 +61,8 @@ class JobOut(BaseModel):
     szuru_post_id: Optional[int] = None
     error_message: Optional[str] = None
     tags_applied: Optional[List[str]] = None
+    tags_from_source: Optional[List[str]] = None
+    tags_from_ai: Optional[List[str]] = None
     retry_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -59,12 +72,6 @@ class JobOut(BaseModel):
 
 
 def _job_to_out(job: Job) -> JobOut:
-    tags = None
-    if job.tags_applied:
-        try:
-            tags = json.loads(job.tags_applied)
-        except (json.JSONDecodeError, TypeError):
-            tags = None
     return JobOut(
         id=str(job.id),
         status=job.status.value if isinstance(job.status, JobStatus) else job.status,
@@ -76,7 +83,9 @@ def _job_to_out(job: Job) -> JobOut:
         skip_tagging=bool(job.skip_tagging),
         szuru_post_id=job.szuru_post_id,
         error_message=job.error_message,
-        tags_applied=tags,
+        tags_applied=_parse_json_tags(job.tags_applied),
+        tags_from_source=_parse_json_tags(job.tags_from_source),
+        tags_from_ai=_parse_json_tags(job.tags_from_ai),
         retry_count=job.retry_count,
         created_at=job.created_at,
         updated_at=job.updated_at,
@@ -99,6 +108,7 @@ async def create_job_url(
         job_type=JobType.URL,
         url=body.url,
         source_override=body.source,
+        initial_tags=json.dumps(body.tags) if body.tags else None,
         safety=body.safety or "unsafe",
         skip_tagging=1 if body.skip_tagging else 0,
     )

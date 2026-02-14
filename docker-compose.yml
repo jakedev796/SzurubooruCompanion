@@ -17,8 +17,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      wd14-tagger:
-        condition: service_started
     networks:
       - ccc-net
 
@@ -54,33 +52,7 @@ services:
       - ccc-net
 
   # -----------------------------------------------------------------------
-  # WD14 Tagger API (CPU by default)
-  # -----------------------------------------------------------------------
-  # For GPU support, swap the build context to Dockerfile.gpu and add the
-  # deploy block below.
-  wd14-tagger:
-    build: ./ccc/wd14-tagger
-    container_name: ccc-wd14-tagger
-    restart: unless-stopped
-    ports:
-      - "21435:21435"
-    volumes:
-      - ./local-dev/wd14-models:/root/.cache
-    environment:
-      - PORT=21435
-    networks:
-      - ccc-net
-    # For NVIDIA GPU support, uncomment:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-
-  # -----------------------------------------------------------------------
-  # CCC Frontend (React dashboard – served via "serve", no nginx)
+  # CCC Frontend (React dashboard)
   # -----------------------------------------------------------------------
   ccc-frontend:
     build: ./ccc/frontend

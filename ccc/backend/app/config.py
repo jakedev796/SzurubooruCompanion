@@ -17,6 +17,9 @@ class Settings:
     szuru_username: str = os.getenv("SZURU_USERNAME", "")
     szuru_token: str = os.getenv("SZURU_TOKEN", "")
 
+    # --- Tag categories (Szurubooru: general, artist, copyright, character, meta) ---
+    szuru_default_tag_category: str = os.getenv("SZURU_DEFAULT_TAG_CATEGORY", "general")
+
     # --- Database ---
     database_url: str = os.getenv(
         "DATABASE_URL",
@@ -26,9 +29,9 @@ class Settings:
     # --- Redis ---
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-    # --- WD14 Tagger ---
-    wd14_tagger_url: str = os.getenv("WD14_TAGGER_URL", "http://localhost:21435")
+    # --- WD14 Tagger (in-process via wdtagger) ---
     wd14_enabled: bool = os.getenv("WD14_ENABLED", "true").lower() == "true"
+    wd14_model: str = os.getenv("WD14_MODEL", "SmilingWolf/wd-swinv2-tagger-v3")
     wd14_confidence_threshold: float = float(os.getenv("WD14_CONFIDENCE_THRESHOLD", "0.35"))
     wd14_max_tags: int = int(os.getenv("WD14_MAX_TAGS", "30"))
 
@@ -38,6 +41,8 @@ class Settings:
     # --- Worker ---
     job_data_dir: str = os.getenv("JOB_DATA_DIR", "/data/jobs")
     gallery_dl_timeout: int = int(os.getenv("GALLERY_DL_TIMEOUT", "120"))
+    # Optional gallery-dl config file; if set, passed as -c to gallery-dl. Else we pass per-extractor options (e.g. extractor.yandere.tags) for known sites.
+    gallery_dl_config_file: Optional[str] = os.getenv("GALLERY_DL_CONFIG_FILE")
     ytdlp_timeout: int = int(os.getenv("YTDLP_TIMEOUT", "300"))
     max_retries: int = int(os.getenv("MAX_RETRIES", "3"))
     retry_delay: float = float(os.getenv("RETRY_DELAY", "5.0"))

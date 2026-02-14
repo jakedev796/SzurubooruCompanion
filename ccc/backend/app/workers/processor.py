@@ -7,16 +7,17 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import Job, JobStatus, JobType, async_session
-from app.services import downloader, szurubooru, tagger
+from app.services import downloader, szurubooru, tag_categories, tagger
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -117,28 +118,45 @@ async def _process_job(job: Job) -> None:
         await _set_status(job, JobStatus.TAGGING)
 
         all_tags: List[str] = []
+        tags_from_source: List[str] = []
+        tags_from_ai: List[str] = []
         safety = job.safety or "unsafe"
+
+        # Tags from client (e.g. browser-ext page extractor).
+        if job.initial_tags:
+            try:
+                initial = json.loads(job.initial_tags)
+                if isinstance(initial, list):
+                    for t in initial:
+                        if isinstance(t, str) and t.strip():
+                            all_tags.append(t.strip())
+                            tags_from_source.append(t.strip())
+            except (json.JSONDecodeError, TypeError):
+                pass
 
         # Pull any tags from metadata (e.g. gallery-dl parsed tags).
         if metadata:
             parsed_tags = _extract_tags_from_metadata(metadata)
-            all_tags.extend(parsed_tags)
+            for t in parsed_tags:
+                if t.strip():
+                    all_tags.append(t.strip())
+                    tags_from_source.append(t.strip())
 
+        wd14_character_tags: set = set()
         for fp in files:
             ext = fp.suffix.lower()
             if ext in IMAGE_EXTENSIONS and not job.skip_tagging:
                 tag_result = await tagger.tag_image(fp)
-                all_tags.extend(tag_result.general_tags)
-                all_tags.extend(tag_result.character_tags)
-                # Use tagger-derived safety if available.
+                for t in tag_result.general_tags + tag_result.character_tags:
+                    if t.strip():
+                        all_tags.append(t.strip())
+                        tags_from_ai.append(t.strip())
+                wd14_character_tags.update(tag_result.character_tags)
                 if tag_result.safety:
                     safety = tag_result.safety
-
-                # Ensure character tags exist with the correct category.
-                for ct in tag_result.character_tags:
-                    await szurubooru.ensure_tag(ct, "character")
             elif ext in VIDEO_EXTENSIONS:
                 all_tags.append("video")
+                tags_from_source.append("video")
 
         # Deduplicate while preserving order.
         seen = set()
@@ -150,8 +168,22 @@ async def _process_job(job: Job) -> None:
                 unique_tags.append(t.strip())
         all_tags = unique_tags
 
+        tags_from_source = list(dict.fromkeys(t.strip() for t in tags_from_source if t.strip()))
+        tags_from_ai = list(dict.fromkeys(t.strip() for t in tags_from_ai if t.strip()))
+
         if not all_tags:
             all_tags = ["tagme"]
+
+        # Resolve Szurubooru category per tag from metadata (gallery-dl categorized tags) or default.
+        tag_to_category = tag_categories.resolve_categories(
+            all_tags, metadata=metadata, job_url=job.url
+        )
+        for t in wd14_character_tags:
+            tag_to_category[t] = "character"
+
+        for tag in all_tags:
+            category = tag_to_category.get(tag) or settings.szuru_default_tag_category
+            await szurubooru.ensure_tag(tag, category)
 
         # ---- Step 3: Upload to Szurubooru ----
         await _set_status(job, JobStatus.UPLOADING)
@@ -159,12 +191,21 @@ async def _process_job(job: Job) -> None:
         uploaded_post_id = None
         last_error = None
 
+        # Primary source: actual image source (override or metadata). Secondary: page we grabbed from.
+        meta_source = metadata.get("source")
+        meta_source = meta_source.strip() if isinstance(meta_source, str) and meta_source else None
+        if meta_source and not (meta_source.startswith("http://") or meta_source.startswith("https://")):
+            meta_source = None
+        primary_source = (job.source_override or meta_source or "").strip() or None
+        grab_source = (source_url or "").strip() or None  # Page URL we downloaded from (e.g. yande.re/post/...)
+        final_source = _combine_sources(primary_source, grab_source)
+
         for fp in files:
             result = await szurubooru.upload_post(
                 file_path=fp,
                 tags=all_tags,
                 safety=safety,
-                source=source_url,
+                source=final_source,
             )
             if "error" in result:
                 error_text = result["error"]
@@ -179,7 +220,7 @@ async def _process_job(job: Job) -> None:
 
         # ---- Step 4: Finalise ----
         if uploaded_post_id:
-            await _complete_job(job, uploaded_post_id, all_tags)
+            await _complete_job(job, uploaded_post_id, all_tags, tags_from_source, tags_from_ai)
         elif last_error:
             await _fail_job(job, last_error)
         else:
@@ -202,10 +243,22 @@ async def _process_job(job: Job) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _combine_sources(primary: Optional[str], grab: Optional[str]) -> Optional[str]:
+    """Combine primary (actual image source) and grab (page we got it from). Szurubooru source is one string; use newline to list both."""
+    if not primary and not grab:
+        return None
+    if not primary:
+        return grab
+    if not grab:
+        return primary
+    if primary.strip().rstrip("/") == grab.strip().rstrip("/"):
+        return primary
+    return f"{primary}\n{grab}"
+
+
 def _extract_tags_from_metadata(metadata: dict) -> List[str]:
     """Best-effort tag extraction from gallery-dl / yt-dlp metadata."""
     tags = []
-    # gallery-dl often stores tags as a list.
     raw = metadata.get("tags", [])
     if isinstance(raw, list):
         for item in raw:
@@ -214,7 +267,8 @@ def _extract_tags_from_metadata(metadata: dict) -> List[str]:
             elif isinstance(item, dict) and "name" in item:
                 tags.append(item["name"])
     elif isinstance(raw, str):
-        tags.extend(t.strip() for t in raw.split(",") if t.strip())
+        # gallery-dl may use space-separated (e.g. yande.re) or comma-separated.
+        tags.extend(t for t in re.split(r"[,\s]+", raw) if t.strip())
     return tags
 
 
@@ -238,13 +292,21 @@ async def _fail_job(job: Job, error: str) -> None:
     logger.error("Job %s failed: %s", job.id, error[:200])
 
 
-async def _complete_job(job: Job, szuru_post_id: int, tags: List[str]) -> None:
+async def _complete_job(
+    job: Job,
+    szuru_post_id: int,
+    tags: List[str],
+    tags_from_source: List[str],
+    tags_from_ai: List[str],
+) -> None:
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
         j = result.scalar_one()
         j.status = JobStatus.COMPLETED
         j.szuru_post_id = szuru_post_id
         j.tags_applied = json.dumps(tags)
+        j.tags_from_source = json.dumps(tags_from_source)
+        j.tags_from_ai = json.dumps(tags_from_ai)
         j.updated_at = datetime.now(timezone.utc)
         await db.commit()
     logger.info("Job %s completed -> Szuru post %d", job.id, szuru_post_id)

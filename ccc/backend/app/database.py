@@ -14,7 +14,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    func,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -76,6 +75,7 @@ class Job(Base):
     url = Column(Text, nullable=True)
     original_filename = Column(String(512), nullable=True)
     source_override = Column(Text, nullable=True)
+    initial_tags = Column(Text, nullable=True)  # JSON array from client (e.g. browser-ext)
     safety = Column(String(16), nullable=True, default="unsafe")
     skip_tagging = Column(Integer, nullable=False, default=0)
 
@@ -83,6 +83,8 @@ class Job(Base):
     szuru_post_id = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
     tags_applied = Column(Text, nullable=True)  # JSON array stored as text
+    tags_from_source = Column(Text, nullable=True)  # JSON array: from metadata / initial / inferred
+    tags_from_ai = Column(Text, nullable=True)  # JSON array: from WD14
 
     # Retry tracking
     retry_count = Column(Integer, nullable=False, default=0)
@@ -95,6 +97,14 @@ class Job(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class SchemaMigration(Base):
+    """Tracks applied schema migrations for auto-migration on startup."""
+
+    __tablename__ = "schema_migrations"
+
+    version = Column(String(255), primary_key=True)
 
 
 # ---------------------------------------------------------------------------
