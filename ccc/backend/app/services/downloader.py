@@ -171,6 +171,7 @@ async def download_url(url: str, dest_dir: str, source_url: Optional[str] = None
         source_url: If provided, use this as the source instead of the page URL.
                    The source_url should be the direct media link for proper source tracking.
     """
+    url = normalize_sankaku_url(url)
     os.makedirs(dest_dir, exist_ok=True)
 
     result = await _try_gallery_dl(url, dest_dir)
@@ -297,6 +298,7 @@ async def extract_media_urls(url: str) -> List[ExtractedMedia]:
     For single-file sources, returns a list with one ExtractedMedia.
     For multi-file sources (galleries), returns one ExtractedMedia per file.
     """
+    url = normalize_sankaku_url(url)
     # Special handling for Twitter/Misskey - use --resolve-urls
     if _needs_resolve_urls(url):
         return await _extract_twitter_misskey_media(url)
@@ -507,10 +509,20 @@ def _extract_filename_from_url(url: str) -> str:
 # gallery-dl
 # ---------------------------------------------------------------------------
 
+def normalize_sankaku_url(url: str) -> str:
+    """Use www.sankakucomplex.com so gallery-dl and credential logic work (apex domain is unsupported)."""
+    if not url or not url.strip():
+        return url
+    parsed = urlparse(url.strip())
+    if parsed.netloc.lower() == "sankakucomplex.com":
+        return parsed._replace(netloc="www.sankakucomplex.com").geturl()
+    return url
+
+
 def _is_sankaku_url(url: str) -> bool:
-    """True if URL is a Sankaku image board (sankaku.app or sankakucomplex.com subdomains)."""
+    """True if URL is a Sankaku image board (sankaku.app or sankakucomplex.com)."""
     lower = url.lower()
-    return "sankaku.app" in lower or ".sankakucomplex.com" in lower
+    return "sankaku.app" in lower or "sankakucomplex.com" in lower
 
 
 def _gallery_dl_options(url: str) -> Tuple[List[str], List[Path]]:

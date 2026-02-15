@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import Job, JobStatus, JobType, get_db
 from app.api.deps import verify_api_key
+from app.services.downloader import normalize_sankaku_url
 
 router = APIRouter()
 settings = get_settings()
@@ -106,9 +107,10 @@ async def create_job_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a job from a URL."""
+    url = normalize_sankaku_url(body.url)
     job = Job(
         job_type=JobType.URL,
-        url=body.url,
+        url=url,
         source_override=body.source,
         initial_tags=json.dumps(body.tags) if body.tags else None,
         safety=body.safety or "unsafe",
