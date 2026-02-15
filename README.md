@@ -23,7 +23,7 @@ A multi-component workflow for uploading media to [Szurubooru](https://github.co
 ## TODO
 
 - Finetune browser extension for popular sites
-- Get mobile app working
+- Implement tag extract on mobile app level
 - Further enhancements to performance
 - **Cookie sync (shelved):** Browser extension could capture cookies for sites (e.g. Twitter) and send them to CCC; CCC stores/updates them in Postgres and reads when needed instead of env. Would remove manual cookie export/paste.
 

@@ -1,9 +1,11 @@
-import 'package:saf/saf.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../models/scheduled_folder.dart';
 import 'settings_model.dart';
 
-/// Helper class for picking folders using SAF
+/// Helper class for picking folders using file_picker with MANAGE_EXTERNAL_STORAGE
 class FolderPicker {
   final SettingsModel _settings;
   final _uuid = const Uuid();
@@ -11,7 +13,7 @@ class FolderPicker {
   FolderPicker(this._settings);
 
   /// Open folder picker and return selected folder info
-  /// 
+  ///
   /// Returns null if user cancels or an error occurs
   Future<ScheduledFolder?> pickFolder({
     required String name,
@@ -21,32 +23,35 @@ class FolderPicker {
     bool skipTagging = false,
   }) async {
     try {
-      // Use a default directory path - the user will select the actual directory
-      final saf = Saf("/storage/emulated/0");
-      
-      // Request directory permission - this opens the folder picker
-      final granted = await saf.getDirectoryPermission(
-        grantWritePermission: false,
-        isDynamic: true,
-      );
-      
-      if (granted != true) {
-        return null; // User cancelled or permission denied
+      // Use file_picker to select a directory
+      final result = await FilePicker.platform.getDirectoryPath();
+
+      if (result == null) {
+        debugPrint('[FolderPicker] User cancelled folder selection');
+        return null; // User cancelled
       }
 
-      // Get the selected directory path
-      final directories = await Saf.getPersistedPermissionDirectories();
-      if (directories == null || directories.isEmpty) {
+      debugPrint('[FolderPicker] Selected directory: $result');
+
+      // Verify the directory exists
+      final directory = Directory(result);
+      if (!await directory.exists()) {
+        debugPrint('[FolderPicker] ERROR: Selected directory does not exist: $result');
         return null;
       }
 
-      // Get the most recently selected directory
-      final selectedPath = directories.last;
+      // Convert absolute path to relative path if it's under /storage/emulated/0/
+      String folderUri = result;
+      const storagePrefix = '/storage/emulated/0/';
+      if (result.startsWith(storagePrefix)) {
+        folderUri = result.substring(storagePrefix.length);
+        debugPrint('[FolderPicker] Converted to relative path: $folderUri');
+      }
 
       final folder = ScheduledFolder(
         id: _uuid.v4(),
         name: name,
-        uri: selectedPath,
+        uri: folderUri,
         intervalSeconds: intervalSeconds,
         enabled: true,
         defaultTags: defaultTags,
@@ -55,17 +60,19 @@ class FolderPicker {
       );
 
       await _settings.addScheduledFolder(folder);
+      debugPrint('[FolderPicker] Folder added: ${folder.name} at ${folder.uri}');
       return folder;
-    } catch (e) {
-      debugPrint('Error picking folder: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[FolderPicker] Error picking folder: $e');
+      debugPrint('[FolderPicker] Stack trace: $stackTrace');
       return null;
     }
   }
 
   /// Get display name for a folder URI
-  Future<String> getFolderDisplayName(String uri) async {
+  String getFolderDisplayName(String uri) {
     try {
-      // Extract the last part of the URI path as display name
+      // Extract the last part of the path as display name
       final parts = uri.split('/');
       final name = parts.lastWhere(
         (p) => p.isNotEmpty,
@@ -73,6 +80,7 @@ class FolderPicker {
       );
       return Uri.decodeComponent(name);
     } catch (e) {
+      debugPrint('[FolderPicker] Error getting display name: $e');
       return 'Unknown Folder';
     }
   }
@@ -80,17 +88,18 @@ class FolderPicker {
   /// Validate that a folder URI is still accessible
   Future<bool> isFolderAccessible(String uri) async {
     try {
-      final saf = Saf(uri);
-      final paths = await saf.getFilesPath();
-      return paths != null;
+      // Convert relative path to absolute if needed
+      final absolutePath = uri.startsWith('/')
+          ? uri
+          : '/storage/emulated/0/$uri';
+
+      final directory = Directory(absolutePath);
+      final exists = await directory.exists();
+      debugPrint('[FolderPicker] Folder $uri accessible: $exists');
+      return exists;
     } catch (e) {
+      debugPrint('[FolderPicker] Error checking folder accessibility: $e');
       return false;
     }
   }
-}
-
-/// Debug print function for folder_picker
-void debugPrint(String message) {
-  // ignore: avoid_print
-  print(message);
 }

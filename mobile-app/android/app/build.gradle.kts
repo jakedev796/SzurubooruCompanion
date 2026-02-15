@@ -44,8 +44,25 @@ dependencies {
     
     // OkHttp for HTTP requests
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    
+    // WorkManager for scheduled folder sync (native worker starts app so sync runs in main process)
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }
 
 flutter {
     source = "../.."
+}
+
+val buildsDir = rootProject.file("../../builds/mobile-app")
+tasks.whenTaskAdded {
+    if (name == "assembleRelease") {
+        finalizedBy(
+            tasks.register("copyReleaseApkToBuilds", Copy::class) {
+                from(layout.buildDirectory.dir("outputs/apk/release"))
+                into(buildsDir)
+                include("*.apk")
+                rename(".*\\.apk", "SzuruCompanion.apk")
+            }
+        )
+    }
 }

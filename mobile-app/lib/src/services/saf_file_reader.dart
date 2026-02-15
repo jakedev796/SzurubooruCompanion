@@ -1,8 +1,35 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:saf_stream/saf_stream.dart';
+
+const _channel = MethodChannel('com.szurubooru.szuruqueue/share');
+
+/// Deletes a file by its content URI (Android only). Only works from main isolate.
+/// Returns true if delete was successful.
+Future<bool> deleteContentUri(String uri) async {
+  try {
+    final result = await _channel.invokeMethod<bool>('deleteContentUri', {'uri': uri});
+    return result == true;
+  } catch (e) {
+    debugPrint('deleteContentUri failed: $e');
+    return false;
+  }
+}
+
+/// Lists media file content URIs under a SAF tree URI (Android only, recursive).
+/// Returns null on failure or non-Android. Used when saf getFilesPath returns empty due to getPath() null.
+Future<List<String>?> listMediaUrisFromTree(String treeUri) async {
+  try {
+    final result = await _channel.invokeMethod<List<dynamic>>('listMediaUrisFromTree', {'treeUri': treeUri});
+    return result?.cast<String>();
+  } catch (e) {
+    debugPrint('listMediaUrisFromTree failed: $e');
+    return null;
+  }
+}
 
 /// Service for reading files from SAF (Storage Access Framework) content:// URIs.
 /// 

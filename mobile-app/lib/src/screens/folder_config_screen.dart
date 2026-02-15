@@ -1,6 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:saf/saf.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../models/scheduled_folder.dart';
 import '../services/settings_model.dart';
@@ -22,21 +23,10 @@ class _FolderConfigScreenState extends State<FolderConfigScreen> {
   
   String? _selectedFolderUri;
   String? _selectedFolderName;
-  int _intervalSeconds = 86400; // Default: 1 day
   String _safety = 'safe';
   bool _skipTagging = false;
   bool _isLoading = false;
   bool _isSaving = false;
-
-  final List<Map<String, dynamic>> _intervalOptions = [
-    {'label': 'Every 15 minutes', 'seconds': 900},
-    {'label': 'Every 30 minutes', 'seconds': 1800},
-    {'label': 'Every hour', 'seconds': 3600},
-    {'label': 'Every 6 hours', 'seconds': 21600},
-    {'label': 'Every 12 hours', 'seconds': 43200},
-    {'label': 'Every day', 'seconds': 86400},
-    {'label': 'Every week', 'seconds': 604800},
-  ];
 
   final List<String> _safetyOptions = ['safe', 'sketchy', 'unsafe'];
 
@@ -48,7 +38,6 @@ class _FolderConfigScreenState extends State<FolderConfigScreen> {
       _nameController.text = widget.folder!.name;
       _selectedFolderUri = widget.folder!.uri;
       _selectedFolderName = widget.folder!.name;
-      _intervalSeconds = widget.folder!.intervalSeconds;
       _safety = widget.folder!.defaultSafety ?? 'safe';
       _skipTagging = widget.folder!.skipTagging;
       
@@ -67,53 +56,49 @@ class _FolderConfigScreenState extends State<FolderConfigScreen> {
 
   Future<void> _pickFolder() async {
     setState(() => _isLoading = true);
-    
+
     try {
-      // Use SAF to pick a folder directly
-      final saf = Saf("/storage/emulated/0");
-      
-      // Request directory permission - this opens the native folder picker
-      final granted = await saf.getDirectoryPermission(
-        grantWritePermission: false,
-        isDynamic: true,
-      );
-      
+      // Use file_picker to select a directory
+      final result = await FilePicker.platform.getDirectoryPath();
+
       if (!mounted) return;
-      
-      if (granted == true) {
-        // Get the selected directory path
-        final directories = await Saf.getPersistedPermissionDirectories();
-        
-        if (!mounted) return;
-        
-        if (directories != null && directories.isNotEmpty) {
-          // Get the most recently selected directory
-          final selectedPath = directories.last;
-          
-          // Extract display name from path
-          final parts = selectedPath.split('/');
-          final displayName = parts.lastWhere(
-            (p) => p.isNotEmpty,
-            orElse: () => 'Selected Folder',
-          );
-          
-          setState(() {
-            _selectedFolderUri = selectedPath;
-            _selectedFolderName = Uri.decodeComponent(displayName);
-            if (_nameController.text.isEmpty) {
-              _nameController.text = _selectedFolderName!;
-            }
-          });
-        } else {
-          // No directory was returned
+
+      if (result != null) {
+        // Verify the directory exists
+        final directory = Directory(result);
+        if (!await directory.exists()) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('No folder selected')),
+              const SnackBar(content: Text('Selected directory does not exist')),
             );
           }
+          setState(() => _isLoading = false);
+          return;
         }
+
+        // Convert absolute path to relative path if it's under /storage/emulated/0/
+        String folderUri = result;
+        const storagePrefix = '/storage/emulated/0/';
+        if (result.startsWith(storagePrefix)) {
+          folderUri = result.substring(storagePrefix.length);
+        }
+
+        // Extract display name from path
+        final parts = result.split('/');
+        final displayName = parts.lastWhere(
+          (p) => p.isNotEmpty,
+          orElse: () => 'Selected Folder',
+        );
+
+        setState(() {
+          _selectedFolderUri = folderUri;
+          _selectedFolderName = Uri.decodeComponent(displayName);
+          if (_nameController.text.isEmpty) {
+            _nameController.text = _selectedFolderName!;
+          }
+        });
       } else {
-        // Permission denied or user cancelled
+        // User cancelled
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Folder selection cancelled')),
@@ -160,7 +145,7 @@ class _FolderConfigScreenState extends State<FolderConfigScreen> {
         id: widget.folder?.id ?? const Uuid().v4(),
         name: _nameController.text.trim(),
         uri: _selectedFolderUri!,
-        intervalSeconds: _intervalSeconds,
+        intervalSeconds: 900,
         lastRunTimestamp: widget.folder?.lastRunTimestamp ?? 0,
         enabled: widget.folder?.enabled ?? true,
         defaultTags: tags.isEmpty ? null : tags,
@@ -244,27 +229,6 @@ class _FolderConfigScreenState extends State<FolderConfigScreen> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // Interval
-                  DropdownButtonFormField<int>(
-                    value: _intervalSeconds,
-                    decoration: const InputDecoration(
-                      labelText: 'Scan Interval',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _intervalOptions.map((option) {
-                      return DropdownMenuItem(
-                        value: option['seconds'] as int,
-                        child: Text(option['label'] as String),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _intervalSeconds = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  
                   // Safety
                   DropdownButtonFormField<String>(
                     value: _safety,
@@ -310,16 +274,6 @@ class _FolderConfigScreenState extends State<FolderConfigScreen> {
                       setState(() => _skipTagging = value);
                     },
                   ),
-                  const SizedBox(height: 24),
-                  
-                  // Save Button
-                  if (_isSaving)
-                    const Center(child: CircularProgressIndicator())
-                  else
-                    ElevatedButton(
-                      onPressed: _save,
-                      child: const Text('Save Folder'),
-                    ),
                 ],
               ),
             ),

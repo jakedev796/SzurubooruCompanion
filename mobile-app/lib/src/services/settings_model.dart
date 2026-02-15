@@ -23,6 +23,10 @@ class SettingsModel extends ChangeNotifier {
   bool _skipTagging = false;
   bool _isConfigured = false;
   int _pollingIntervalSeconds = 5;
+  bool _notifyOnFolderSync = false;
+  bool _deleteMediaAfterSync = false;
+  bool _showPersistentNotification = true;
+  int _folderSyncIntervalSeconds = 900;
 
   String get backendUrl => _backendUrl;
   String get apiKey => _apiKey;
@@ -32,6 +36,10 @@ class SettingsModel extends ChangeNotifier {
   bool get skipTagging => _skipTagging;
   bool get isConfigured => _isConfigured;
   int get pollingIntervalSeconds => _pollingIntervalSeconds;
+  bool get notifyOnFolderSync => _notifyOnFolderSync;
+  bool get deleteMediaAfterSync => _deleteMediaAfterSync;
+  bool get showPersistentNotification => _showPersistentNotification;
+  int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
 
   /// Load settings from persistent storage
   Future<void> loadSettings() async {
@@ -43,6 +51,10 @@ class SettingsModel extends ChangeNotifier {
     _defaultSafety = prefs.getString('defaultSafety') ?? 'unsafe';
     _skipTagging = prefs.getBool('skipTagging') ?? false;
     _pollingIntervalSeconds = prefs.getInt('pollingIntervalSeconds') ?? 5;
+    _notifyOnFolderSync = prefs.getBool('notifyOnFolderSync') ?? false;
+    _deleteMediaAfterSync = prefs.getBool('deleteMediaAfterSync') ?? false;
+    _showPersistentNotification = prefs.getBool('showPersistentNotification') ?? true;
+    _folderSyncIntervalSeconds = prefs.getInt('folderSyncIntervalSeconds') ?? 900;
     _isConfigured = _backendUrl.isNotEmpty;
     notifyListeners();
   }
@@ -56,6 +68,10 @@ class SettingsModel extends ChangeNotifier {
     String? defaultSafety,
     bool? skipTagging,
     int? pollingIntervalSeconds,
+    bool? notifyOnFolderSync,
+    bool? deleteMediaAfterSync,
+    bool? showPersistentNotification,
+    int? folderSyncIntervalSeconds,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -92,7 +108,22 @@ class SettingsModel extends ChangeNotifier {
       _pollingIntervalSeconds = pollingIntervalSeconds;
       await prefs.setInt('pollingIntervalSeconds', _pollingIntervalSeconds);
     }
-    
+    if (notifyOnFolderSync != null) {
+      _notifyOnFolderSync = notifyOnFolderSync;
+      await prefs.setBool('notifyOnFolderSync', _notifyOnFolderSync);
+    }
+    if (deleteMediaAfterSync != null) {
+      _deleteMediaAfterSync = deleteMediaAfterSync;
+      await prefs.setBool('deleteMediaAfterSync', _deleteMediaAfterSync);
+    }
+    if (showPersistentNotification != null) {
+      _showPersistentNotification = showPersistentNotification;
+      await prefs.setBool('showPersistentNotification', _showPersistentNotification);
+    }
+    if (folderSyncIntervalSeconds != null) {
+      _folderSyncIntervalSeconds = folderSyncIntervalSeconds.clamp(900, 604800);
+      await prefs.setInt('folderSyncIntervalSeconds', _folderSyncIntervalSeconds);
+    }
     _isConfigured = _backendUrl.isNotEmpty;
     notifyListeners();
   }
@@ -109,8 +140,11 @@ class SettingsModel extends ChangeNotifier {
     _defaultSafety = 'unsafe';
     _skipTagging = false;
     _pollingIntervalSeconds = 5;
+    _notifyOnFolderSync = false;
+    _deleteMediaAfterSync = false;
+    _showPersistentNotification = true;
+    _folderSyncIntervalSeconds = 900;
     _isConfigured = false;
-    
     notifyListeners();
   }
 
@@ -127,8 +161,10 @@ class SettingsModel extends ChangeNotifier {
   /// Only requires backend URL - API key is optional.
   bool get canMakeApiCalls => _backendUrl.isNotEmpty;
 
-  // Key for storing scheduled folders
   static const String _scheduledFoldersKey = 'scheduled_folders';
+  static const String _pendingDeleteUrisKey = 'pending_delete_uris';
+  static const String _lastFolderSyncTimestampKey = 'last_folder_sync_timestamp';
+  static const String _lastFolderSyncCountKey = 'last_folder_sync_count';
 
   /// Get all scheduled folders
   Future<List<ScheduledFolder>> getScheduledFolders() async {
@@ -179,5 +215,51 @@ class SettingsModel extends ChangeNotifier {
       folders[index] = folders[index].copyWith(lastRunTimestamp: timestamp);
       await setScheduledFolders(folders);
     }
+  }
+
+  /// Enqueue a content URI for deletion when app is in foreground (used by background sync).
+  Future<void> addPendingDeleteUri(String uri) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingDeleteUrisKey);
+    final list = jsonString != null
+        ? (jsonDecode(jsonString) as List<dynamic>).cast<String>()
+        : <String>[];
+    if (!list.contains(uri)) {
+      list.add(uri);
+      await prefs.setString(_pendingDeleteUrisKey, jsonEncode(list));
+    }
+  }
+
+  /// Get URIs queued for deletion.
+  Future<List<String>> getPendingDeleteUris() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingDeleteUrisKey);
+    if (jsonString == null) return [];
+    return (jsonDecode(jsonString) as List<dynamic>).cast<String>();
+  }
+
+  /// Remove a URI from the pending-delete queue.
+  Future<void> removePendingDeleteUri(String uri) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingDeleteUrisKey);
+    if (jsonString == null) return;
+    final list = (jsonDecode(jsonString) as List<dynamic>).cast<String>();
+    list.remove(uri);
+    await prefs.setString(_pendingDeleteUrisKey, jsonEncode(list));
+  }
+
+  /// Record last folder sync result (called from background task).
+  Future<void> setLastFolderSync(int filesUploaded) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_lastFolderSyncTimestampKey, DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(_lastFolderSyncCountKey, filesUploaded);
+  }
+
+  /// Get last folder sync time and count for display.
+  Future<({int timestamp, int count})> getLastFolderSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ts = prefs.getInt(_lastFolderSyncTimestampKey) ?? 0;
+    final count = prefs.getInt(_lastFolderSyncCountKey) ?? 0;
+    return (timestamp: ts, count: count);
   }
 }

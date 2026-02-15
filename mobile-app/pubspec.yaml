@@ -28,23 +28,23 @@ dependencies:
   
   # State management
   provider: ^6.1.2
-  
-  # Background processing
+
+  # Background processing (used for one-time isolate execution, not scheduling)
   workmanager:
     path: workmanager_patch
-  
+
   # Path utilities
   path_provider: ^2.1.5
   path: ^1.9.1
-  
-  # Storage Access Framework for folder picking
-  saf: ^1.0.4
-  
-  # SAF stream for reading files from content:// URIs
-  saf_stream: ^0.12.2
-  
+
+  # File picker for folder selection
+  file_picker: ^8.1.6
+
   # UUID generation
   uuid: ^4.5.1
+
+  # Battery optimization (folder sync reliability)
+  battery_optimization_helper: ^0.2.0
 
 dev_dependencies:
   flutter_test:

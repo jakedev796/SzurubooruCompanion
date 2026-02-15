@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:battery_optimization_helper/battery_optimization_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'src/models/job.dart';
@@ -13,18 +16,35 @@ import 'src/services/backend_client.dart';
 import 'src/services/background_task.dart';
 import 'src/services/notification_service.dart';
 import 'src/services/settings_model.dart';
+import 'src/services/status_foreground_service.dart';
+import 'src/services/storage_permission.dart';
 
-const _statusFilters = ['pending', 'downloading', 'tagging', 'uploading', 'completed', 'failed', 'all'];
+String _formatFolderSyncIntervalShort(int seconds) {
+  return switch (seconds) {
+    900 => 'every 15 min',
+    1800 => 'every 30 min',
+    3600 => 'every hour',
+    21600 => 'every 6 hours',
+    43200 => 'every 12 hours',
+    86400 => 'every day',
+    604800 => 'every week',
+    _ => 'every ${seconds ~/ 60} min',
+  };
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init();
-  
-  // Initialize background tasks for folder scanning
+
   await initializeBackgroundTasks();
 
   final settingsModel = SettingsModel();
   await settingsModel.loadSettings();
+
+  final folders = await settingsModel.getScheduledFolders();
+  if (folders.any((f) => f.enabled)) {
+    await scheduleFolderScanTask();
+  }
 
   runApp(
     MultiProvider(
@@ -102,9 +122,16 @@ class _MainScreenState extends State<MainScreen> {
   String _selectedSafety = 'unsafe';
   bool _useBackgroundService = true;
   bool _skipTagging = false;
+  bool _notifyOnFolderSync = false;
+  bool _deleteMediaAfterSync = false;
+  bool _showPersistentNotification = true;
+  int _folderSyncIntervalSeconds = 900;
   int _selectedIndex = 0;
   bool _isProcessingShare = false;
+  bool _isSyncingFolders = false;
   bool _settingsInitialized = false;
+  bool _pendingDeletesProcessed = false;
+  Timer? _statusNotificationReshowTimer;
 
   @override
   void initState() {
@@ -122,10 +149,45 @@ class _MainScreenState extends State<MainScreen> {
       _syncSettingsFields();
       _settingsInitialized = true;
     }
+    if (!_pendingDeletesProcessed) {
+      _pendingDeletesProcessed = true;
+      _processPendingDeletes();
+    }
+  }
+
+  Future<void> _processPendingDeletes() async {
+    final settings = context.read<SettingsModel>();
+    final filePaths = await settings.getPendingDeleteUris();
+    for (final filePath in filePaths) {
+      try {
+        final file = File(filePath);
+        if (await file.exists()) {
+          await file.delete();
+          debugPrint('[Main] Deleted pending file: $filePath');
+        }
+      } catch (e) {
+        debugPrint('[Main] Error deleting file $filePath: $e');
+      }
+      await settings.removePendingDeleteUri(filePath);
+    }
+  }
+
+  Future<void> _updateStatusNotificationIfNeeded(SettingsModel settings, AppState appState) async {
+    final folders = await settings.getScheduledFolders();
+    if (folders.where((f) => f.enabled).isEmpty) return;
+    if (!settings.showPersistentNotification) return;
+    if (!mounted) return;
+    final connectionText = appState.isConnected
+        ? 'Connected'
+        : (appState.isConnecting ? 'Connecting...' : 'Disconnected');
+    if (!mounted) return;
+    await NotificationService.instance.updateStatusNotification(connectionText: connectionText);
   }
 
   @override
   void dispose() {
+    _statusNotificationReshowTimer?.cancel();
+    _statusNotificationReshowTimer = null;
     _backendUrlController.dispose();
     _apiKeyController.dispose();
     _defaultTagsController.dispose();
@@ -140,6 +202,10 @@ class _MainScreenState extends State<MainScreen> {
     _selectedSafety = settings.defaultSafety;
     _useBackgroundService = settings.useBackgroundService;
     _skipTagging = settings.skipTagging;
+    _notifyOnFolderSync = settings.notifyOnFolderSync;
+    _deleteMediaAfterSync = settings.deleteMediaAfterSync;
+    _showPersistentNotification = settings.showPersistentNotification;
+    _folderSyncIntervalSeconds = settings.folderSyncIntervalSeconds;
   }
 
   Future<void> _checkInitialShare() async {
@@ -241,6 +307,30 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Consumer2<SettingsModel, AppState>(
       builder: (context, settings, appState, child) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          _updateStatusNotificationIfNeeded(settings, appState);
+          if (!settings.showPersistentNotification) {
+            _statusNotificationReshowTimer?.cancel();
+            _statusNotificationReshowTimer = null;
+            return;
+          }
+          final folders = await settings.getScheduledFolders();
+          if (!mounted) return;
+          if (folders.any((f) => f.enabled)) {
+            _statusNotificationReshowTimer ??= Timer.periodic(
+              const Duration(minutes: 1),
+              (_) async {
+                if (!mounted) return;
+                final s = context.read<SettingsModel>();
+                final a = context.read<AppState>();
+                await _updateStatusNotificationIfNeeded(s, a);
+              },
+            );
+          } else {
+            _statusNotificationReshowTimer?.cancel();
+            _statusNotificationReshowTimer = null;
+          }
+        });
         final screens = [
           _buildOverview(settings, appState),
           _buildQueueTab(appState),
@@ -261,6 +351,11 @@ class _MainScreenState extends State<MainScreen> {
             title: const Text('SzuruCompanion'),
             actions: [
               _buildConnectionStatusIndicator(appState),
+              IconButton(
+                icon: const Icon(Icons.folder_rounded),
+                tooltip: 'Sync folders now',
+                onPressed: _isSyncingFolders ? null : _runFolderSync,
+              ),
               IconButton(
                 icon: const Icon(Icons.settings),
                 onPressed: () => setState(() {
@@ -401,7 +496,7 @@ class _MainScreenState extends State<MainScreen> {
                 appState.jobs.length > 3 ? 3 : appState.jobs.length,
                 (index) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildJobCard(appState.jobs[index]),
+                  child: _buildJobCard(appState.jobs[index], appState.booruUrl),
                 ),
               ),
             ),
@@ -494,46 +589,22 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildQueueTab(AppState appState) {
-    return Column(
-      children: [
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _statusFilters
-                .map(
-                  (filter) => ChoiceChip(
-                    label: Text(filter.capitalize()),
-                    selected: appState.selectedStatus == filter,
-                    onSelected: (_) => appState.updateStatusFilter(filter),
+    return RefreshIndicator(
+      onRefresh: appState.refreshJobs,
+      child: appState.isLoadingJobs
+          ? const Center(child: CircularProgressIndicator())
+          : appState.jobs.isEmpty
+              ? const Center(child: Text('No jobs yet.'))
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
                   ),
-                )
-                .toList(),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: appState.refreshJobs,
-            child: appState.isLoadingJobs
-                ? const Center(child: CircularProgressIndicator())
-                : appState.jobs.isEmpty
-                ? const Center(child: Text('No jobs in this status yet.'))
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    itemCount: appState.jobs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) =>
-                        _buildJobCard(appState.jobs[index]),
-                  ),
-          ),
-        ),
-      ],
+                  itemCount: appState.jobs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) =>
+                      _buildJobCard(appState.jobs[index], appState.booruUrl),
+                ),
     );
   }
 
@@ -630,11 +701,80 @@ class _MainScreenState extends State<MainScreen> {
                 });
               },
             ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              title: const Text('Notify on folder sync'),
+              subtitle: const Text(
+                'Show a notification when folder sync runs and how many files were uploaded',
+              ),
+              value: _notifyOnFolderSync,
+              onChanged: (value) {
+                setState(() {
+                  _notifyOnFolderSync = value;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              title: const Text('Delete media after folder sync'),
+              subtitle: const Text(
+                'Remove source files after upload. We try to delete in background; if that fails, files are deleted when you next open the app.',
+              ),
+              value: _deleteMediaAfterSync,
+              onChanged: (value) {
+                setState(() {
+                  _deleteMediaAfterSync = value;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              title: const Text('Show persistent status notification'),
+              subtitle: const Text(
+                'Keep a notification in the status bar when folder sync is on (connectivity status).',
+              ),
+              value: _showPersistentNotification,
+              onChanged: (value) {
+                setState(() {
+                  _showPersistentNotification = value;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              value: _folderSyncIntervalSeconds,
+              decoration: const InputDecoration(
+                labelText: 'Folder sync interval',
+                border: OutlineInputBorder(),
+                helperText: 'Clock-aligned (e.g. 30 min runs at :00 and :30)',
+              ),
+              items: const [
+                DropdownMenuItem(value: 900, child: Text('Every 15 minutes')),
+                DropdownMenuItem(value: 1800, child: Text('Every 30 minutes')),
+                DropdownMenuItem(value: 3600, child: Text('Every hour')),
+                DropdownMenuItem(value: 21600, child: Text('Every 6 hours')),
+                DropdownMenuItem(value: 43200, child: Text('Every 12 hours')),
+                DropdownMenuItem(value: 86400, child: Text('Every day')),
+                DropdownMenuItem(value: 604800, child: Text('Every week')),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _folderSyncIntervalSeconds = value);
+              },
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _saveSettings,
               child: const Text('Save settings'),
             ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Text(
+              'App health',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const _AppHealthSection(),
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
@@ -679,8 +819,12 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
-  Widget _buildJobCard(Job job) {
+  Widget _buildJobCard(Job job, [String? booruUrl]) {
     final tags = job.allTags;
+    final showPostLink = job.status == 'completed' &&
+        job.szuruPostId != null &&
+        booruUrl != null &&
+        booruUrl.isNotEmpty;
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
@@ -728,6 +872,20 @@ class _MainScreenState extends State<MainScreen> {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text('Safety: ${job.safetyDisplay}'),
               ),
+            if (showPostLink)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: InkWell(
+                  onTap: () => _openPostLink(booruUrl, job.szuruPostId!),
+                  child: Text(
+                    'View post #${job.szuruPostId}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 8),
             if (tags.isNotEmpty) _buildTagChips(tags),
             const SizedBox(height: 6),
@@ -739,6 +897,46 @@ class _MainScreenState extends State<MainScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _runFolderSync() async {
+    setState(() => _isSyncingFolders = true);
+    try {
+      final outcome = await triggerManualScanAll();
+      if (mounted) {
+        if (outcome.uploaded > 0) {
+          _showSnackBar(
+            outcome.uploaded == 1
+                ? '1 file uploaded'
+                : '${outcome.uploaded} files uploaded',
+          );
+        } else {
+          _showSnackBar('No files to sync');
+        }
+      }
+    } catch (e) {
+      if (mounted) _showSnackBar('Folder sync failed: $e');
+    } finally {
+      if (mounted) setState(() => _isSyncingFolders = false);
+    }
+  }
+
+  Future<void> _openPostLink(String booruUrl, int postId) async {
+    final uri = Uri.parse('$booruUrl/post/$postId');
+    try {
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open link')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open link: $e')),
+        );
+      }
+    }
   }
 
   static const int _visibleTagCount = 4;
@@ -813,7 +1011,44 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _saveSettings() async {
     if (_settingsFormKey.currentState?.validate() != true) return;
+
     final settings = context.read<SettingsModel>();
+    final folders = await settings.getScheduledFolders();
+    final hasFoldersEnabled = folders.any((f) => f.enabled);
+
+    // Check storage permission if folders are enabled
+    if (hasFoldersEnabled) {
+      final hasPermission = await StoragePermissionService.hasStoragePermission();
+      if (!hasPermission && mounted) {
+        final shouldRequest = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Storage Permission Required'),
+            content: const Text(
+              'You have enabled folders for background sync, but the app doesn\'t have '
+              '"All files access" permission.\n\n'
+              'Background folder sync will not work without this permission.\n\n'
+              'Would you like to grant it now?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Skip'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Grant Permission'),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldRequest == true && mounted) {
+          await StoragePermissionService.requestStoragePermission();
+        }
+      }
+    }
+
     await settings.saveSettings(
       backendUrl: _backendUrlController.text.trim(),
       apiKey: _apiKeyController.text.trim(),
@@ -821,9 +1056,25 @@ class _MainScreenState extends State<MainScreen> {
       defaultTags: _defaultTagsController.text,
       defaultSafety: _selectedSafety,
       skipTagging: _skipTagging,
+      notifyOnFolderSync: _notifyOnFolderSync,
+      deleteMediaAfterSync: _deleteMediaAfterSync,
+      showPersistentNotification: _showPersistentNotification,
+      folderSyncIntervalSeconds: _folderSyncIntervalSeconds,
     );
+
+    if (!_showPersistentNotification) {
+      await stopStatusForegroundService();
+      await NotificationService.instance.cancelStatusNotification();
+    }
+
+    if (hasFoldersEnabled) {
+      await scheduleFolderScanTask();
+    } else {
+      await cancelFolderScanTask();
+    }
+
     _syncSettingsFields();
-    _showSnackBar('Settings saved');
+    if (mounted) _showSnackBar('Settings saved');
   }
 
   void _showShareTestDialog() {
@@ -895,7 +1146,227 @@ String _relativeTime(DateTime timestamp) {
   return '${diff.inDays}d ago';
 }
 
-extension on String {
-  String capitalize() =>
-      isEmpty ? this : '${this[0].toUpperCase()}${substring(1)}';
+class _AppHealthSection extends StatefulWidget {
+  const _AppHealthSection();
+
+  @override
+  State<_AppHealthSection> createState() => _AppHealthSectionState();
+}
+
+class _AppHealthSectionState extends State<_AppHealthSection> {
+  BatteryRestrictionSnapshot? _snapshot;
+  int _enabledFolderCount = 0;
+  bool _loading = true;
+  bool _hasStoragePermission = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = context.read<SettingsModel>();
+    _load(settings);
+  }
+
+  Future<void> _load(SettingsModel settings) async {
+    final snapshot = await BatteryOptimizationHelper.getBatteryRestrictionSnapshot();
+    final folders = await settings.getScheduledFolders();
+    final enabled = folders.where((f) => f.enabled).length;
+    final hasStorage = await StoragePermissionService.hasStoragePermission();
+    if (mounted) {
+      setState(() {
+        _snapshot = snapshot;
+        _enabledFolderCount = enabled;
+        _hasStoragePermission = hasStorage;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _fixBatteryOptimization() async {
+    final outcome = await BatteryOptimizationHelper.ensureOptimizationDisabledDetailed(
+      openSettingsIfDirectRequestNotPossible: true,
+    );
+    if (!mounted) return;
+    final message = switch (outcome.status) {
+      OptimizationOutcomeStatus.alreadyDisabled => 'Already allowed.',
+      OptimizationOutcomeStatus.disabledAfterPrompt => 'Battery optimization disabled.',
+      OptimizationOutcomeStatus.settingsOpened => 'Please disable battery optimization for this app.',
+      OptimizationOutcomeStatus.unsupported => 'Not available on this device.',
+      OptimizationOutcomeStatus.failed => 'Could not open settings.',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    if (mounted) _load(context.read<SettingsModel>());
+  }
+
+  Future<void> _requestStoragePermission() async {
+    final hasPermission = await StoragePermissionService.hasStoragePermission();
+    if (hasPermission) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Storage permission already granted')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Show explanation dialog first
+    final shouldRequest = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Storage Permission Required'),
+        content: const Text(
+          'SzuruCompanion needs "All files access" permission to sync folders in the background.\n\n'
+          'This allows the app to automatically upload media files even when the app is closed.\n\n'
+          'You\'ll be taken to Android settings where you need to toggle ON the permission for SzuruCompanion.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Grant Permission'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldRequest == true && mounted) {
+      await StoragePermissionService.requestStoragePermission();
+      // Wait a bit for user to grant permission, then reload
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) _load(context.read<SettingsModel>());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: SizedBox(
+          height: 24,
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+
+    final supported = _snapshot?.isSupported ?? false;
+    final batteryOn = supported && (_snapshot!.isBatteryOptimizationEnabled);
+    final storageGranted = _hasStoragePermission;
+
+    return Column(
+      children: [
+        // Storage Permission Card
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      storageGranted ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+                      size: 20,
+                      color: storageGranted
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Storage permission',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Spacer(),
+                    if (!storageGranted)
+                      TextButton(
+                        onPressed: _requestStoragePermission,
+                        child: const Text('Grant'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  storageGranted
+                      ? 'All files access granted – folder sync enabled.'
+                      : 'Required for background folder sync to work.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Battery Optimization Card
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      batteryOn ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                      size: 20,
+                      color: batteryOn
+                          ? Theme.of(context).colorScheme.error
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Battery optimization',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const Spacer(),
+                    if (supported && batteryOn)
+                      TextButton(
+                        onPressed: _fixBatteryOptimization,
+                        child: const Text('Fix'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  !supported
+                      ? 'Battery status not available on this device.'
+                      : batteryOn
+                          ? 'On – may delay or prevent folder sync in background.'
+                          : 'Off – folder sync can run reliably.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_enabledFolderCount > 0) ...[
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Folder sync: $_enabledFolderCount folder(s) watched. Background scan ${_formatFolderSyncIntervalShort(context.watch<SettingsModel>().folderSyncIntervalSeconds)}.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }

@@ -1,10 +1,8 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:saf/saf.dart';
 import 'package:path/path.dart' as path;
 import '../models/scheduled_folder.dart';
 import 'backend_client.dart';
-import 'saf_file_reader.dart';
 import 'settings_model.dart';
 
 /// Supported media file extensions
@@ -15,149 +13,163 @@ const Set<String> kSupportedExtensions = {
   '.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.m4v',
 };
 
-/// Service for scanning folders and uploading media files
+/// Service for scanning folders and uploading media files using direct File I/O
+/// Requires MANAGE_EXTERNAL_STORAGE permission
 class FolderScanner {
   final BackendClient _backendClient;
   final SettingsModel _settings;
-  final SafFileReader _safFileReader;
 
   FolderScanner({
     required BackendClient backendClient,
     required SettingsModel settings,
-    SafFileReader? safFileReader,
   })  : _backendClient = backendClient,
-        _settings = settings,
-        _safFileReader = safFileReader ?? SafFileReader();
+        _settings = settings;
 
   /// Check if a file is a supported media file
-  bool isMediaFile(String fileName) {
-    final ext = path.extension(fileName).toLowerCase();
+  bool isMediaFile(String filePath) {
+    final ext = path.extension(filePath).toLowerCase();
     return kSupportedExtensions.contains(ext);
   }
 
-  /// Scan a folder and return list of media file URIs
+  /// Convert relative folder URI to absolute path
+  String _toAbsolutePath(String uri) {
+    if (uri.startsWith('/')) {
+      return uri;
+    }
+    // Relative path like "Pictures/Twitter" → "/storage/emulated/0/Pictures/Twitter"
+    return '/storage/emulated/0/$uri';
+  }
+
+  /// Scan a folder and return list of media file paths using direct File I/O.
+  /// With MANAGE_EXTERNAL_STORAGE permission, we can access files directly.
   Future<List<String>> scanFolder(ScheduledFolder folder) async {
+    debugPrint('[FolderScanner] scanFolder() started for ${folder.name}');
     try {
-      final saf = Saf(folder.uri);
-      
-      // Get all file URIs from the directory
-      // Note: SAF returns content:// URIs, not file paths
-      final fileUris = await saf.getFilesPath();
-      
-      if (fileUris == null) {
-        debugPrint('Failed to get directory content for ${folder.name}');
+      final folderPath = _toAbsolutePath(folder.uri);
+      debugPrint('[FolderScanner] Scanning directory: $folderPath');
+
+      final directory = Directory(folderPath);
+      if (!await directory.exists()) {
+        debugPrint('[FolderScanner] ERROR: Directory does not exist: $folderPath');
         return [];
       }
 
-      // Filter for supported media files
-      final mediaFiles = fileUris
-          .where((fileUri) => isMediaFile(fileUri))
-          .toList();
+      // Recursively scan for media files
+      final mediaFiles = <String>[];
+      await for (final entity in directory.list(recursive: true, followLinks: false)) {
+        if (entity is File && isMediaFile(entity.path)) {
+          mediaFiles.add(entity.path);
+        }
+      }
 
-      debugPrint('Found ${mediaFiles.length} media files in ${folder.name}');
+      debugPrint('[FolderScanner] Found ${mediaFiles.length} media files in ${folder.name}');
       return mediaFiles;
-    } catch (e) {
-      debugPrint('Error scanning folder ${folder.name}: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[FolderScanner] Error scanning folder ${folder.name}: $e');
+      debugPrint('[FolderScanner] Stack trace: $stackTrace');
       return [];
     }
   }
 
-  /// Upload a single file from a scheduled folder using SAF URI
-  /// 
-  /// [contentUri] - The SAF content:// URI of the file to upload
-  /// [folder] - The scheduled folder configuration
+  /// Upload a single file from a scheduled folder using direct File I/O.
+  /// [deleteAfterUpload] - If true and upload succeeds, delete the source file.
+  /// [enqueueDeleteForLater] - If true and upload succeeds, queue file path for deletion when app opens.
   Future<String?> uploadFile(
-    String contentUri,
-    ScheduledFolder folder,
-  ) async {
-    File? tempFile;
+    String filePath,
+    ScheduledFolder folder, {
+    bool deleteAfterUpload = false,
+    bool enqueueDeleteForLater = false,
+  }) async {
     try {
-      // Extract filename from URI for logging and temp file naming
-      final fileName = _extractFileName(contentUri);
-      debugPrint('Uploading file: $fileName from URI: $contentUri');
+      final file = File(filePath);
+      final fileName = path.basename(filePath);
+      debugPrint('[FolderScanner] uploadFile() - fileName: $fileName, filePath: $filePath');
 
-      // Copy file from SAF URI to temp location
-      tempFile = await _safFileReader.copyToTempFile(contentUri, fileName);
-      
-      // Verify temp file exists
-      if (!await tempFile.exists()) {
-        debugPrint('Temp file does not exist: ${tempFile.path}');
+      final exists = await file.exists();
+      final size = exists ? await file.length() : 0;
+      debugPrint('[FolderScanner] File exists: $exists, size: $size bytes');
+
+      if (!exists) {
+        debugPrint('[FolderScanner] ERROR: File does not exist: $filePath');
         return null;
       }
 
-      // Upload the temp file using existing backend client
+      debugPrint('[FolderScanner] Calling backendClient.enqueueFromFile...');
       final jobId = await _backendClient.enqueueFromFile(
-        file: tempFile,
+        file: file,
         source: 'folder:${folder.name}',
         tags: folder.defaultTags,
         safety: folder.defaultSafety,
         skipTagging: folder.skipTagging,
       );
+      debugPrint('[FolderScanner] backendClient returned jobId: $jobId');
 
       if (jobId != null) {
-        debugPrint('Uploaded $fileName as job $jobId');
-      }
-      return jobId;
-    } on SafFileReaderException catch (e) {
-      debugPrint('SAF error uploading file $contentUri: $e');
-      return null;
-    } catch (e) {
-      debugPrint('Error uploading file $contentUri: $e');
-      return null;
-    } finally {
-      // Clean up temp file
-      if (tempFile != null) {
-        await _safFileReader.deleteTempFile(tempFile);
-      }
-    }
-  }
+        debugPrint('[FolderScanner] Upload successful: jobId=$jobId');
 
-  /// Extract filename from a SAF content:// URI
-  /// 
-  /// SAF URIs typically encode the filename in the last segment
-  String _extractFileName(String contentUri) {
-    try {
-      // Try to get the last segment after the last slash or encoded segment
-      final uri = Uri.parse(contentUri);
-      
-      // For content:// URIs, the last path segment often contains encoded filename
-      final pathSegments = uri.pathSegments;
-      if (pathSegments.isNotEmpty) {
-        final lastSegment = pathSegments.last;
-        // Decode if it's URL encoded
-        final decoded = Uri.decodeComponent(lastSegment);
-        // Some SAF URIs have format like "primary:DCIM/photo.jpg"
-        if (decoded.contains(':')) {
-          final parts = decoded.split(':');
-          if (parts.length > 1) {
-            // Return the part after the colon, which is usually the path/filename
-            final pathPart = parts.last;
-            // Get just the filename if it contains path separators
-            return pathPart.split('/').last;
+        // Handle file deletion after successful upload
+        if (deleteAfterUpload) {
+          try {
+            await file.delete();
+            debugPrint('[FolderScanner] Deleted source file after upload: $filePath');
+          } catch (e) {
+            debugPrint('[FolderScanner] Failed to delete file: $e');
+          }
+        } else if (enqueueDeleteForLater) {
+          try {
+            await file.delete();
+            debugPrint('[FolderScanner] Deleted source file after upload (background): $filePath');
+          } catch (e) {
+            debugPrint('[FolderScanner] Failed to delete file, queuing for later: $e');
+            await _settings.addPendingDeleteUri(filePath);
+            debugPrint('[FolderScanner] Queued file for deletion when app opens: $filePath');
           }
         }
-        return decoded;
+      } else {
+        debugPrint('[FolderScanner] Upload returned null jobId');
       }
-      
-      // Fallback: use timestamp-based name
-      return 'file_${DateTime.now().millisecondsSinceEpoch}';
-    } catch (e) {
-      debugPrint('Error extracting filename from URI: $e');
-      return 'file_${DateTime.now().millisecondsSinceEpoch}';
+
+      return jobId;
+    } catch (e, stackTrace) {
+      debugPrint('[FolderScanner] Error uploading file $filePath: $e');
+      debugPrint('[FolderScanner] Stack trace: $stackTrace');
+      return null;
     }
   }
 
-  /// Process a scheduled folder - scan and upload all media files
-  Future<ScanResult> processFolder(ScheduledFolder folder) async {
+  /// Delete a file by path (used for cleanup after upload)
+  Future<bool> deleteFile(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+        debugPrint('[FolderScanner] Deleted file: $filePath');
+        return true;
+      }
+      debugPrint('[FolderScanner] File does not exist, cannot delete: $filePath');
+      return false;
+    } catch (e) {
+      debugPrint('[FolderScanner] Error deleting file $filePath: $e');
+      return false;
+    }
+  }
+
+  /// Process a scheduled folder - scan and upload all media files.
+  /// [allowDelete] - If true and settings say so, delete source files after upload.
+  Future<ScanResult> processFolder(ScheduledFolder folder, {bool allowDelete = false}) async {
+    debugPrint('[FolderScanner] processFolder() started for: ${folder.name}');
     final startTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    
-    // Clean up old temp files before processing
-    await _safFileReader.cleanupTempFiles();
-    
-    // Scan folder for media files
+    final deleteAfterUpload = _settings.deleteMediaAfterSync && allowDelete;
+    final enqueueDeleteForLater = _settings.deleteMediaAfterSync && !allowDelete;
+
+    debugPrint('[FolderScanner] Settings: deleteAfterUpload=$deleteAfterUpload, enqueueDeleteForLater=$enqueueDeleteForLater');
+
+    debugPrint('[FolderScanner] Scanning folder: ${folder.name} at URI: ${folder.uri}');
     final mediaFiles = await scanFolder(folder);
-    
+    debugPrint('[FolderScanner] Scan complete: found ${mediaFiles.length} media files');
+
     if (mediaFiles.isEmpty) {
+      debugPrint('[FolderScanner] No media files found in ${folder.name}');
       return ScanResult(
         folderId: folder.id,
         filesFound: 0,
@@ -167,21 +179,41 @@ class FolderScanner {
       );
     }
 
-    // Upload each file
     final jobIds = <String>[];
     int uploaded = 0;
-    
-    for (final contentUri in mediaFiles) {
-      final jobId = await uploadFile(contentUri, folder);
-      if (jobId != null) {
-        jobIds.add(jobId);
-        uploaded++;
+
+    debugPrint('[FolderScanner] Starting upload of ${mediaFiles.length} files from ${folder.name}');
+    for (int i = 0; i < mediaFiles.length; i++) {
+      final filePath = mediaFiles[i];
+      debugPrint('[FolderScanner] Uploading file ${i + 1}/${mediaFiles.length}: $filePath');
+
+      try {
+        final jobId = await uploadFile(
+          filePath,
+          folder,
+          deleteAfterUpload: deleteAfterUpload,
+          enqueueDeleteForLater: enqueueDeleteForLater,
+        );
+        if (jobId != null) {
+          jobIds.add(jobId);
+          uploaded++;
+          debugPrint('[FolderScanner] Upload successful: jobId=$jobId');
+        } else {
+          debugPrint('[FolderScanner] Upload returned null jobId');
+        }
+      } catch (e, stackTrace) {
+        debugPrint('[FolderScanner] Error uploading file: $e');
+        debugPrint('[FolderScanner] Stack trace: $stackTrace');
       }
     }
 
+    debugPrint('[FolderScanner] Upload complete: ${uploaded}/${mediaFiles.length} files uploaded');
+
     // Update last run timestamp
+    debugPrint('[FolderScanner] Updating last run timestamp to $startTime');
     await _settings.updateFolderLastRun(folder.id, startTime);
 
+    debugPrint('[FolderScanner] processFolder() complete for ${folder.name}');
     return ScanResult(
       folderId: folder.id,
       filesFound: mediaFiles.length,
@@ -195,16 +227,16 @@ class FolderScanner {
   Future<List<ScanResult>> processDueFolders() async {
     final folders = await _settings.getScheduledFolders();
     final currentTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    
+
     final dueFolders = folders.where((f) => f.isDue(currentTimestamp)).toList();
-    
+
     if (dueFolders.isEmpty) {
-      debugPrint('No folders due for processing');
+      debugPrint('[FolderScanner] No folders due for processing');
       return [];
     }
 
-    debugPrint('Processing ${dueFolders.length} due folders');
-    
+    debugPrint('[FolderScanner] Processing ${dueFolders.length} due folders');
+
     final results = <ScanResult>[];
     for (final folder in dueFolders) {
       final result = await processFolder(folder);

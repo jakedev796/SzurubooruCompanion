@@ -28,4 +28,4 @@ npm install
 | `npm run build` | Unpacked Chrome extension | `.output/chrome-mv3/` |
 | `npm run build:firefox` | Unpacked Firefox extension | `.output/firefox-mv2/` |
 
-Load the corresponding `.output/...` folder in your browser as described above. For release distribution, copy the built folder into the repo root `builds/` directory.
+Load the corresponding `.output/...` folder in your browser as described above.

@@ -24,6 +24,4 @@ flutter pub get
 | `flutter build apk` | APK at `build/app/outputs/flutter-apk/app-release.apk` |
 | `flutter build appbundle` | AAB at `build/app/outputs/bundle/release/app-release.aab` (for Play Store) |
 
-For release distribution, copy the built APK (or AAB) into the repo root `builds/` directory.
-
 **Install:** Sideload the APK or run `adb install build/app/outputs/flutter-apk/app-release.apk` with a device connected.

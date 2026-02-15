@@ -33,8 +33,8 @@ class AppState extends ChangeNotifier {
   
   bool isLoadingJobs = false;
   bool isLoadingStats = false;
-  String selectedStatus = 'pending';
   List<Job> jobs = [];
+  String? booruUrl;
   Map<String, int> stats = {
     'pending': 0,
     'downloading': 0,
@@ -148,15 +148,9 @@ class AppState extends ChangeNotifier {
         updatedAt: update.timestamp,
       );
       
-      // Check if job still matches current filter
-      if (selectedStatus == 'all' || selectedStatus == update.status) {
-        jobs[index] = updatedJob;
-      } else {
-        // Remove from list if no longer matches filter
-        jobs.removeAt(index);
-      }
-    } else if (selectedStatus == 'all' || selectedStatus == update.status) {
-      // Job not in list but matches filter - refresh to get full details
+      jobs[index] = updatedJob;
+    } else {
+      // Job not in list - refresh to get full details
       refreshJobs();
     }
     
@@ -192,7 +186,25 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshAll() async {
-    await Future.wait([refreshJobs(), refreshStats()]);
+    await Future.wait([
+      refreshJobs(),
+      refreshStats(),
+      _fetchConfig(),
+    ]);
+  }
+
+  Future<void> _fetchConfig() async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) return;
+    try {
+      final config = await backendClient.fetchConfig();
+      booruUrl = config['booru_url'] as String?;
+      if (booruUrl != null && booruUrl!.endsWith('/')) {
+        booruUrl = booruUrl!.substring(0, booruUrl!.length - 1);
+      }
+      notifyListeners();
+    } catch (_) {
+      // Non-fatal; post links will just be hidden
+    }
   }
 
   Future<void> refreshJobs() async {
@@ -202,7 +214,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     
     try {
-      jobs = await backendClient.fetchJobs(status: selectedStatus);
+      jobs = await backendClient.fetchJobs();
       errorMessage = null;
     } catch (error) {
       errorMessage = userFriendlyErrorMessage(error);
@@ -229,12 +241,6 @@ class AppState extends ChangeNotifier {
       lastUpdated = DateTime.now();
       notifyListeners();
     }
-  }
-
-  void updateStatusFilter(String status) {
-    if (selectedStatus == status) return;
-    selectedStatus = status;
-    refreshJobs();
   }
 
   /// Enqueue a new job from a URL.

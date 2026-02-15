@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 
@@ -360,6 +361,23 @@ class BackendClient {
 
   /// Fetch job statistics from the backend.
   /// 
+  /// Backend endpoint: GET /api/config
+  /// Response: { auth_required?, booru_url? }
+  Future<Map<String, dynamic>> fetchConfig() async {
+    try {
+      final response = await _dio.get('/api/config');
+      if (response.data is! Map<String, dynamic>) {
+        return {};
+      }
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
   /// Backend endpoint: GET /api/stats
   /// Response: { total_jobs, by_status: { pending, downloading, tagging, uploading, completed, failed }, daily_uploads }
   Future<Map<String, int>> fetchStats() async {
@@ -477,18 +495,23 @@ class BackendClient {
     }
 
     try {
+      debugPrint('[BackendClient] Sending upload request to: $uri');
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
+      debugPrint('[BackendClient] Upload response: ${response.statusCode}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data['id']?.toString();
+        final jobId = data['id']?.toString();
+        debugPrint('[BackendClient] Upload successful, jobId: $jobId');
+        return jobId;
       } else {
-        print('Failed to upload file: ${response.statusCode} - ${response.body}');
+        debugPrint('[BackendClient] Upload failed: ${response.statusCode} - ${response.body}');
         return null;
       }
-    } catch (e) {
-      print('Error uploading file: $e');
+    } catch (e, stackTrace) {
+      debugPrint('[BackendClient] Exception during upload: $e');
+      debugPrint('[BackendClient] Stack trace: $stackTrace');
       return null;
     }
   }
