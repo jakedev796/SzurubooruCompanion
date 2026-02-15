@@ -16,6 +16,8 @@ A multi-component workflow for uploading media to [Szurubooru](https://github.co
 > This project is in early development. APIs and behaviour may change. Use at your own risk.  
 > It was started as a passion project for my friend and me, so expect some bugs and rough edges. We welcome issues and contributions.
 
+**Releases:** Current release builds (browser extension and mobile app) are in [`builds/`](builds/).
+
 ---
 
 ## TODO
