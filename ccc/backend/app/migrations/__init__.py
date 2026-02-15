@@ -82,41 +82,19 @@ async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:
 
 async def _add_enum_value(enum_name: str, value: str) -> bool:
     """
-    Add a value to a PostgreSQL enum type.
-    
-    PostgreSQL ALTER TYPE ... ADD VALUE has special requirements:
-    - Cannot be run inside a transaction block in PostgreSQL < 12
-    - In PostgreSQL 12+, can run in transaction but only if it's the only operation
-    - No IF NOT EXISTS syntax support
-    
-    This function uses AUTOCOMMIT isolation level to ensure it works across
-    all PostgreSQL versions and handles the operation safely.
-    
-    Returns True if the value was added or already exists, False on error.
+    Add a value to a PostgreSQL enum type. Idempotent; uses AUTOCOMMIT for ALTER TYPE compatibility.
     """
     try:
-        # Get a fresh connection with AUTOCOMMIT isolation level
-        # This is required for ALTER TYPE ... ADD VALUE in PostgreSQL
         async with engine.connect() as conn:
-            # Set autocommit mode - this prevents any transaction from being started
             conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
-            
-            # First check if the value already exists (idempotent)
             if await _check_enum_value_exists(conn, enum_name, value):
                 logger.debug("Enum value already exists: %s.%s", enum_name, value)
                 return True
-            
-            # Value doesn't exist, add it
-            # Note: We use text() with bind parameters for safety
-            # However, DDL statements don't support bind parameters for identifiers
-            # Since enum_name and value come from our code (not user input), it's safe
             add_sql = text(f"ALTER TYPE {enum_name} ADD VALUE '{value}'")
             await conn.execute(add_sql)
             logger.info("Added enum value: %s.%s", enum_name, value)
             return True
-            
     except Exception as e:
-        # Check if it's a "duplicate" error - value might have been added by another process
         error_str = str(e).lower()
         if "already exists" in error_str or "duplicate" in error_str:
             logger.debug("Enum value %s.%s already exists (race condition handled)", enum_name, value)
