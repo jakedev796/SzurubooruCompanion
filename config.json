@@ -120,6 +120,11 @@
             "user-id": "${GELBOORU_USER_ID}"
         },
 
+        "rule34": {
+            "api-key": "${RULE34_API_KEY}",
+            "user-id": "${RULE34_USER_ID}"
+        },
+
         "yandere": {
             "tags": true
         },

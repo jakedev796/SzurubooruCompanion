@@ -45,7 +45,7 @@ async def event_stream(request: Request) -> AsyncGenerator[str, None]:
     heartbeat_task = None
     try:
         await pubsub.subscribe(JOB_UPDATES_CHANNEL)
-        logger.info("SSE client connected, subscribed to %s", JOB_UPDATES_CHANNEL)
+        logger.debug("SSE client connected, subscribed to %s", JOB_UPDATES_CHANNEL)
         
         # Send initial connection event
         yield format_sse_event(
@@ -60,7 +60,7 @@ async def event_stream(request: Request) -> AsyncGenerator[str, None]:
         while True:
             # Check if client disconnected
             if await request.is_disconnected():
-                logger.info("SSE client disconnected")
+                logger.debug("SSE client disconnected")
                 break
             
             try:
@@ -85,7 +85,7 @@ async def event_stream(request: Request) -> AsyncGenerator[str, None]:
                 heartbeat_task = asyncio.create_task(heartbeat_generator())
                 
     except asyncio.CancelledError:
-        logger.info("SSE stream cancelled")
+        logger.debug("SSE stream cancelled")
         raise
     except Exception as e:
         logger.exception("SSE stream error: %s", e)
@@ -100,7 +100,7 @@ async def event_stream(request: Request) -> AsyncGenerator[str, None]:
         await pubsub.unsubscribe(JOB_UPDATES_CHANNEL)
         await pubsub.close()
         await redis.close()
-        logger.info("SSE connection cleaned up")
+        logger.debug("SSE connection cleaned up")
 
 
 async def heartbeat_generator() -> str:

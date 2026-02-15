@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 
 from app.config import get_settings
@@ -78,7 +78,9 @@ def _is_misskey_url(url: str) -> bool:
 
 
 def _needs_resolve_urls(url: str) -> bool:
-    """True if URL needs --resolve-urls to get direct media URLs."""
+    """True if URL needs --resolve-urls to get direct media URLs. Sankaku uses generic --dump-json so we get tags."""
+    if _is_sankaku_url(url):
+        return False
     return _is_twitter_url(url) or _is_misskey_url(url)
 
 
@@ -299,11 +301,12 @@ async def extract_media_urls(url: str) -> List[ExtractedMedia]:
     For multi-file sources (galleries), returns one ExtractedMedia per file.
     """
     url = normalize_sankaku_url(url)
-    # Special handling for Twitter/Misskey - use --resolve-urls
+    if _is_sankaku_url(url):
+        return await _extract_generic_media(url)
+    # Twitter/Misskey: use --resolve-urls for direct media URLs
     if _needs_resolve_urls(url):
         return await _extract_twitter_misskey_media(url)
-    
-    # Default handling for other sites - use --dump-json
+    # All other sites: --dump-json for metadata
     return await _extract_generic_media(url)
 
 
@@ -428,33 +431,42 @@ async def _extract_generic_media(url: str) -> List[ExtractedMedia]:
         if isinstance(data, dict):
             data = [data]
 
-        # Process each item in the array
-        for item in data:
-            if not isinstance(item, dict):
+        # gallery-dl --dump-json can output [type_id, dict] or [type_id, url, dict] per item; unwrap to get the dict
+        def _unwrap_item(raw):
+            if isinstance(raw, dict):
+                return raw, None
+            if isinstance(raw, list) and len(raw) >= 2 and isinstance(raw[-1], dict):
+                direct = raw[1] if len(raw) == 3 and isinstance(raw[1], str) and raw[1].startswith("http") else None
+                return raw[-1], direct
+            return None, None
+
+        seen_ids: set = set()
+        for raw_item in data:
+            item, direct_url = _unwrap_item(raw_item)
+            if not item:
                 continue
+            # Dedupe: gallery-dl often emits [2, metadata] and [3, url, metadata] for the same post
+            post_id = item.get("id") or item.get("md5")
+            if post_id and post_id in seen_ids:
+                continue
+            if post_id:
+                seen_ids.add(post_id)
 
             # Extract the direct media URL from gallery-dl's JSON
-            # The structure varies by extractor, but common fields are:
-            # - url: direct media URL
-            # - extension: file extension
-            # - filename: base filename (without extension)
-            # - name: sometimes used instead of filename
-            media_url = item.get("url") or item.get("download_url") or url
-            extension = item.get("extension", "")
+            media_url = direct_url or item.get("url") or item.get("file_url") or item.get("sample_url") or item.get("download_url") or url
+            extension = item.get("extension", "") or (item.get("file_ext") or "")
             base_filename = item.get("filename") or item.get("name") or _extract_filename_from_url(media_url)
 
-            # Build the filename with extension
             if extension and not base_filename.endswith(f".{extension}"):
                 filename = f"{base_filename}.{extension}"
             else:
                 filename = base_filename
 
-            # Store metadata for later use (tags, source, etc.)
-            metadata = {k: v for k, v in item.items() if k not in ("url", "filename", "extension", "name")}
+            metadata = {k: v for k, v in item.items() if k not in ("url", "filename", "extension", "name", "file_url", "sample_url")}
 
             results.append(ExtractedMedia(
-                url=url,  # Original page URL
-                source_url=media_url,  # Direct media URL
+                url=url,
+                source_url=media_url,
                 filename=filename,
                 metadata=metadata if metadata else None
             ))
@@ -525,24 +537,102 @@ def _is_sankaku_url(url: str) -> bool:
     return "sankaku.app" in lower or "sankakucomplex.com" in lower
 
 
+def _is_rule34_url(url: str) -> bool:
+    """True if URL is rule34.xxx."""
+    return "rule34.xxx" in url.lower()
+
+
+def _is_danbooru_url(url: str) -> bool:
+    """True if URL is a Danbooru instance (danbooru.donmai.us, safebooru.org, etc.)."""
+    lower = url.lower()
+    return "danbooru.donmai.us" in lower or "safebooru.org" in lower
+
+
+def _is_gelbooru_url(url: str) -> bool:
+    """True if URL is Gelbooru (rule34.xxx and others have their own injectors)."""
+    return "gelbooru.com" in url.lower()
+
+
+def _is_reddit_url(url: str) -> bool:
+    """True if URL is reddit.com."""
+    return "reddit.com" in url.lower()
+
+
+# Extended/categorized tags: (url_matcher, extractor_name, [(option_key, option_value), ...]).
+# Sankaku: do NOT use tags=extended (scrapes chan.sankakucomplex.com). We force tags=standard so
+# gallery-dl uses API /posts/{id}/tags and fills tags_artist, tags_character, tags_copyright, etc.
+# Explicit option overrides any gallery-dl config file that might set tags=extended.
+def _gallery_dl_extended_tag_options() -> List[Tuple[Callable[[str], bool], str, List[Tuple[str, str]]]]:
+    return [
+        (lambda u: "yande.re" in u, "yandere", [("tags", "true")]),
+        (_is_sankaku_url, "sankaku", [("tags", "standard")]),
+    ]
+
+
+# One entry per site: (url_matcher, extractor_name, [(option_key, value_getter), ...]).
+def _gallery_dl_credential_getters() -> List[Tuple[Callable[[str], bool], str, List[Tuple[str, Callable[[], Optional[str]]]]]]:
+    s = settings
+    return [
+        (_is_sankaku_url, "sankaku", [
+            ("username", lambda: (s.gallery_dl_sankaku_username or "").strip() or None),
+            ("password", lambda: (s.gallery_dl_sankaku_password or "").strip() or None),
+        ]),
+        (_is_rule34_url, "rule34", [
+            ("api-key", lambda: (s.gallery_dl_rule34_api_key or "").strip() or None),
+            ("user-id", lambda: (s.gallery_dl_rule34_user_id or "").strip() or None),
+        ]),
+        (_is_misskey_url, "misskey", [
+            ("username", lambda: (s.gallery_dl_misskey_username or "").strip() or None),
+            ("password", lambda: (s.gallery_dl_misskey_password or "").strip() or None),
+        ]),
+        (_is_danbooru_url, "danbooru", [
+            ("api-key", lambda: (s.gallery_dl_danbooru_api_key or "").strip() or None),
+            ("user-id", lambda: (s.gallery_dl_danbooru_user_id or "").strip() or None),
+        ]),
+        (_is_gelbooru_url, "gelbooru", [
+            ("api-key", lambda: (s.gallery_dl_gelbooru_api_key or "").strip() or None),
+            ("user-id", lambda: (s.gallery_dl_gelbooru_user_id or "").strip() or None),
+        ]),
+        (_is_reddit_url, "reddit", [
+            ("client-id", lambda: (s.gallery_dl_reddit_client_id or "").strip() or None),
+            ("client-secret", lambda: (s.gallery_dl_reddit_client_secret or "").strip() or None),
+            ("user-agent", lambda: (f"Python:ExtendedUploader:v1.0 (by /u/{(s.gallery_dl_reddit_username or '').strip()})" if (s.gallery_dl_reddit_username or "").strip() else None)),
+        ]),
+        (_is_twitter_url, "twitter", [
+            ("username", lambda: (s.gallery_dl_twitter_username or "").strip() or None),
+            ("password", lambda: (s.gallery_dl_twitter_password or "").strip() or None),
+        ]),
+    ]
+
+
 def _gallery_dl_options(url: str) -> Tuple[List[str], List[Path]]:
     """
     Build optional gallery-dl args and any temp files to clean up after the subprocess.
-    When Twitter cookie content is set, write it to a temp file and pass its path to gallery-dl.
+    Credentials are injected per-site from _gallery_dl_credential_getters; Twitter cookies are a special case.
     """
     opts: List[str] = []
     cleanup_paths: List[Path] = []
     if settings.gallery_dl_config_file:
         opts.extend(["-c", settings.gallery_dl_config_file])
-    if not settings.gallery_dl_config_file and "yande.re" in url:
-        opts.extend(["-o", "extractor.yandere.tags=true"])
-    if _is_sankaku_url(url):
-        username = (settings.gallery_dl_sankaku_username or "").strip()
-        password = (settings.gallery_dl_sankaku_password or "").strip()
-        if username:
-            opts.extend(["-o", f"extractor.sankaku.username={username}"])
-        if password:
-            opts.extend(["-o", f"extractor.sankaku.password={password}"])
+
+    for matcher, extractor_name, options in _gallery_dl_extended_tag_options():
+        if matcher(url):
+            for opt_key, opt_value in options:
+                opts.extend(["-o", f"extractor.{extractor_name}.{opt_key}={opt_value}"])
+            break
+
+    for matcher, extractor_name, key_getters in _gallery_dl_credential_getters():
+        if not matcher(url):
+            continue
+        added = 0
+        for opt_key, getter in key_getters:
+            value = getter()
+            if value:
+                opts.extend(["-o", f"extractor.{extractor_name}.{opt_key}={value}"])
+                added += 1
+        if extractor_name == "rule34" and added:
+            logger.info("Rule34 API credentials injected for request")
+
     if _is_twitter_url(url):
         cookies_content = (settings.gallery_dl_twitter_cookies or "").strip()
         if cookies_content:

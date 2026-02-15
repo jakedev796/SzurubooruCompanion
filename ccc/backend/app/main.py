@@ -36,6 +36,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ccc")
 
+# Reduce console noise: uvicorn access log and third-party libs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+for name in ("httpx", "httpcore", "huggingface_hub", "timm", "timm.models._hub", "wdtagger"):
+    logging.getLogger(name).setLevel(logging.WARNING)
+
 
 # ---------------------------------------------------------------------------
 # Lifespan

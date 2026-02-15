@@ -29,7 +29,7 @@ CATEGORY_PREFIX_RE = re.compile(
     r"^(artist|character|copyright|general|meta):(.+)$",
     re.IGNORECASE,
 )
-VALID_CATEGORIES = frozenset(tag_categories.SZURU_CATEGORIES)
+VALID_CATEGORIES = frozenset(tag_categories.get_szuru_categories())
 
 _running = True
 
@@ -242,7 +242,6 @@ async def _process_job(job: Job) -> None:
 
         for idx, media in enumerate(extracted_media):
             logger.info("Job %s: Processing media %d/%d - %s", job.id, idx + 1, len(extracted_media), media.filename)
-            
             # Create a subdirectory for each media file to avoid conflicts
             media_dir = os.path.join(job_dir, f"media_{idx}")
             os.makedirs(media_dir, exist_ok=True)
@@ -362,7 +361,7 @@ async def _process_job(job: Job) -> None:
                     normalized_tags.append(raw)
                 all_tags = normalized_tags
 
-                # Deduplicate tags
+                # Deduplicate: keep first occurrence so source/metadata tags (added first) win over AI
                 seen = set()
                 unique_tags = []
                 for t in all_tags:
@@ -642,19 +641,33 @@ def _combine_sources(primary: Optional[str], grab: Optional[str]) -> Optional[st
     return f"{primary}\n{grab}"
 
 
-def _extract_tags_from_metadata(metadata: dict) -> List[str]:
-    """Best-effort tag extraction from gallery-dl / yt-dlp metadata."""
-    tags = []
-    raw = metadata.get("tags", [])
+def _parse_metadata_tag_value(raw: object) -> List[str]:
+    """Parse a single metadata tag value (list, dict-with-name, or string) into tag names."""
+    out: List[str] = []
     if isinstance(raw, list):
         for item in raw:
             if isinstance(item, str):
-                tags.append(item)
+                out.append(item)
             elif isinstance(item, dict) and "name" in item:
-                tags.append(item["name"])
+                out.append(item["name"])
     elif isinstance(raw, str):
-        # gallery-dl may use space-separated (e.g. yande.re) or comma-separated.
-        tags.extend(t for t in re.split(r"[,\s]+", raw) if t.strip())
+        out.extend(t for t in re.split(r"[,\s]+", raw) if t.strip())
+    return out
+
+
+def _extract_tags_from_metadata(metadata: dict) -> List[str]:
+    """Best-effort tag extraction from gallery-dl / yt-dlp metadata. Includes tags + all tags_* keys so categorized tags (artist, character, copyright) are present for resolve_categories."""
+    tags: List[str] = []
+    seen: Set[str] = set()
+    for key in metadata:
+        if key != "tags" and not key.startswith("tags_"):
+            continue
+        raw = metadata.get(key)
+        for name in _parse_metadata_tag_value(raw):
+            key_lower = name.strip().lower()
+            if key_lower and key_lower not in seen:
+                seen.add(key_lower)
+                tags.append(name.strip())
     return tags
 
 
