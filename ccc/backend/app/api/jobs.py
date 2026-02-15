@@ -59,6 +59,7 @@ class JobOut(BaseModel):
     safety: Optional[str] = None
     skip_tagging: bool = False
     szuru_post_id: Optional[int] = None
+    related_post_ids: Optional[List[int]] = None
     error_message: Optional[str] = None
     tags_applied: Optional[List[str]] = None
     tags_from_source: Optional[List[str]] = None
@@ -82,6 +83,7 @@ def _job_to_out(job: Job) -> JobOut:
         safety=job.safety,
         skip_tagging=bool(job.skip_tagging),
         szuru_post_id=job.szuru_post_id,
+        related_post_ids=job.related_post_ids,
         error_message=job.error_message,
         tags_applied=_parse_json_tags(job.tags_applied),
         tags_from_source=_parse_json_tags(job.tags_from_source),
@@ -123,6 +125,8 @@ async def create_job_file(
     file: UploadFile = File(...),
     safety: str = Form("unsafe"),
     skip_tagging: bool = Form(False),
+    tags: Optional[str] = Form(None),
+    source: Optional[str] = Form(None),
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
@@ -135,10 +139,18 @@ async def create_job_file(
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
+    # Parse tags from comma-separated string or JSON array
+    parsed_tags = _parse_json_tags(tags) if tags else None
+    if parsed_tags is None and tags:
+        # Try parsing as comma-separated string
+        parsed_tags = [t.strip() for t in tags.split(',') if t.strip()]
+
     job = Job(
         id=job_id,
         job_type=JobType.FILE,
         original_filename=file.filename,
+        source_override=source,
+        initial_tags=json.dumps(parsed_tags) if parsed_tags else None,
         safety=safety,
         skip_tagging=1 if skip_tagging else 0,
     )
@@ -191,4 +203,171 @@ async def get_job(
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
+    return _job_to_out(job)
+
+
+# ---------------------------------------------------------------------------
+# Job Control Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/jobs/{job_id}/start", response_model=JobOut)
+async def start_job(
+    job_id: str,
+    _key: str = Depends(verify_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Start a pending job.
+    Only works if job status is 'pending'.
+    Sets status to 'pending' and triggers worker to process it.
+    """
+    from app.api.events import publish_job_update
+
+    result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    if job.status != JobStatus.PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot start job with status '{job.status.value}'. Job must be in 'pending' status."
+        )
+
+    # Job is already pending, just broadcast the update to trigger processing
+    await db.refresh(job)
+    await publish_job_update(job_id=job.id, status="pending")
+    return _job_to_out(job)
+
+
+@router.post("/jobs/{job_id}/pause", response_model=JobOut)
+async def pause_job(
+    job_id: str,
+    _key: str = Depends(verify_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Pause a running job.
+    Only works if job status is 'downloading', 'tagging', or 'uploading'.
+    Sets status to 'paused'.
+    """
+    from app.api.events import publish_job_update
+
+    result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    allowed_statuses = {JobStatus.DOWNLOADING, JobStatus.TAGGING, JobStatus.UPLOADING}
+    if job.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot pause job with status '{job.status.value}'. Job must be in 'downloading', 'tagging', or 'uploading' status."
+        )
+
+    job.status = JobStatus.PAUSED
+    job.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(job)
+
+    await publish_job_update(job_id=job.id, status="paused")
+    return _job_to_out(job)
+
+
+@router.post("/jobs/{job_id}/stop", response_model=JobOut)
+async def stop_job(
+    job_id: str,
+    _key: str = Depends(verify_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Stop a job.
+    Works on any non-terminal status (not 'completed' or 'failed').
+    Sets status to 'stopped'.
+    """
+    from app.api.events import publish_job_update
+
+    result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    terminal_statuses = {JobStatus.COMPLETED, JobStatus.FAILED}
+    if job.status in terminal_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot stop job with status '{job.status.value}'. Job is already in a terminal state."
+        )
+
+    job.status = JobStatus.STOPPED
+    job.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(job)
+
+    await publish_job_update(job_id=job.id, status="stopped")
+    return _job_to_out(job)
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(
+    job_id: str,
+    _key: str = Depends(verify_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete a job.
+    Deletes the job from database and any downloaded files in the job's temp directory.
+    """
+    result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    # Delete job's temp directory if it exists
+    job_dir = os.path.join(settings.job_data_dir, job_id)
+    if os.path.isdir(job_dir):
+        try:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        except Exception:
+            pass  # Ignore cleanup errors
+
+    # Delete the job from database
+    await db.delete(job)
+    await db.commit()
+
+    return {"message": f"Job {job_id} deleted successfully"}
+
+
+@router.post("/jobs/{job_id}/resume", response_model=JobOut)
+async def resume_job(
+    job_id: str,
+    _key: str = Depends(verify_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Resume a paused or stopped job.
+    Only works if job status is 'paused' or 'stopped'.
+    Sets status to 'pending' to re-queue for processing.
+    """
+    from app.api.events import publish_job_update
+
+    result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    allowed_statuses = {JobStatus.PAUSED, JobStatus.STOPPED}
+    if job.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot resume job with status '{job.status.value}'. Job must be in 'paused' or 'stopped' status."
+        )
+
+    job.status = JobStatus.PENDING
+    job.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(job)
+
+    await publish_job_update(job_id=job.id, status="pending")
     return _job_to_out(job)

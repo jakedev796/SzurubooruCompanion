@@ -6,6 +6,7 @@ aiohttp>=3.9.0
 aiofiles>=23.2.0
 pydantic>=2.5.0
 python-multipart>=0.0.6
+redis>=4.5.0
 
 # WD14 in-process tagging
 torch>=2.0.0

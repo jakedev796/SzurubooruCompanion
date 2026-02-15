@@ -28,6 +28,8 @@ export async function saveConfig(cfg: CccConfig): Promise<void> {
 export interface SubmitJobOptions {
   source?: string;
   tags?: string[];
+  safety?: 'safe' | 'sketchy' | 'unsafe';
+  skipTagging?: boolean;
 }
 
 /** POST a URL job to the CCC backend. */
@@ -42,9 +44,18 @@ export async function submitJob(
   };
   if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
 
-  const body: { url: string; source?: string; tags?: string[] } = { url };
+  const body: { 
+    url: string; 
+    source?: string; 
+    tags?: string[];
+    safety?: string;
+    skip_tagging?: boolean;
+  } = { url };
+  
   if (opts?.source) body.source = opts.source;
   if (opts?.tags?.length) body.tags = opts.tags;
+  if (opts?.safety) body.safety = opts.safety;
+  if (opts?.skipTagging) body.skip_tagging = opts.skipTagging;
 
   const res = await fetch(`${cfg.baseUrl}/api/jobs`, {
     method: "POST",
@@ -64,8 +75,20 @@ export interface Job {
   id: string;
   status: string;
   job_type?: string;
+  url?: string;
+  original_filename?: string;
+  source_override?: string;
+  safety?: string;
+  skip_tagging?: boolean;
   szuru_post_id?: number;
+  related_post_ids?: number[];
   error_message?: string | null;
+  tags_applied?: string[];
+  tags_from_source?: string[];
+  tags_from_ai?: string[];
+  retry_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 /** GET a single job by ID. */

@@ -1,0 +1,357 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../models/job.dart';
+import 'backend_client.dart';
+import 'settings_model.dart';
+
+/// Application state management class.
+/// 
+/// Manages:
+/// - Job list and filtering
+/// - Statistics
+/// - SSE connection for real-time updates
+/// - Backend client configuration
+class AppState extends ChangeNotifier {
+  AppState(this.settings) {
+    _previousBackendUrl = settings.backendUrl;
+    _initializeSse();
+    settings.addListener(_onSettingsChanged);
+    if (settings.isConfigured) {
+      refreshAll();
+    }
+  }
+
+  final SettingsModel settings;
+  BackendClient? _backendClient;
+  StreamSubscription<SseConnectionState>? _sseStateSubscription;
+  StreamSubscription<JobUpdate>? _jobUpdateSubscription;
+  
+  // Track previous URL to avoid unnecessary SSE reconnections
+  String _previousBackendUrl = '';
+  
+  bool isLoadingJobs = false;
+  bool isLoadingStats = false;
+  String selectedStatus = 'pending';
+  List<Job> jobs = [];
+  Map<String, int> stats = {
+    'pending': 0,
+    'downloading': 0,
+    'tagging': 0,
+    'uploading': 0,
+    'completed': 0,
+    'failed': 0,
+  };
+  String? errorMessage;
+  DateTime? lastUpdated;
+  
+  /// SSE connection state
+  SseConnectionState sseConnectionState = SseConnectionState.disconnected;
+
+  bool get hasJobs => jobs.isNotEmpty;
+  bool get hasStats => stats.values.any((value) => value > 0);
+  bool get isConnected => sseConnectionState == SseConnectionState.connected;
+  bool get isConnecting => sseConnectionState == SseConnectionState.connecting;
+
+  /// Create or get the backend client with current settings.
+  BackendClient get backendClient {
+    _backendClient ??= BackendClient(
+      baseUrl: settings.backendUrl,
+      apiKey: settings.apiKey,
+    );
+    return _backendClient!;
+  }
+
+  /// Initialize SSE connection for real-time updates.
+  void _initializeSse() {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return;
+    }
+    
+    _connectSse();
+  }
+  
+  /// Connect to SSE endpoint
+  void _connectSse() {
+    // Disconnect existing connection
+    _disconnectSse();
+    
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return;
+    }
+    
+    // Listen to SSE events
+    final sseStream = backendClient.connectSse(autoReconnect: true);
+    
+    // Listen to connection state changes
+    _sseStateSubscription = backendClient.sseStateStream.listen((state) {
+      sseConnectionState = state;
+      notifyListeners();
+    });
+    
+    // Listen to job updates
+    _jobUpdateSubscription = backendClient.jobUpdateStream.listen((update) {
+      _handleJobUpdate(update);
+    });
+    
+    // Also listen to the raw stream for errors
+    sseStream.listen(
+      (event) {
+        // Events are handled via jobUpdateStream
+        if (event.type == SseEventType.connected) {
+          // Initial connection - refresh data
+          refreshAll();
+        }
+      },
+      onError: (error) {
+        errorMessage = 'SSE error: $error';
+        notifyListeners();
+      },
+    );
+  }
+  
+  /// Disconnect from SSE endpoint
+  void _disconnectSse() {
+    _sseStateSubscription?.cancel();
+    _sseStateSubscription = null;
+    _jobUpdateSubscription?.cancel();
+    _jobUpdateSubscription = null;
+    _backendClient?.disconnectSse();
+    sseConnectionState = SseConnectionState.disconnected;
+  }
+  
+  /// Handle a job update from SSE
+  void _handleJobUpdate(JobUpdate update) {
+    // Find and update the job in the list
+    final index = jobs.indexWhere((j) => j.id == update.jobId);
+    
+    if (index != -1) {
+      // Update existing job
+      final existingJob = jobs[index];
+      final updatedJob = Job(
+        id: existingJob.id,
+        status: update.status,
+        jobType: existingJob.jobType,
+        url: existingJob.url,
+        originalFilename: existingJob.originalFilename,
+        sourceOverride: existingJob.sourceOverride,
+        safety: existingJob.safety,
+        skipTagging: existingJob.skipTagging,
+        szuruPostId: update.szuruPostId ?? existingJob.szuruPostId,
+        errorMessage: update.error ?? existingJob.errorMessage,
+        tagsApplied: update.tags ?? existingJob.tagsApplied,
+        tagsFromSource: existingJob.tagsFromSource,
+        tagsFromAi: existingJob.tagsFromAi,
+        retryCount: existingJob.retryCount,
+        createdAt: existingJob.createdAt,
+        updatedAt: update.timestamp,
+      );
+      
+      // Check if job still matches current filter
+      if (selectedStatus == 'all' || selectedStatus == update.status) {
+        jobs[index] = updatedJob;
+      } else {
+        // Remove from list if no longer matches filter
+        jobs.removeAt(index);
+      }
+    } else if (selectedStatus == 'all' || selectedStatus == update.status) {
+      // Job not in list but matches filter - refresh to get full details
+      refreshJobs();
+    }
+    
+    // Update stats
+    refreshStats();
+    
+    lastUpdated = DateTime.now();
+    notifyListeners();
+  }
+
+  void _onSettingsChanged() {
+    // Only reconnect SSE if the backend URL actually changed
+    final urlChanged = _previousBackendUrl != settings.backendUrl;
+    _previousBackendUrl = settings.backendUrl;
+    
+    if (urlChanged) {
+      // Reinitialize SSE when URL changes
+      _backendClient?.dispose();
+      _backendClient = null;
+      _initializeSse();
+    }
+    
+    if (settings.isConfigured && settings.canMakeApiCalls) {
+      refreshAll();
+    } else {
+      _disconnectSse();
+      jobs = [];
+      stats = {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'failed': 0};
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshAll() async {
+    await Future.wait([refreshJobs(), refreshStats()]);
+  }
+
+  Future<void> refreshJobs() async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) return;
+    
+    isLoadingJobs = true;
+    notifyListeners();
+    
+    try {
+      jobs = await backendClient.fetchJobs(status: selectedStatus);
+      errorMessage = null;
+    } catch (error) {
+      errorMessage = 'Failed to load queue: $error';
+    } finally {
+      isLoadingJobs = false;
+      lastUpdated = DateTime.now();
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshStats() async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) return;
+    
+    isLoadingStats = true;
+    notifyListeners();
+    
+    try {
+      stats = await backendClient.fetchStats();
+      errorMessage = null;
+    } catch (error) {
+      errorMessage = 'Failed to load stats: $error';
+    } finally {
+      isLoadingStats = false;
+      lastUpdated = DateTime.now();
+      notifyListeners();
+    }
+  }
+
+  void updateStatusFilter(String status) {
+    if (selectedStatus == status) return;
+    selectedStatus = status;
+    refreshJobs();
+  }
+
+  /// Enqueue a new job from a URL.
+  /// 
+  /// Returns null on success, or an error message string on failure.
+  Future<String?> enqueueFromUrl({
+    required String url,
+    required List<String> tags,
+    required String safety,
+    String? source,
+    bool? skipTagging,
+  }) async {
+    if (!settings.isConfigured) {
+      return 'Backend configuration is missing';
+    }
+    
+    if (!settings.canMakeApiCalls) {
+      return 'API key is required';
+    }
+
+    // Add tagme if no tags provided
+    final finalTags = tags.isEmpty ? ['tagme'] : tags;
+    
+    try {
+      await backendClient.enqueueFromUrl(
+        url: url,
+        tags: finalTags,
+        safety: safety,
+        source: source,
+        skipTagging: skipTagging ?? settings.skipTagging,
+      );
+      
+      await refreshJobs();
+      return null;
+    } catch (error) {
+      return error.toString();
+    }
+  }
+
+  /// Resume a paused or stopped job.
+  Future<String?> resumeJob(String jobId) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+
+    try {
+      await backendClient.resumeJob(jobId);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return error.toString();
+    }
+  }
+
+  /// Pause a running job.
+  Future<String?> pauseJob(String jobId) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+
+    try {
+      await backendClient.pauseJob(jobId);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return error.toString();
+    }
+  }
+
+  /// Stop a job.
+  Future<String?> stopJob(String jobId) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+
+    try {
+      await backendClient.stopJob(jobId);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return error.toString();
+    }
+  }
+
+  /// Start a pending job.
+  Future<String?> startJob(String jobId) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+
+    try {
+      await backendClient.startJob(jobId);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return error.toString();
+    }
+  }
+
+  /// Delete a job.
+  Future<String?> deleteJob(String jobId) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+
+    try {
+      await backendClient.deleteJob(jobId);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return error.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disconnectSse();
+    _backendClient?.dispose();
+    settings.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+}

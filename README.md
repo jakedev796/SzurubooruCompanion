@@ -148,6 +148,30 @@ Some sources need additional backend configuration (env vars) for gallery-dl to 
 | Site | Domains | Required configuration |
 |------|---------|------------------------|
 | **Sankaku** | sankaku.app, chan.sankakucomplex.com, idol.sankakucomplex.com, www.sankakucomplex.com | Set `GALLERY_DL_SANKAKU_USERNAME` and `GALLERY_DL_SANKAKU_PASSWORD` in `ccc/backend/.env`. Login is required for the extractor to work. |
+| **Twitter / X** | twitter.com, x.com | **Cookies required for reliable access.** Username/password alone is often insufficient due to Twitter's API restrictions and rate limits. See [Twitter Cookie Setup](#twitter-cookie-setup) below. |
+
+### Twitter Cookie Setup
+
+Twitter authentication in gallery-dl works best with browser cookies. Due to Twitter's API restrictions, username/password authentication alone is often unreliable. Follow these steps to export and configure Twitter cookies:
+
+1. **Install a browser extension** to export cookies:
+   - Chrome: "Get cookies.txt LOCALLY" or "EditThisCookie"
+   - Firefox: "Get cookies.txt" or "Cookie Quick Manager"
+
+2. **Export cookies** while logged into Twitter:
+   - Navigate to [twitter.com](https://twitter.com) and ensure you're logged in
+   - Open the cookie extension and export cookies in **Netscape format**
+   - Save the exported cookies to `local-dev/twitter-cookies.txt` in this project
+
+3. **Restart the Docker container** after updating cookies:
+   ```bash
+   docker compose restart ccc-backend
+   ```
+
+**Important notes:**
+- Cookies expire and need periodic refresh (typically every few weeks)
+- If Twitter downloads start failing with authentication errors, refresh your cookies
+- The `local-dev/` directory is in `.gitignore` to prevent accidentally committing cookies
 
 ## Sites requiring special handling
 

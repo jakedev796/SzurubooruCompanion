@@ -19,4 +19,26 @@ export default defineConfig({
       },
     },
   },
+  // Content scripts for supported sites
+  contentScripts: [
+    {
+      matches: [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*",
+        "*://*.misskey.io/*",
+        "*://*.misskey.art/*",
+        "*://*.misskey.net/*",
+        "*://*.misskey.design/*",
+        "*://*.misskey.xyz/*",
+        "*://*.mi.0px.io/*",
+        "*://*.misskey.pizza/*",
+        "*://*.misskey.cloud/*",
+        "*://danbooru.donmai.us/*",
+        "*://safebooru.org/*",
+        "*://*.gelbooru.com/*",
+        "*://yande.re/*",
+      ],
+      runAt: "document_idle",
+    },
+  ],
 });

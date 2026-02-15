@@ -11,5 +11,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["entrypoints/**/*", "scripts/**/*", "utils/**/*"]
+  "include": ["entrypoints/**/*", "scripts/**/*", "utils/**/*", ".wxt/**/*", "wxt.d.ts"]
 }
