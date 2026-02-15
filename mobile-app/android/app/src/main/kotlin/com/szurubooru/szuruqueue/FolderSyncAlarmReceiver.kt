@@ -80,7 +80,7 @@ class FolderSyncAlarmReceiver : BroadcastReceiver() {
         try {
             // Read sync interval from SharedPreferences
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val intervalSeconds = prefs.getInt("flutter.folderSyncIntervalSeconds", 900)
+            val intervalSeconds = prefs.getLong("flutter.folderSyncIntervalSeconds", 900L).toInt()
 
             Log.d(TAG, "Rescheduling next alarm with interval: ${intervalSeconds}s")
 
