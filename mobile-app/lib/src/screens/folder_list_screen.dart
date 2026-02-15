@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/scheduled_folder.dart';
 import '../services/settings_model.dart';
 import '../services/background_task.dart';
+import '../theme/app_theme.dart';
 import 'folder_config_screen.dart';
 
 /// Screen for displaying and managing scheduled folders
@@ -77,7 +78,7 @@ class _FolderListScreenState extends State<FolderListScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.red),
             child: const Text('Delete'),
           ),
         ],

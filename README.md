@@ -50,7 +50,7 @@ SzurubooruCompanion/
     backend/            Python (FastAPI) - API + background worker (includes wdtagger)
     frontend/            React + Vite dashboard
   browser-ext/          WXT browser extension (Chrome, Firefox, Edge)
-  mobile-app/           Release builds only (APK and iOS package in folder root)
+  mobile-app/           Flutter app (Android only; no iOS plans at this time)
 ```
 
 ## Quick Start
@@ -72,35 +72,11 @@ Point your reverse proxy at these ports as needed; see [docs/reverse-proxy.md](d
 
 ### Browser Extension
 
-```bash
-cd browser-ext
-npm install
-```
+**Install:** Pre-built builds are in [`builds/`](builds/). For build and load instructions, see [docs/browser-extension.md](docs/browser-extension.md).
 
-**Build outputs:**
+### Mobile App (Flutter)
 
-| Command | Output | Location |
-|---------|--------|----------|
-| `npm run build` | Unpacked Chrome extension | `.output/chrome-mv3/` |
-| `npm run build:firefox` | Unpacked Firefox extension | `.output/firefox-mv2/` |
-
-
-**Loading in Chrome:** go to `chrome://extensions`, enable Developer Mode, click "Load unpacked", and point it at `browser-ext/.output/chrome-mv3/`.
-
-**Loading in Firefox:** go to `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on", and select any file inside `browser-ext/.output/firefox-mv2/`.
-
-Open the extension popup to configure your CCC URL and API key.
-
-### Mobile App | Currently a WIP
-
-The `mobile-app/` folder in this repo contains **release builds only**: the Android APK and (when built) the iOS package are placed at the root of `mobile-app/`. Development sources (React Native project, `android/`, `ios/`, etc.) are not tracked in the repo.
-
-**Install (end users):**
-
-- **Android:** Sideload the APK from `mobile-app/` (e.g. copy to device and open, or use `adb install`).
-- **iOS:** Install the package from `mobile-app/` via your preferred method (e.g. TestFlight, direct install).
-
-After installing, open the app and set the CCC URL in Settings. Use the system share sheet to send URLs or media to the app.
+**Install:** Release APKs are in [`builds/`](builds/). For build and developer instructions, see [docs/mobile-app.md](docs/mobile-app.md).
 
 ## Ports
 
@@ -113,7 +89,7 @@ After installing, open the app and set the CCC URL in Settings. Use the system s
 
 ## Configuration
 
-All backend configuration is done via environment variables (see `ccc/backend/.env.example`):
+All backend configuration is done via environment variables (see [ccc/backend/.env.example](ccc/backend/.env.example)):
 
 ## Sites
 

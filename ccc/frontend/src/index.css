@@ -380,6 +380,22 @@ tr:hover td {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border);
 }
+.login-quote {
+  margin: 1rem 0 0;
+  padding: 0;
+  font-size: 0.95rem;
+  font-style: italic;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.login-quote cite {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  font-style: normal;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
 .login-card {
   width: 100%;
   max-width: 360px;

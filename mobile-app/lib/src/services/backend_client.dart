@@ -115,7 +115,7 @@ class BackendClient {
   final Dio _dio;
   final String baseUrl;
   String _apiKey;
-  
+
   // SSE connection state
   SseConnectionState _sseState = SseConnectionState.disconnected;
   http.Client? _sseClient;
@@ -126,18 +126,18 @@ class BackendClient {
   BackendClient({
     required this.baseUrl,
     String apiKey = '',
-  }) : _apiKey = apiKey,
-       _dio = Dio(
-         BaseOptions(
-           baseUrl: baseUrl,
-           connectTimeout: const Duration(seconds: 10),
-           receiveTimeout: const Duration(seconds: 10),
-           headers: {
-             'Content-Type': 'application/json',
-             if (apiKey.isNotEmpty) 'X-API-Key': apiKey,
-           },
-         ),
-       );
+  })  : _apiKey = apiKey,
+        _dio = Dio(
+          BaseOptions(
+            baseUrl: baseUrl,
+            connectTimeout: const Duration(seconds: 10),
+            receiveTimeout: const Duration(seconds: 10),
+            headers: {
+              'Content-Type': 'application/json',
+              if (apiKey.isNotEmpty) 'X-API-Key': apiKey,
+            },
+          ),
+        );
 
   /// Stream of SSE connection state changes
   Stream<SseConnectionState> get sseStateStream => _sseStateController.stream;
@@ -177,8 +177,6 @@ class BackendClient {
       
       _sseClient = http.Client();
       final request = http.Request('GET', Uri.parse('$baseUrl/api/events'));
-      
-      // Add API key header if available
       if (_apiKey.isNotEmpty) {
         request.headers['X-API-Key'] = _apiKey;
       }
@@ -235,7 +233,7 @@ class BackendClient {
             buffer.write(content);
           },
           onError: (error) {
-            controller.addError(BackendException('SSE stream error: $error'));
+            controller.addError(const BackendException('Connection error'));
             _sseState = SseConnectionState.disconnected;
             _sseStateController.add(_sseState);
             
@@ -253,7 +251,7 @@ class BackendClient {
           },
         );
       }).catchError((error) {
-        controller.addError(BackendException('SSE connection error: $error'));
+        controller.addError(const BackendException('Connection error'));
         _sseState = SseConnectionState.disconnected;
         _sseStateController.add(_sseState);
         
@@ -331,7 +329,7 @@ class BackendClient {
           .toList();
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to fetch jobs: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -354,7 +352,7 @@ class BackendClient {
         return null;
       }
       throw BackendException(
-        'Failed to fetch job: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -389,7 +387,7 @@ class BackendClient {
       };
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to fetch stats: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -437,7 +435,7 @@ class BackendClient {
       return Job.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to enqueue job: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -457,8 +455,6 @@ class BackendClient {
   }) async {
     final uri = Uri.parse('$baseUrl/api/jobs/upload');
     final request = http.MultipartRequest('POST', uri);
-
-    // Add API key header if available
     if (_apiKey.isNotEmpty) {
       request.headers['X-API-Key'] = _apiKey;
     }
@@ -511,7 +507,7 @@ class BackendClient {
       return Job.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to start job: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -531,7 +527,7 @@ class BackendClient {
       return Job.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to pause job: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -551,7 +547,7 @@ class BackendClient {
       return Job.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to stop job: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -571,7 +567,7 @@ class BackendClient {
       return Job.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to resume job: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -586,7 +582,7 @@ class BackendClient {
       return response.statusCode == 200 || response.statusCode == 204;
     } on DioException catch (e) {
       throw BackendException(
-        'Failed to delete job: ${e.message}',
+        _friendlyLabelForStatusCode(e.response?.statusCode),
         statusCode: e.response?.statusCode,
       );
     }
@@ -614,4 +610,35 @@ class BackendException implements Exception {
 
   @override
   String toString() => 'BackendException: $message${statusCode != null ? ' (status: $statusCode)' : ''}';
+}
+
+/// Returns a short label for an HTTP status code for display to the user.
+String _friendlyLabelForStatusCode(int? code) {
+  if (code == null) return 'Connection error';
+  switch (code) {
+    case 400:
+      return 'Bad request ($code)';
+    case 401:
+      return 'Unauthorized ($code)';
+    case 403:
+      return 'Forbidden ($code)';
+    case 404:
+      return 'Not found ($code)';
+    case 500:
+      return 'Server error ($code)';
+    case 502:
+      return 'Bad gateway ($code)';
+    case 503:
+      return 'Service unavailable ($code)';
+    default:
+      if (code >= 400 && code < 500) return 'Client error ($code)';
+      if (code >= 500) return 'Server error ($code)';
+      return 'Error ($code)';
+  }
+}
+
+/// Converts any error from backend/API calls into a short user-facing message.
+String userFriendlyErrorMessage(Object error) {
+  if (error is BackendException) return error.message;
+  return 'Something went wrong';
 }

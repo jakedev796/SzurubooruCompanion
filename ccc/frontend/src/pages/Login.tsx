@@ -27,6 +27,12 @@ export default function Login() {
     <div className="login-page">
       <div className="login-hero">
         <img src="/assets/reimu.jpg" alt="" className="login-hero-img" />
+        <blockquote className="login-quote">
+          Hello slacker,
+          <br />
+          is it all right for you to slack around here?
+          <cite>— Rumei</cite>
+        </blockquote>
       </div>
       <div className="card login-card">
         <h2 style={{ marginBottom: "1rem" }}>Log in</h2>

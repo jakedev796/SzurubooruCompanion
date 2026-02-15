@@ -8,6 +8,7 @@ import 'package:workmanager/workmanager.dart';
 import 'src/models/job.dart';
 import 'src/screens/folder_list_screen.dart';
 import 'src/services/app_state.dart';
+import 'src/theme/app_theme.dart';
 import 'src/services/backend_client.dart';
 import 'src/services/background_task.dart';
 import 'src/services/notification_service.dart';
@@ -78,17 +79,9 @@ class SzuruQueueApp extends StatelessWidget {
     return MaterialApp(
       title: 'SzuruQueue',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.deepPurple,
-        useMaterial3: true,
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: Colors.deepPurple,
-        useMaterial3: true,
-        brightness: Brightness.dark,
-      ),
-      themeMode: ThemeMode.system,
+      theme: appDarkTheme,
+      darkTheme: appDarkTheme,
+      themeMode: ThemeMode.dark,
       home: const MainScreen(),
     );
   }
@@ -315,17 +308,17 @@ class _MainScreenState extends State<MainScreen> {
     switch (appState.sseConnectionState) {
       case SseConnectionState.connected:
         icon = Icons.cloud_done;
-        color = Colors.green;
+        color = AppColors.green;
         tooltip = 'Connected to server';
         break;
       case SseConnectionState.connecting:
         icon = Icons.cloud_sync;
-        color = Colors.orange;
+        color = AppColors.orange;
         tooltip = 'Connecting...';
         break;
       case SseConnectionState.disconnected:
         icon = Icons.cloud_off;
-        color = Colors.grey;
+        color = AppColors.textMuted;
         tooltip = 'Disconnected';
         break;
     }
@@ -367,17 +360,17 @@ class _MainScreenState extends State<MainScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildStatCard('Pending', stats['pending'] ?? 0, Colors.orange),
+              _buildStatCard('Pending', stats['pending'] ?? 0, AppColors.orange),
               const SizedBox(width: 8),
-              _buildStatCard('Active', (stats['downloading'] ?? 0) + (stats['tagging'] ?? 0) + (stats['uploading'] ?? 0), Colors.blue),
+              _buildStatCard('Active', (stats['downloading'] ?? 0) + (stats['tagging'] ?? 0) + (stats['uploading'] ?? 0), AppColors.accent),
               const SizedBox(width: 8),
               _buildStatCard(
                 'Completed',
                 stats['completed'] ?? 0,
-                Colors.green,
+                AppColors.green,
               ),
               const SizedBox(width: 8),
-              _buildStatCard('Failed', stats['failed'] ?? 0, Colors.red),
+              _buildStatCard('Failed', stats['failed'] ?? 0, AppColors.red),
             ],
           ),
           const SizedBox(height: 24),
@@ -443,17 +436,17 @@ class _MainScreenState extends State<MainScreen> {
       case SseConnectionState.connected:
         statusText = 'Connected - Real-time updates active';
         statusIcon = Icons.check_circle;
-        statusColor = Colors.green;
+        statusColor = AppColors.green;
         break;
       case SseConnectionState.connecting:
         statusText = 'Connecting...';
         statusIcon = Icons.sync;
-        statusColor = Colors.orange;
+        statusColor = AppColors.orange;
         break;
       case SseConnectionState.disconnected:
         statusText = 'Disconnected';
         statusIcon = Icons.cloud_off;
-        statusColor = Colors.grey;
+        statusColor = AppColors.textMuted;
         break;
     }
 
@@ -473,7 +466,7 @@ class _MainScreenState extends State<MainScreen> {
             if (appState.lastUpdated != null)
               Text(
                 'Last update: ${_relativeTime(appState.lastUpdated!)}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
           ],
         ),
@@ -732,7 +725,7 @@ class _MainScreenState extends State<MainScreen> {
             const SizedBox(height: 6),
             Text(
               'Updated ${_relativeTime(job.updatedAt)}',
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
           ],
         ),
@@ -741,22 +734,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return Colors.orange;
-      case 'downloading':
-        return Colors.lightBlue;
-      case 'tagging':
-        return Colors.purple;
-      case 'uploading':
-        return Colors.indigo;
-      case 'completed':
-        return Colors.green;
-      case 'failed':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
+    return AppStatusColors.forStatus(status);
   }
 
   Future<void> _saveSettings() async {

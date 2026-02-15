@@ -35,53 +35,52 @@ Thumbs.db
 *.log
 
 # Flutter app - generated/disposable files
-flutter_app/.dart_tool/
-flutter_app/.flutter-plugins
-flutter_app/.flutter-plugins-dependencies
-flutter_app/.packages
-flutter_app/.pub-cache/
-flutter_app/.pub/
-flutter_app/build/
-flutter_app/flutter_build.log
-flutter_app/coverage/
-flutter_app/pubspec.lock
-flutter_app/.metadata
+mobile-app/.dart_tool/
+mobile-app/.flutter-plugins
+mobile-app/.flutter-plugins-dependencies
+mobile-app/.packages
+mobile-app/.pub-cache/
+mobile-app/.pub/
+mobile-app/build/
+mobile-app/flutter_build.log
+mobile-app/coverage/
+mobile-app/pubspec.lock
+mobile-app/.metadata
 
-# Flutter - iOS (not needed for Android builds)
-flutter_app/ios/
+# Flutter - iOS 
+mobile-app/ios/
 
-# Flutter - other platforms (not needed for Android)
-flutter_app/linux/
-flutter_app/macos/
-flutter_app/web/
-flutter_app/windows/
+# Flutter - other platforms 
+mobile-app/linux/
+mobile-app/macos/
+mobile-app/web/
+mobile-app/windows/
 
 # Flutter - test directory
-flutter_app/test/
+mobile-app/test/
 
 # Flutter Android - generated files
-flutter_app/android/.gradle/
-flutter_app/android/.kotlin/
-flutter_app/android/.cxx/
-flutter_app/android/build/
-flutter_app/android/app/build/
-flutter_app/android/captures/
-flutter_app/android/local.properties
-flutter_app/android/gradle.properties
-flutter_app/android/.externalNativeBuild/
+mobile-app/android/.gradle/
+mobile-app/android/.kotlin/
+mobile-app/android/.cxx/
+mobile-app/android/build/
+mobile-app/android/app/build/
+mobile-app/android/captures/
+mobile-app/android/local.properties
+mobile-app/android/.externalNativeBuild/
 
 # Workmanager patch (local dependency)
-flutter_app/workmanager_patch/.dart_tool/
-flutter_app/workmanager_patch/android/.gradle/
-flutter_app/workmanager_patch/android/build/
-flutter_app/workmanager_patch/example/
-flutter_app/workmanager_patch/.flutter-plugins-dependencies
-flutter_app/workmanager_patch/pubspec.lock
+mobile-app/workmanager_patch/.dart_tool/
+mobile-app/workmanager_patch/android/.gradle/
+mobile-app/workmanager_patch/android/build/
+mobile-app/workmanager_patch/example/
+mobile-app/workmanager_patch/.flutter-plugins-dependencies
+mobile-app/workmanager_patch/pubspec.lock
 
 # IntelliJ/Android Studio
 *.iml
-flutter_app/.idea/
-flutter_app/szuruqueue.iml
-flutter_app/android/szuruqueue_android.iml
+mobile-app/.idea/
+mobile-app/szuruqueue.iml
+mobile-app/android/szuruqueue_android.iml
 
 

@@ -105,7 +105,7 @@ class AppState extends ChangeNotifier {
         }
       },
       onError: (error) {
-        errorMessage = 'SSE error: $error';
+        errorMessage = userFriendlyErrorMessage(error);
         notifyListeners();
       },
     );
@@ -177,6 +177,8 @@ class AppState extends ChangeNotifier {
       _backendClient?.dispose();
       _backendClient = null;
       _initializeSse();
+    } else if (_backendClient != null) {
+      _backendClient!.updateApiKey(settings.apiKey);
     }
     
     if (settings.isConfigured && settings.canMakeApiCalls) {
@@ -203,7 +205,7 @@ class AppState extends ChangeNotifier {
       jobs = await backendClient.fetchJobs(status: selectedStatus);
       errorMessage = null;
     } catch (error) {
-      errorMessage = 'Failed to load queue: $error';
+      errorMessage = userFriendlyErrorMessage(error);
     } finally {
       isLoadingJobs = false;
       lastUpdated = DateTime.now();
@@ -221,7 +223,7 @@ class AppState extends ChangeNotifier {
       stats = await backendClient.fetchStats();
       errorMessage = null;
     } catch (error) {
-      errorMessage = 'Failed to load stats: $error';
+      errorMessage = userFriendlyErrorMessage(error);
     } finally {
       isLoadingStats = false;
       lastUpdated = DateTime.now();
@@ -268,7 +270,7 @@ class AppState extends ChangeNotifier {
       await refreshJobs();
       return null;
     } catch (error) {
-      return error.toString();
+      return userFriendlyErrorMessage(error);
     }
   }
 
@@ -283,7 +285,7 @@ class AppState extends ChangeNotifier {
       await refreshAll();
       return null;
     } catch (error) {
-      return error.toString();
+      return userFriendlyErrorMessage(error);
     }
   }
 
@@ -298,7 +300,7 @@ class AppState extends ChangeNotifier {
       await refreshAll();
       return null;
     } catch (error) {
-      return error.toString();
+      return userFriendlyErrorMessage(error);
     }
   }
 
@@ -313,7 +315,7 @@ class AppState extends ChangeNotifier {
       await refreshAll();
       return null;
     } catch (error) {
-      return error.toString();
+      return userFriendlyErrorMessage(error);
     }
   }
 
@@ -328,7 +330,7 @@ class AppState extends ChangeNotifier {
       await refreshAll();
       return null;
     } catch (error) {
-      return error.toString();
+      return userFriendlyErrorMessage(error);
     }
   }
 
@@ -343,7 +345,7 @@ class AppState extends ChangeNotifier {
       await refreshAll();
       return null;
     } catch (error) {
-      return error.toString();
+      return userFriendlyErrorMessage(error);
     }
   }
 

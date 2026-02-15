@@ -68,7 +68,6 @@ class SettingsModel extends ChangeNotifier {
       _apiKey = apiKey;
       await prefs.setString('apiKey', _apiKey);
     }
-    
     if (useBackgroundService != null) {
       _useBackgroundService = useBackgroundService;
       await prefs.setBool('useBackgroundService', _useBackgroundService);
