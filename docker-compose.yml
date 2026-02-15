@@ -12,6 +12,8 @@ services:
       - ./ccc/backend/.env
     volumes:
       - ./local-dev/jobs:/data/jobs
+      - ./config.json:/config.json:ro
+      - ./local-dev/twitter-cookies.txt:/app/config/twitter-cookies.txt:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -70,3 +70,62 @@ export async function fetchHealth() {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson(res);
 }
+
+export async function fetchConfig() {
+  const res = await fetch(`${BASE}/config`, { headers: headers() });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res);
+}
+
+export function getSSEUrl(jobId = null) {
+  const baseUrl = getBase();
+  // Note: The backend SSE endpoint doesn't filter by job_id, so we don't send it.
+  // All clients receive all job updates and filter client-side.
+  return `${baseUrl}/events`;
+}
+
+// Job control endpoints
+export async function startJob(jobId) {
+  const res = await fetch(`${BASE}/jobs/${jobId}/start`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res);
+}
+
+export async function pauseJob(jobId) {
+  const res = await fetch(`${BASE}/jobs/${jobId}/pause`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res);
+}
+
+export async function stopJob(jobId) {
+  const res = await fetch(`${BASE}/jobs/${jobId}/stop`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res);
+}
+
+export async function deleteJob(jobId) {
+  const res = await fetch(`${BASE}/jobs/${jobId}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res);
+}
+
+export async function resumeJob(jobId) {
+  const res = await fetch(`${BASE}/jobs/${jobId}/resume`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res);
+}

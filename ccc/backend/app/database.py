@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
 from sqlalchemy import (
+    ARRAY,
     Column,
     DateTime,
     Enum,
@@ -52,6 +53,8 @@ class JobStatus(str, PyEnum):
     UPLOADING = "uploading"
     COMPLETED = "completed"
     FAILED = "failed"
+    PAUSED = "paused"
+    STOPPED = "stopped"
 
 
 class JobType(str, PyEnum):
@@ -81,6 +84,7 @@ class Job(Base):
 
     # Output
     szuru_post_id = Column(Integer, nullable=True)
+    related_post_ids = Column(ARRAY(Integer), default=list)  # Related posts from multi-file sources
     error_message = Column(Text, nullable=True)
     tags_applied = Column(Text, nullable=True)  # JSON array stored as text
     tags_from_source = Column(Text, nullable=True)  # JSON array: from metadata / initial / inferred

@@ -2,8 +2,11 @@
  * Background entrypoint – registers context menu items and handles clicks.
  * Always sends the page URL when available so gallery-dl can resolve and download.
  * Polls job status and shows a toast + notification when the job finishes or fails.
+ * 
+ * Also handles messages from content scripts for DOM-level media extraction.
  */
 import { fetchJob, submitJob } from "../utils/api";
+import type { MediaInfo, ContentScriptMessage, BackgroundScriptResponse } from "../utils/types";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -102,6 +105,15 @@ async function pollUntilDone(
       );
       return;
     }
+    if (job.status === "paused" || job.status === "stopped") {
+      await showToastAndNotification(
+        `Job was ${job.status}.`,
+        "Szurubooru Companion",
+        "error",
+        tabId
+      );
+      return;
+    }
   } catch (err) {
     console.error("[CCC] Poll error:", err);
     if (Date.now() - startTime > POLL_TIMEOUT_MS) {
@@ -129,7 +141,52 @@ async function pollUntilDone(
   );
 }
 
+/**
+ * Handle SUBMIT_JOB message from content scripts.
+ */
+async function handleSubmitJob(
+  mediaInfo: MediaInfo,
+  tabId?: number
+): Promise<BackgroundScriptResponse> {
+  try {
+    const job = await submitJob(mediaInfo.url, {
+      source: mediaInfo.source,
+      tags: mediaInfo.tags,
+      safety: mediaInfo.safety,
+    });
+    
+    console.log("[CCC] Job created from content script:", job.id, mediaInfo);
+    
+    if (browser.notifications) {
+      browser.notifications.create({
+        type: "basic",
+        iconUrl: browser.runtime.getURL("icon/128.png"),
+        title: "Szurubooru Companion",
+        message: `Queued. You'll be notified when it finishes.`,
+      });
+    }
+    
+    // Start polling
+    pollUntilDone(job.id, tabId, Date.now());
+    
+    return { success: true, jobId: job.id };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[CCC] Failed to submit job from content script:", err);
+    
+    await showToastAndNotification(
+      message.slice(0, 200),
+      "Szurubooru Companion – Error",
+      "error",
+      tabId
+    );
+    
+    return { success: false, error: message };
+  }
+}
+
 export default defineBackground(() => {
+  // Create context menus on install
   browser.runtime.onInstalled.addListener(() => {
     browser.contextMenus.create({
       id: "ccc-send-image",
@@ -150,6 +207,7 @@ export default defineBackground(() => {
     });
   });
 
+  // Handle context menu clicks
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
     let url: string | undefined;
 
@@ -194,4 +252,21 @@ export default defineBackground(() => {
       );
     }
   });
+
+  // Handle messages from content scripts
+  browser.runtime.onMessage.addListener(
+    (message: ContentScriptMessage, sender, sendResponse) => {
+      if (message.action === "SUBMIT_JOB") {
+        // Handle async response
+        handleSubmitJob(message.payload, sender.tab?.id)
+          .then(sendResponse)
+          .catch((err) => {
+            sendResponse({ success: false, error: err.message });
+          });
+        return true; // Keep channel open for async response
+      }
+      
+      return false;
+    }
+  );
 });

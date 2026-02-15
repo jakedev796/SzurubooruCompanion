@@ -1,0 +1,179 @@
+{
+    "extractor": {
+        "#": "Disable archive - we handle deduplication in the uploader",
+        "archive": null,
+
+        "#": "Replace invalid path characters with unicode alternatives",
+        "path-restrict": {
+            "\\": "⧹",
+            "/": "⧸",
+            "|": "￨",
+            ":": "꞉",
+            "*": "∗",
+            "?": "？",
+            "\"": "″",
+            "<": "﹤",
+            ">": "﹥"
+        },
+
+        "#": "Global postprocessors - write info.json for metadata extraction",
+        "postprocessors": [
+            {
+                "name": "metadata",
+                "mode": "json",
+                "event": "post",
+                "filename": "{tweet_id|id}_{num}.info.json"
+            }
+        ],
+
+        "twitter": {
+            "#": "Twitter authentication - uses environment variables",
+            "username": "${TWITTER_USERNAME}",
+            "password": "${TWITTER_PASSWORD}",
+
+            "#": "Image size preference with fallbacks",
+            "size": ["orig", "4096x4096", "large", "medium", "small"],
+
+            "#": "Include videos and images",
+            "videos": true,
+            "images": true,
+
+            "#": "Write info-json for metadata extraction",
+            "write-info-json": true,
+
+            "#": "Filename format using tweet ID to avoid collisions",
+            "filename": "{tweet_id}_{num}.{extension}",
+
+            "#": "Include text-only tweets",
+            "text-tweets": true,
+
+            "#": "Cookie file path for Twitter authentication (recommended)",
+            "#": "Export cookies from browser to local-dev/twitter-cookies.txt",
+            "cookies": "/app/config/twitter-cookies.txt",
+
+            "#": "Postprocessors for Twitter - write content/description to txt file",
+            "postprocessors": [
+                {
+                    "name": "metadata",
+                    "mode": "custom",
+                    "event": "post",
+                    "filename": "{tweet_id}.txt",
+                    "format": "{content|description}\n"
+                }
+            ]
+        },
+
+        "misskey": {
+            "#": "Misskey authentication - uses environment variables",
+            "username": "${MISSKEY_USERNAME}",
+            "password": "${MISSKEY_PASSWORD}",
+
+            "#": "Include videos and images",
+            "videos": true,
+            "images": true,
+
+            "#": "Write info-json for metadata extraction",
+            "write-info-json": true,
+
+            "#": "Filename format using note ID to avoid collisions",
+            "filename": "{id}_{num}.{extension}"
+        },
+
+        "#": "Misskey instance configurations - mastodon-compatible API",
+        "misskey.io": {
+            "root": "https://misskey.io"
+        },
+        "misskey.art": {
+            "root": "https://misskey.art"
+        },
+        "misskey.net": {
+            "root": "https://misskey.net"
+        },
+        "misskey.love": {
+            "root": "https://misskey.love"
+        },
+        "misskey.jp": {
+            "root": "https://misskey.jp"
+        },
+        "mstdn.jp": {
+            "root": "https://mstdn.jp"
+        },
+
+        "sankaku": {
+            "username": "${SANKAKU_USERNAME}",
+            "password": "${SANKAKU_PASSWORD}"
+        },
+
+        "danbooru": {
+            "api-key": "${DANBOORU_API_KEY}",
+            "user-id": "${DANBOORU_USER_ID}",
+            "#": "Write tags for booru sites",
+            "postprocessors": [
+                {
+                    "name": "metadata",
+                    "mode": "tags"
+                }
+            ]
+        },
+
+        "gelbooru": {
+            "api-key": "${GELBOORU_API_KEY}",
+            "user-id": "${GELBOORU_USER_ID}"
+        },
+
+        "yandere": {
+            "tags": true
+        },
+
+        "reddit": {
+            "client-id": "${REDDIT_CLIENT_ID}",
+            "client-secret": "${REDDIT_CLIENT_SECRET}",
+            "user-agent": "Python:ExtendedUploader:v1.0 (by /u/${REDDIT_USERNAME})"
+        }
+    },
+
+    "downloader": {
+        "#": "Retry failed downloads up to 3 times",
+        "retries": 3,
+
+        "#": "Consider a download 'failed' after 30 seconds of inactivity",
+        "timeout": 30.0,
+
+        "#": "Write '.part' files into a special directory",
+        "part-directory": null,
+
+        "#": "Do not update file modification times",
+        "mtime": false,
+
+        "ytdl": {
+            "#": "Use yt-dlp instead of youtube-dl",
+            "module": "yt_dlp"
+        }
+    },
+
+    "output": {
+        "log": {
+            "level": "info",
+
+            "#": "Use different ANSI colors for each log level",
+            "format": {
+                "debug": "\u001b[0;37m{name}: {message}\u001b[0m",
+                "info": "\u001b[1;37m{name}: {message}\u001b[0m",
+                "warning": "\u001b[1;33m{name}: {message}\u001b[0m",
+                "error": "\u001b[1;31m{name}: {message}\u001b[0m"
+            }
+        },
+
+        "#": "Shorten filenames to fit into one terminal line",
+        "#": "while also considering wider East-Asian characters",
+        "shorten": "eaw",
+
+        "#": "Enable ANSI escape sequences on Windows",
+        "ansi": true
+    },
+
+    "#": "Disable cache file",
+    "cache": {
+        "file": null
+    }
+}

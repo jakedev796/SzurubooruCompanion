@@ -25,8 +25,12 @@ async def get_stats(
 
     status_counts = {}
     for s in JobStatus:
-        q = select(func.count(Job.id)).where(Job.status == s)
-        status_counts[s.value] = (await db.execute(q)).scalar() or 0
+        try:
+            q = select(func.count(Job.id)).where(Job.status == s)
+            status_counts[s.value] = (await db.execute(q)).scalar() or 0
+        except Exception:
+            # If enum value doesn't exist in DB yet, return 0
+            status_counts[s.value] = 0
 
     # Uploads per day for the last 30 days (UTC)
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)

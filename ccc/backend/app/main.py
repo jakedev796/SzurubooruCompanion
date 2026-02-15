@@ -17,6 +17,8 @@ from app.migrations import run_migrations
 from app.api.jobs import router as jobs_router
 from app.api.stats import router as stats_router
 from app.api.health import router as health_router
+from app.api.events import router as events_router
+from app.api.config import router as config_router
 from app.workers.processor import start_worker, stop_worker
 
 settings = get_settings()
@@ -85,3 +87,5 @@ app.add_middleware(
 app.include_router(health_router, prefix="/api", tags=["health"])
 app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 app.include_router(stats_router, prefix="/api", tags=["stats"])
+app.include_router(events_router, prefix="/api", tags=["events"])
+app.include_router(config_router, prefix="/api", tags=["config"])

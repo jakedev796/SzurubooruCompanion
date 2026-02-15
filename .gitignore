@@ -14,8 +14,6 @@ node_modules/
 # Build artifacts
 ccc/frontend/dist/
 browser-ext/.output/
-mobile-app/android/app/build/
-mobile-app/ios/build/
 
 # Env files
 .env
@@ -36,6 +34,54 @@ Thumbs.db
 /local-dev/
 *.log
 
-# mobile app
-mobile-app/android
-mobile-app/ios
+# Flutter app - generated/disposable files
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+flutter_app/.packages
+flutter_app/.pub-cache/
+flutter_app/.pub/
+flutter_app/build/
+flutter_app/flutter_build.log
+flutter_app/coverage/
+flutter_app/pubspec.lock
+flutter_app/.metadata
+
+# Flutter - iOS (not needed for Android builds)
+flutter_app/ios/
+
+# Flutter - other platforms (not needed for Android)
+flutter_app/linux/
+flutter_app/macos/
+flutter_app/web/
+flutter_app/windows/
+
+# Flutter - test directory
+flutter_app/test/
+
+# Flutter Android - generated files
+flutter_app/android/.gradle/
+flutter_app/android/.kotlin/
+flutter_app/android/.cxx/
+flutter_app/android/build/
+flutter_app/android/app/build/
+flutter_app/android/captures/
+flutter_app/android/local.properties
+flutter_app/android/gradle.properties
+flutter_app/android/.externalNativeBuild/
+
+# Workmanager patch (local dependency)
+flutter_app/workmanager_patch/.dart_tool/
+flutter_app/workmanager_patch/android/.gradle/
+flutter_app/workmanager_patch/android/build/
+flutter_app/workmanager_patch/example/
+flutter_app/workmanager_patch/.flutter-plugins-dependencies
+flutter_app/workmanager_patch/pubspec.lock
+
+# IntelliJ/Android Studio
+*.iml
+flutter_app/.idea/
+flutter_app/szuruqueue.iml
+flutter_app/android/szuruqueue_android.iml
+
+
