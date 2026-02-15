@@ -46,14 +46,20 @@ class FolderSyncAlarmReceiver : BroadcastReceiver() {
         rescheduleNextAlarm(context)
 
         try {
-            // Use the workmanager plugin's internal Worker by using the magic task name
-            // The workmanager plugin registers its BackgroundWorker with a specific format
+            // Check if app is in debug mode
+            val isDebug = context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+
+            // The workmanager plugin's BackgroundWorker expects specific input data keys
             val inputData = Data.Builder()
-                .putLong("triggerTime", System.currentTimeMillis())
+                // Required: The Dart task name that callbackDispatcher will receive
+                .putString("be.tramckrijte.workmanager.DART_TASK", "folder_scan_task")
+                // Optional: Additional payload data
+                .putString("be.tramckrijte.workmanager.INPUT_DATA", """{"triggerTime":${System.currentTimeMillis()}}""")
+                // Debug mode flag (enables extra logging in workmanager plugin)
+                .putBoolean("be.tramckrijte.workmanager.IS_IN_DEBUG_MODE_KEY", isDebug)
                 .build()
 
-            // Create a one-time work request that will be picked up by workmanager plugin
-            // We use the plugin's BackgroundWorker class directly
+            // Create a one-time work request using the workmanager plugin's BackgroundWorker
             val workRequest = OneTimeWorkRequestBuilder<dev.fluttercommunity.workmanager.BackgroundWorker>()
                 .setInputData(inputData)
                 .addTag("dev.fluttercommunity.workmanager.folderScanTask")
@@ -65,8 +71,8 @@ class FolderSyncAlarmReceiver : BroadcastReceiver() {
                 workRequest
             )
 
-            Log.d(TAG, "WorkManager task enqueued successfully")
-            Log.d(TAG, "Will call callbackDispatcher() in Dart")
+            Log.d(TAG, "WorkManager task enqueued with proper input data")
+            Log.d(TAG, "Task: folder_scan_task, will call callbackDispatcher() in Dart")
         } catch (e: Exception) {
             Log.e(TAG, "Error enqueueing work: ${e.message}", e)
         }
