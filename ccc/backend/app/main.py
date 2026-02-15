@@ -5,11 +5,14 @@ Starts the API server and the background job worker.
 
 import asyncio
 import logging
+from typing import Optional
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.database import init_db
@@ -73,15 +76,62 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
-origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+# CORS: with allow_credentials=True, browser forbids allow_origins=["*"].
+# When user sets "*" or leaves empty, use common dev origins so localhost
+# frontend (e.g. :21430) can call this API (:21425). Exception handlers below
+# add CORS to 4xx/5xx responses so the browser shows the real error.
+_origins_raw = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+_dev_origins = [
+    "http://localhost:21430",
+    "http://127.0.0.1:21430",
+    "http://localhost:21425",
+    "http://127.0.0.1:21425",
+]
+if not _origins_raw or _origins_raw == ["*"]:
+    cors_origins = _dev_origins
+else:
+    cors_origins = _origins_raw
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _cors_headers(origin: Optional[str]) -> dict:
+    """Headers so browser allows cross-origin response (including on 5xx)."""
+    if origin and origin in cors_origins:
+        allow = origin
+    else:
+        allow = cors_origins[0] if cors_origins else "*"
+    return {
+        "Access-Control-Allow-Origin": allow,
+        "Access-Control-Allow-Credentials": "true",
+    }
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler_with_cors(request: Request, exc: StarletteHTTPException):
+    """Ensure CORS headers on HTTPException responses (e.g. 401) so browser shows error."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=_cors_headers(request.headers.get("origin")),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Log unhandled exceptions and return 500 with CORS so browser shows error instead of CORS block."""
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers=_cors_headers(request.headers.get("origin")),
+    )
+
 
 # Routers
 app.include_router(health_router, prefix="/api", tags=["health"])

@@ -20,8 +20,8 @@ Some sources need env vars (e.g. login credentials) for gallery-dl to work; with
 
 | Site | Domains | Required configuration |
 |------|---------|------------------------|
-| **Sankaku** | sankaku.app, chan.sankakucomplex.com, idol.sankakucomplex.com, www.sankakucomplex.com | Set `GALLERY_DL_SANKAKU_USERNAME` and `GALLERY_DL_SANKAKU_PASSWORD` in `ccc/backend/.env`. Login is required for the extractor to work. |
-| **Twitter / X** | twitter.com, x.com | Cookies required for reliable access. See [Twitter Cookie Setup](#twitter-cookie-setup) below. |
+| **Sankaku** | sankaku.app, chan.sankakucomplex.com, idol.sankakucomplex.com, www.sankakucomplex.com | Set `SANKAKU_USERNAME` and `SANKAKU_PASSWORD` in `ccc/backend/.env`. Login is required for the extractor to work. |
+| **Twitter / X** | twitter.com, x.com | Set `TWITTER_COOKIES` in `ccc/backend/.env` to the Netscape-format cookie content. See [Twitter Cookie Setup](#twitter-cookie-setup) below. |
 
 ## Sites requiring special handling
 
@@ -34,7 +34,7 @@ Some sites are aggregators or viewers that display content from other sources. g
 
 ## Twitter Cookie Setup
 
-Twitter authentication in gallery-dl works best with browser cookies. Due to Twitter's API restrictions, username/password authentication alone is often unreliable. Follow these steps to export and configure Twitter cookies:
+Twitter authentication in gallery-dl works best with browser cookies. Due to Twitter's API restrictions, username/password alone is often unreliable. Pass the literal cookie content via env (no file needed):
 
 1. **Install a browser extension** to export cookies:
    - Chrome: "Get cookies.txt LOCALLY" or "EditThisCookie"
@@ -43,13 +43,21 @@ Twitter authentication in gallery-dl works best with browser cookies. Due to Twi
 2. **Export cookies** while logged into Twitter:
    - Navigate to [twitter.com](https://twitter.com) and ensure you're logged in
    - Open the cookie extension and export cookies in **Netscape format**
-   - Save the exported cookies to `local-dev/twitter-cookies.txt` in this project
+   - Copy the full exported text (the entire file content)
 
-3. **Restart the Docker container** after updating cookies:
+3. **Set the env var** in `ccc/backend/.env` to that literal content:
+   ```bash
+   TWITTER_COOKIES="domain	flag	path	secure	expiry	name	value
+   .twitter.com	TRUE	/	TRUE	1234567890	auth_token	..."
+   ```
+   Use quotes and paste the full Netscape-format block. For multi-line values, ensure your `.env` supports it (e.g. quoted multi-line or escaped newlines as needed by your env loader).
+
+4. **Restart the backend** after updating:
    ```bash
    docker compose restart ccc-backend
    ```
 
 **Important notes:**
-- Cookies expire and need periodic refresh (typically every few weeks)
-- If Twitter downloads start failing with authentication errors, refresh your cookies
+- No physical cookie file or volume mount is required; the backend writes the content to a temp file when calling gallery-dl and removes it after.
+- Cookies expire and need periodic refresh (typically every few weeks).
+- If Twitter downloads start failing with authentication errors, re-export and update `TWITTER_COOKIES`.

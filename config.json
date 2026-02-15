@@ -47,9 +47,8 @@
             "#": "Include text-only tweets",
             "text-tweets": true,
 
-            "#": "Cookie file path for Twitter authentication (recommended)",
-            "#": "Export cookies from browser to local-dev/twitter-cookies.txt",
-            "cookies": "/app/config/twitter-cookies.txt",
+            "#": "Twitter cookies: backend passes content from TWITTER_COOKIES env",
+            "cookies": null,
 
             "#": "Postprocessors for Twitter - write content/description to txt file",
             "postprocessors": [

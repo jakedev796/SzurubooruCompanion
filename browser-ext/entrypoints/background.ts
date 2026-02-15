@@ -128,7 +128,7 @@ async function pollUntilDone(
   }
   if (Date.now() - startTime > POLL_TIMEOUT_MS) {
     await showToastAndNotification(
-      "Job is still processing. Check the CCC dashboard.",
+      "Job is still processing. Check the SzuruCompanion Dashboard.",
       "Szurubooru Companion",
       "error",
       tabId

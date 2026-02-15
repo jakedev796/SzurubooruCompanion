@@ -1,17 +1,22 @@
 /* -------------------------------------------------------------------
-   CCC Dashboard – minimal, neutral styling
+   SzuruCompanion Dashboard – soft black, warm accent
    ------------------------------------------------------------------- */
 
 :root {
-  --bg: #0f1117;
-  --bg-card: #181a20;
-  --border: #2a2d36;
-  --text: #d4d4d8;
-  --text-muted: #71717a;
-  --accent: #6366f1;
-  --green: #22c55e;
-  --red: #ef4444;
-  --yellow: #eab308;
+  --bg: #1c1917;
+  --bg-card: #252220;
+  --border: #3d3632;
+  --text: #e8e2dc;
+  --text-muted: #a39d93;
+  --accent: #C41E3A;
+  --accent-hover: #e53e5a;
+  --green: #4ade80;
+  --red: #f87171;
+  --yellow: #facc15;
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-tick: #a39d93;
+  --chart-tooltip-bg: #252220;
+  --chart-tooltip-border: #3d3632;
 }
 
 * {
@@ -34,6 +39,7 @@ a {
 }
 a:hover {
   text-decoration: underline;
+  color: var(--accent-hover);
 }
 
 /* Layout */
@@ -51,27 +57,70 @@ header {
   border-bottom: 1px solid var(--border);
   margin-bottom: 1.5rem;
 }
+header .header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+header .header-brand:hover {
+  text-decoration: none;
+  opacity: 0.9;
+}
+header .header-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 8px;
+}
 header h1 {
   font-size: 1.25rem;
   font-weight: 600;
 }
+header nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 header nav a {
-  margin-left: 1.25rem;
+  margin-left: 0;
   font-size: 0.9rem;
   color: var(--text-muted);
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
 }
 header nav a:hover,
 header nav a.active {
+  color: var(--accent);
+  background: rgba(196, 30, 58, 0.15);
+  text-decoration: none;
+}
+header nav .logout-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+  margin-left: 0.25rem;
+  border-radius: 6px;
+  transition: border-color 0.15s, color 0.15s;
+}
+header nav .logout-btn:hover {
   color: var(--text);
+  border-color: var(--text-muted);
 }
 
 /* Cards */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 1.25rem;
   margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 /* Stat grid */
@@ -87,6 +136,7 @@ header nav a.active {
 .stat-card .value {
   font-size: 2rem;
   font-weight: 700;
+  color: var(--text);
 }
 .stat-card .label {
   font-size: 0.8rem;
@@ -113,41 +163,50 @@ th {
   letter-spacing: 0.05em;
 }
 tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 /* Status badges */
 .badge {
   display: inline-block;
   padding: 0.15rem 0.5rem;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
 }
 .badge.completed {
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba(74, 222, 128, 0.15);
   color: var(--green);
 }
 .badge.failed {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(248, 113, 113, 0.15);
   color: var(--red);
 }
 .badge.pending {
-  background: rgba(234, 179, 8, 0.15);
+  background: rgba(250, 204, 21, 0.15);
   color: var(--yellow);
 }
 .badge.downloading,
 .badge.tagging,
 .badge.uploading {
-  background: rgba(99, 102, 241, 0.15);
-  color: var(--accent);
+  background: rgba(196, 30, 58, 0.2);
+  color: #f0a0a8;
+}
+.badge.paused {
+  background: rgba(250, 204, 21, 0.15);
+  color: var(--yellow);
+}
+.badge.stopped {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
 }
 
 /* Pagination */
 .pagination {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 0.5rem;
   margin-top: 1rem;
 }
@@ -156,9 +215,10 @@ tr:hover td {
   color: var(--text);
   border: 1px solid var(--border);
   padding: 0.4rem 0.9rem;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 0.85rem;
+  transition: border-color 0.15s, background 0.15s;
 }
 .pagination button:disabled {
   opacity: 0.4;
@@ -166,6 +226,7 @@ tr:hover td {
 }
 .pagination button:hover:not(:disabled) {
   border-color: var(--accent);
+  background: rgba(196, 30, 58, 0.12);
 }
 
 /* Chart container */
@@ -198,18 +259,18 @@ tr:hover td {
 .tag {
   display: inline-block;
   padding: 0.2rem 0.5rem;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 0.8rem;
 }
 .tag--source {
-  background: rgba(113, 113, 122, 0.2);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-muted);
   border: 1px solid var(--border);
 }
 .tag--ai {
-  background: rgba(99, 102, 241, 0.15);
-  color: var(--accent);
-  border: 1px solid rgba(99, 102, 241, 0.4);
+  background: rgba(196, 30, 58, 0.2);
+  color: #f0a0a8;
+  border: 1px solid rgba(196, 30, 58, 0.35);
 }
 
 /* Filters */
@@ -221,21 +282,22 @@ tr:hover td {
 }
 .filters select,
 .filters input {
-  background: var(--bg-card);
+  background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
 }
 
 /* Post links */
 .post-link {
-  color: #4a9eff;
+  color: var(--accent);
   text-decoration: none;
 }
 .post-link:hover {
   text-decoration: underline;
+  color: var(--accent-hover);
 }
 
 /* Multi-source display */
@@ -245,19 +307,20 @@ tr:hover td {
   text-overflow: ellipsis;
 }
 .multi-source {
-  color: #888;
+  color: var(--text-muted);
 }
 .source-count {
   font-size: 0.85em;
-  color: #666;
+  color: var(--text-muted);
   cursor: help;
 }
 .source-link {
-  color: #4a9eff;
+  color: var(--accent);
   text-decoration: none;
 }
 .source-link:hover {
   text-decoration: underline;
+  color: var(--accent-hover);
 }
 
 /* Source list in detail view */
@@ -273,12 +336,13 @@ tr:hover td {
   margin: 0.25rem 0;
 }
 .source-list a {
-  color: #4a9eff;
+  color: var(--accent);
   text-decoration: none;
   word-break: break-all;
 }
 .source-list a:hover {
   text-decoration: underline;
+  color: var(--accent-hover);
 }
 
 /* Related posts */
@@ -287,18 +351,45 @@ tr:hover td {
   font-size: 0.9em;
 }
 .related-posts a {
-  color: #4a9eff;
+  color: var(--accent);
   text-decoration: none;
 }
 .related-posts a:hover {
   text-decoration: underline;
+  color: var(--accent-hover);
+}
+
+/* Login page */
+.login-page {
+  max-width: 560px;
+  margin: 3rem auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+.login-hero {
+  text-align: center;
+}
+.login-hero-img {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+}
+.login-card {
+  width: 100%;
+  max-width: 360px;
 }
 
 /* Job action buttons */
 .btn {
   display: inline-block;
   padding: 0.4rem 0.9rem;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid transparent;
   font-size: 0.85rem;
   font-weight: 500;
@@ -309,44 +400,75 @@ tr:hover td {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
 .btn-success {
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba(74, 222, 128, 0.12);
   color: var(--green);
-  border-color: rgba(34, 197, 94, 0.4);
+  border-color: rgba(74, 222, 128, 0.35);
 }
 .btn-success:hover:not(:disabled) {
-  background: rgba(34, 197, 94, 0.25);
+  background: rgba(74, 222, 128, 0.2);
 }
 .btn-warning {
-  background: rgba(234, 179, 8, 0.15);
+  background: rgba(250, 204, 21, 0.12);
   color: var(--yellow);
-  border-color: rgba(234, 179, 8, 0.4);
+  border-color: rgba(250, 204, 21, 0.35);
 }
 .btn-warning:hover:not(:disabled) {
-  background: rgba(234, 179, 8, 0.25);
+  background: rgba(250, 204, 21, 0.2);
 }
 .btn-danger {
-  background: rgba(239, 68, 68, 0.15);
+  background: rgba(248, 113, 113, 0.12);
   color: var(--red);
-  border-color: rgba(239, 68, 68, 0.4);
+  border-color: rgba(248, 113, 113, 0.35);
 }
 .btn-danger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.25);
+  background: rgba(248, 113, 113, 0.2);
 }
 
-/* Small action buttons for table */
 .btn-sm {
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
   min-width: 1.8rem;
 }
 
-/* Status badges for paused and stopped */
-.badge.paused {
-  background: rgba(234, 179, 8, 0.15);
-  color: var(--yellow);
+/* Form submit (e.g. login) */
+form button[type="submit"] {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  width: 100%;
 }
-.badge.stopped {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--red);
+form button[type="submit"]:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+form input[type="text"],
+form input[type="password"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+form input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(196, 30, 58, 0.25);
 }

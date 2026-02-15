@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -99,21 +100,29 @@ async def _resolve_direct_media_urls(url: str) -> List[str]:
     We only want the non-indented lines (the orig URLs).
     """
     try:
+        opts, cleanup_paths = _gallery_dl_options(url)
         cmd = [
             "gallery-dl",
             "--resolve-urls",
-            *_gallery_dl_options(url),
+            *opts,
             url,
         ]
         logger.debug("Running gallery-dl --resolve-urls for %s", url)
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=settings.gallery_dl_timeout
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=settings.gallery_dl_timeout
+            )
+        finally:
+            for p in cleanup_paths:
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.debug("Cleanup temp cookie file %s: %s", p, e)
 
         if proc.returncode != 0:
             err = stderr.decode(errors="replace").strip()
@@ -354,23 +363,29 @@ async def _extract_generic_media(url: str) -> List[ExtractedMedia]:
     results: List[ExtractedMedia] = []
 
     try:
-        # Use gallery-dl's --dump-json flag to get URL info without downloading
-        # Note: --dump-json already provides the direct media URL in the 'url' field
+        opts, cleanup_paths = _gallery_dl_options(url)
         cmd = [
             "gallery-dl",
             "--dump-json",
             "--no-download",    # Prevents file downloads during metadata extraction
-            *_gallery_dl_options(url),
+            *opts,
             url,
         ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=settings.gallery_dl_timeout
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=settings.gallery_dl_timeout
+            )
+        finally:
+            for p in cleanup_paths:
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.debug("Cleanup temp cookie file %s: %s", p, e)
 
         if proc.returncode != 0:
             err = stderr.decode(errors="replace").strip()
@@ -498,9 +513,13 @@ def _is_sankaku_url(url: str) -> bool:
     return "sankaku.app" in lower or ".sankakucomplex.com" in lower
 
 
-def _gallery_dl_options(url: str) -> List[str]:
-    """Build optional gallery-dl args: config file, per-extractor options, and Sankaku login when applicable."""
+def _gallery_dl_options(url: str) -> Tuple[List[str], List[Path]]:
+    """
+    Build optional gallery-dl args and any temp files to clean up after the subprocess.
+    When Twitter cookie content is set, write it to a temp file and pass its path to gallery-dl.
+    """
     opts: List[str] = []
+    cleanup_paths: List[Path] = []
     if settings.gallery_dl_config_file:
         opts.extend(["-c", settings.gallery_dl_config_file])
     if not settings.gallery_dl_config_file and "yande.re" in url:
@@ -512,28 +531,54 @@ def _gallery_dl_options(url: str) -> List[str]:
             opts.extend(["-o", f"extractor.sankaku.username={username}"])
         if password:
             opts.extend(["-o", f"extractor.sankaku.password={password}"])
-    return opts
+    if _is_twitter_url(url):
+        cookies_content = (settings.gallery_dl_twitter_cookies or "").strip()
+        if cookies_content:
+            try:
+                fd = tempfile.NamedTemporaryFile(
+                    mode="w",
+                    delete=False,
+                    suffix=".txt",
+                    prefix="ccc_twitter_cookies_",
+                    encoding="utf-8",
+                )
+                fd.write(cookies_content)
+                fd.close()
+                path = Path(fd.name)
+                cleanup_paths.append(path)
+                opts.extend(["-o", f"extractor.twitter.cookies={path}"])
+            except Exception as e:
+                logger.warning("Failed to write Twitter cookies temp file: %s", e)
+    return (opts, cleanup_paths)
 
 
 async def _try_gallery_dl(url: str, dest_dir: str) -> DownloadResult:
     result = DownloadResult(source_url=url, used_tool="gallery-dl")
     try:
+        opts, cleanup_paths = _gallery_dl_options(url)
         cmd = [
             "gallery-dl",
             "--dest", dest_dir,
             "--write-metadata",
             "--no-mtime",
-            *_gallery_dl_options(url),
+            *opts,
             url,
         ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=settings.gallery_dl_timeout
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=settings.gallery_dl_timeout
+            )
+        finally:
+            for p in cleanup_paths:
+                try:
+                    p.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.debug("Cleanup temp cookie file %s: %s", p, e)
 
         if proc.returncode != 0:
             err = stderr.decode(errors="replace").strip()

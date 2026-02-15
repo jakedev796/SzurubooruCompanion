@@ -11,7 +11,7 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 from sqlalchemy import select
@@ -23,6 +23,13 @@ from app.api.events import publish_job_update
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Browser-ext can send tags as "category:name" (e.g. artist:setosannnnn). We parse these and set the tag category in Szurubooru.
+CATEGORY_PREFIX_RE = re.compile(
+    r"^(artist|character|copyright|general|meta):(.+)$",
+    re.IGNORECASE,
+)
+VALID_CATEGORIES = frozenset(tag_categories.SZURU_CATEGORIES)
 
 _running = True
 
@@ -289,15 +296,30 @@ async def _process_job(job: Job) -> None:
                 tags_from_ai: List[str] = []
                 safety = job.safety or "unsafe"
 
-                # Tags from client (e.g. browser-ext page extractor)
+                # Tags from client (e.g. browser-ext page extractor).
+                # Supports "category:name" format (e.g. artist:setosannnnn) so we set the right Szurubooru category.
+                client_tag_categories: Dict[str, str] = {}
                 if job.initial_tags:
                     try:
                         initial = json.loads(job.initial_tags)
                         if isinstance(initial, list):
                             for t in initial:
-                                if isinstance(t, str) and t.strip():
-                                    all_tags.append(t.strip())
-                                    tags_from_source.append(t.strip())
+                                if not isinstance(t, str) or not t.strip():
+                                    continue
+                                raw = t.strip()
+                                match = CATEGORY_PREFIX_RE.match(raw)
+                                if match:
+                                    cat, name = match.group(1).lower(), match.group(2).strip()
+                                    if cat in VALID_CATEGORIES and name:
+                                        all_tags.append(name)
+                                        tags_from_source.append(name)
+                                        client_tag_categories[name.lower()] = cat
+                                    else:
+                                        all_tags.append(raw)
+                                        tags_from_source.append(raw)
+                                else:
+                                    all_tags.append(raw)
+                                    tags_from_source.append(raw)
                     except (json.JSONDecodeError, TypeError):
                         pass
 
@@ -325,6 +347,21 @@ async def _process_job(job: Job) -> None:
                     all_tags.append("video")
                     tags_from_source.append("video")
 
+                # Normalize any "category:name" tags (from initial or metadata) to bare name + category
+                # so we never send the literal "artist:username" to Szurubooru.
+                normalized_tags: List[str] = []
+                for t in all_tags:
+                    raw = t.strip()
+                    match = CATEGORY_PREFIX_RE.match(raw)
+                    if match:
+                        cat, name = match.group(1).lower(), match.group(2).strip()
+                        if cat in VALID_CATEGORIES and name:
+                            normalized_tags.append(name)
+                            client_tag_categories[name.lower()] = cat
+                            continue
+                    normalized_tags.append(raw)
+                all_tags = normalized_tags
+
                 # Deduplicate tags
                 seen = set()
                 unique_tags = []
@@ -337,13 +374,22 @@ async def _process_job(job: Job) -> None:
 
                 if not all_tags:
                     all_tags = ["tagme"]
+                else:
+                    # Remove tagme when we have other tags (e.g. from AI or source); only keep tagme when it's the sole tag
+                    all_tags = [t for t in all_tags if t.strip().lower() != "tagme"]
+                    if not all_tags:
+                        all_tags = ["tagme"]
 
-                # Resolve tag categories
+                # Resolve tag categories (metadata + client category:name overrides)
                 tag_to_category = tag_categories.resolve_categories(
                     all_tags, metadata=metadata, job_url=job.url
                 )
                 for t in wd14_character_tags:
                     tag_to_category[t] = "character"
+                for tag in all_tags:
+                    tag_lower = tag.strip().lower()
+                    if tag_lower in client_tag_categories:
+                        tag_to_category[tag] = client_tag_categories[tag_lower]
 
                 for tag in all_tags:
                     category = tag_to_category.get(tag) or settings.szuru_default_tag_category

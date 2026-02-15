@@ -25,6 +25,7 @@ A multi-component workflow for uploading media to [Szurubooru](https://github.co
 - Finetune browser extension for popular sites
 - Get mobile app working
 - Further enhancements to performance
+- **Cookie sync (shelved):** Browser extension could capture cookies for sites (e.g. Twitter) and send them to CCC; CCC stores/updates them in Postgres and reads when needed instead of env. Would remove manual cookie export/paste.
 
 ## Architecture
 
@@ -116,7 +117,7 @@ All backend configuration is done via environment variables (see `ccc/backend/.e
 
 ## Sites
 
-Confirmed sites, extra configuration (Sankaku, Twitter cookies), and special handling (Moeview, 4chan) are documented in [docs/sites.md](docs/sites.md).
+Confirmed sites, extra configuration (Sankaku, Twitter, etc., via env vars), and special handling (Moeview, 4chan) are documented in [docs/sites.md](docs/sites.md).
 
 ## WD14 Tagger
 

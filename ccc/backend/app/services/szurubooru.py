@@ -9,6 +9,7 @@ import logging
 import mimetypes
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import quote
 
 import aiohttp
 
@@ -156,8 +157,28 @@ async def upload_post(
 # ---------------------------------------------------------------------------
 
 
+async def _get_tag_by_name(tag_name: str) -> Optional[Dict]:
+    """Fetch a tag by exact name. Returns the tag resource or None."""
+    url = f"{settings.szuru_url}/api/tags/?query=name:{quote(tag_name, safe='')}&limit=1"
+    headers = {**_auth_header(), "Accept": "application/json"}
+    try:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                results = data.get("results") or []
+                for tag in results:
+                    names = tag.get("names") or []
+                    if any(n.lower() == tag_name.lower() for n in names):
+                        return tag
+                return None
+    except Exception:
+        return None
+
+
 async def ensure_tag(tag_name: str, category: str = "default") -> bool:
-    """Create a tag if it doesn't already exist. Returns True on success or already-exists."""
+    """Create a tag if it doesn't already exist, or update its category if it exists with a different one."""
     url = f"{settings.szuru_url}/api/tags"
     headers = {**_auth_header(), "Accept": "application/json", "Content-Type": "application/json"}
     payload = {"names": [tag_name], "category": category}
@@ -169,6 +190,29 @@ async def ensure_tag(tag_name: str, category: str = "default") -> bool:
                     return True
                 text = await resp.text()
                 if "TagAlreadyExistsError" in text or resp.status == 409:
+                    # Tag exists; fetch it and update category if needed
+                    existing = await _get_tag_by_name(tag_name)
+                    if not existing:
+                        return True
+                    current_cat = existing.get("category")
+                    if isinstance(current_cat, dict):
+                        current_cat = (current_cat.get("name") or "").strip().lower()
+                    else:
+                        current_cat = (current_cat or "").strip().lower()
+                    if current_cat == category.lower():
+                        return True
+                    tag_id = existing.get("id")
+                    version = existing.get("version")
+                    if tag_id is None or version is None:
+                        return True
+                    put_url = f"{settings.szuru_url}/api/tag/{tag_id}"
+                    async with session.put(
+                        put_url, json={"version": version, "category": category}, timeout=aiohttp.ClientTimeout(total=10)
+                    ) as put_resp:
+                        if put_resp.status == 200:
+                            logger.debug("Updated tag %s category to %s", tag_name, category)
+                            return True
+                        logger.warning("Failed to update tag %s category: %s", tag_name, await put_resp.text())
                     return True
                 logger.warning("Failed to create tag %s (%s): %s", tag_name, category, text)
                 return False
