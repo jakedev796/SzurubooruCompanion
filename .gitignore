@@ -83,4 +83,5 @@ mobile-app/.idea/
 mobile-app/szuruqueue.iml
 mobile-app/android/szuruqueue_android.iml
 
-
+# Claude
+.claude/

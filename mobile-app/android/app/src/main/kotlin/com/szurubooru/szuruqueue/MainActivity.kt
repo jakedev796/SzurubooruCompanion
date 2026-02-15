@@ -8,7 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.provider.DocumentsContract
 import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
@@ -84,25 +83,6 @@ class MainActivity : FlutterActivity() {
                     initialShareData = null
                     result.success(null)
                 }
-                "deleteContentUri" -> {
-                    val uriStr = call.argument<String>("uri")
-                    if (uriStr != null) {
-                        try {
-                            val uri = Uri.parse(uriStr)
-                            val deleted = if (DocumentsContract.isDocumentUri(this, uri)) {
-                                DocumentsContract.deleteDocument(contentResolver, uri)
-                            } else {
-                                contentResolver.delete(uri, null, null) > 0
-                            }
-                            result.success(deleted)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "deleteContentUri failed", e)
-                            result.success(false)
-                        }
-                    } else {
-                        result.error("INVALID_ARGS", "uri required", null)
-                    }
-                }
                 "startForegroundStatusService" -> {
                     val body = call.argument<String>("body") ?: "Folder sync enabled."
                     val intent = Intent(this, StatusForegroundService::class.java).apply {
@@ -149,20 +129,6 @@ class MainActivity : FlutterActivity() {
                         }
                     } else {
                         result.success(null) // Not needed on older versions
-                    }
-                }
-                "listMediaUrisFromTree" -> {
-                    val treeUriStr = call.argument<String>("treeUri")
-                    if (treeUriStr != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        try {
-                            val uris = listMediaUrisRecursive(contentResolver, Uri.parse(treeUriStr))
-                            result.success(uris)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "listMediaUrisFromTree failed", e)
-                            result.error("LIST_FAILED", e.message, null)
-                        }
-                    } else {
-                        result.error("INVALID_ARGS", "treeUri required and API 21+", null)
                     }
                 }
                 else -> {
@@ -232,49 +198,6 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    private fun listMediaUrisRecursive(resolver: android.content.ContentResolver, treeUri: Uri): List<String> {
-        if (!DocumentsContract.isTreeUri(treeUri)) return emptyList()
-        val docId = DocumentsContract.getTreeDocumentId(treeUri)
-        return listMediaUrisUnder(resolver, treeUri, docId)
-    }
-
-    private fun listMediaUrisUnder(resolver: android.content.ContentResolver, treeUri: Uri, docId: String): List<String> {
-        val result = mutableListOf<String>()
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
-        val cursor = resolver.query(
-            childrenUri,
-            arrayOf(
-                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                DocumentsContract.Document.COLUMN_MIME_TYPE
-            ),
-            null,
-            null,
-            null
-        ) ?: return result
-        cursor.use {
-            val idIdx = it.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            val mimeIdx = it.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
-            while (it.moveToNext()) {
-                val childId = it.getString(idIdx)
-                val mime = it.getString(mimeIdx)
-                val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId).toString()
-                when {
-                    mime == null || mime == DocumentsContract.Document.MIME_TYPE_DIR -> {
-                        result.addAll(listMediaUrisUnder(resolver, treeUri, childId))
-                    }
-                    mime.startsWith("image/") || mime.startsWith("video/") -> result.add(childUri)
-                    else -> {
-                        val ext = childId.substringAfterLast('.', "").lowercase()
-                        if (ext in listOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "svg", "mp4", "webm", "mkv", "avi", "mov", "wmv", "flv", "m4v")) {
-                            result.add(childUri)
-                        }
-                    }
-                }
-            }
-        }
-        return result
-    }
-
     private fun extractUrl(text: String): String {
         // Handle fxtwitter URLs
         var normalizedText = text

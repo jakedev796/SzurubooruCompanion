@@ -4,7 +4,7 @@ import 'dart:convert';
 class ScheduledFolder {
   final String id;
   final String name;
-  final String uri; // SAF URI string
+  final String uri; // Folder path (relative under external storage or absolute)
   final int intervalSeconds; // Upload interval in seconds
   final int lastRunTimestamp; // Unix timestamp of last run
   final bool enabled;
