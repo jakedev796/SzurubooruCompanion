@@ -23,7 +23,7 @@ class NotificationService {
   Future<void> showUploadSuccess(String url) async {
     const androidDetails = AndroidNotificationDetails(
       'szuruqueue',
-      'SzuruQueue Notifications',
+      'SzuruCompanion Notifications',
       channelDescription: 'Notifications for upload queue',
       importance: Importance.high,
       priority: Priority.high,
@@ -40,7 +40,7 @@ class NotificationService {
   Future<void> showUploadError(String error) async {
     const androidDetails = AndroidNotificationDetails(
       'szuruqueue',
-      'SzuruQueue Notifications',
+      'SzuruCompanion Notifications',
       channelDescription: 'Notifications for upload queue',
       importance: Importance.high,
       priority: Priority.high,

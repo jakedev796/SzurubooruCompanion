@@ -219,17 +219,17 @@ class Job {
     }
   }
 
-  /// Safety rating display
+  /// Safety rating display (text only, no status icons)
   String get safetyDisplay {
     switch (safety?.toLowerCase()) {
       case 'safe':
-        return '🟢 Safe';
+        return 'Safe';
       case 'sketchy':
-        return '🟡 Sketchy';
+        return 'Sketchy';
       case 'unsafe':
-        return '🔴 Unsafe';
+        return 'Unsafe';
       default:
-        return '🔴 Unsafe';
+        return 'Unsafe';
     }
   }
 

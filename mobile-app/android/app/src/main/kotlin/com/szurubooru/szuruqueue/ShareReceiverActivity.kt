@@ -82,7 +82,7 @@ class ShareReceiverActivity : Activity() {
         Log.d(TAG, "Default settings - tags: $defaultTags, safety: $defaultSafety, skipTagging: $skipTagging")
 
         if (backendUrl.isNullOrBlank()) {
-            showToast("Configure backend URL in SzuruQueue settings first")
+            showToast("Configure backend URL in SzuruCompanion settings first")
             finish()
             return
         }

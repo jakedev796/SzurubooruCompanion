@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/scheduled_folder.dart';
 
-/// Settings model for the SzuruQueue app.
+/// Settings model for the SzuruCompanion app.
 /// 
 /// Stores and manages:
 /// - Backend URL (the CCC backend server address)

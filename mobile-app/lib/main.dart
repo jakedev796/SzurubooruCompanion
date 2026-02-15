@@ -36,7 +36,7 @@ void main() async {
               previous ?? AppState(settings),
         ),
       ],
-      child: const SzuruQueueApp(),
+      child: const SzuruCompanionApp(),
     ),
   );
 }
@@ -71,13 +71,13 @@ class ShareIntentService {
   }
 }
 
-class SzuruQueueApp extends StatelessWidget {
-  const SzuruQueueApp({super.key});
+class SzuruCompanionApp extends StatelessWidget {
+  const SzuruCompanionApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SzuruQueue',
+      title: 'SzuruCompanion',
       debugShowCheckedModeBanner: false,
       theme: appDarkTheme,
       darkTheme: appDarkTheme,
@@ -249,7 +249,16 @@ class _MainScreenState extends State<MainScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('SzuruQueue'),
+            leading: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Image.asset(
+                'assets/icons/192.png',
+                width: 40,
+                height: 40,
+                fit: BoxFit.contain,
+              ),
+            ),
+            title: const Text('SzuruCompanion'),
             actions: [
               _buildConnectionStatusIndicator(appState),
               IconButton(
@@ -454,20 +463,30 @@ class _MainScreenState extends State<MainScreen> {
       color: statusColor.withOpacity(0.1),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(statusIcon, color: statusColor, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              statusText,
-              style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+            Row(
+              children: [
+                Icon(statusIcon, color: statusColor, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    statusText,
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-            const Spacer(),
-            if (appState.lastUpdated != null)
+            if (appState.lastUpdated != null) ...[
+              const SizedBox(height: 4),
               Text(
                 'Last update: ${_relativeTime(appState.lastUpdated!)}',
                 style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
               ),
+            ],
           ],
         ),
       ),
@@ -640,7 +659,7 @@ class _MainScreenState extends State<MainScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Share any remote URL into SzuruQueue and it will automatically queue the link with your preferred tags and safety rating.',
+              'Share any remote URL into SzuruCompanion and it will automatically queue the link with your preferred tags and safety rating.',
             ),
             const SizedBox(height: 16),
             const Divider(),
@@ -710,22 +729,77 @@ class _MainScreenState extends State<MainScreen> {
                 child: Text('Safety: ${job.safetyDisplay}'),
               ),
             const SizedBox(height: 8),
-            if (tags.isNotEmpty)
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: tags
-                    .take(4)
-                    .map((tag) => Chip(
-                      label: Text(tag, style: const TextStyle(fontSize: 12)),
-                      visualDensity: VisualDensity.compact,
-                    ))
-                    .toList(),
-              ),
+            if (tags.isNotEmpty) _buildTagChips(tags),
             const SizedBox(height: 6),
             Text(
               'Updated ${_relativeTime(job.updatedAt)}',
               style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static const int _visibleTagCount = 4;
+
+  Widget _buildTagChips(List<String> tags) {
+    final visible = tags.take(_visibleTagCount).toList();
+    final remaining = tags.length - visible.length;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        ...visible.map(
+          (tag) => Chip(
+            label: Text(tag, style: const TextStyle(fontSize: 12)),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        if (remaining > 0)
+          GestureDetector(
+            onTap: () => _showFullTagList(tags),
+            child: Chip(
+              label: Text('+$remaining', style: const TextStyle(fontSize: 12)),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showFullTagList(List<String> tags) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.25,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'All tags (${tags.length})',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                itemCount: tags.length,
+                itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Chip(
+                    label: Text(tags[index]),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ),
             ),
           ],
         ),

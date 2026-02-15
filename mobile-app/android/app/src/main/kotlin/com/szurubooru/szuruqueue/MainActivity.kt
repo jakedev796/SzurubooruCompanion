@@ -10,7 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.szurubooru.szuruqueue/share"
-    private val TAG = "SzuruQueue"
+    private val TAG = "SzuruCompanion"
     private val PREFS_NAME = "szuruqueue_prefs"
     private val KEY_INTENT_HANDLED = "intent_handled_timestamp"
     
