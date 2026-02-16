@@ -8,6 +8,8 @@ import {
   stopJob,
   deleteJob,
   resumeJob,
+  getJobSources,
+  sortTags,
   type Job,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
@@ -109,6 +111,7 @@ export default function JobDetail() {
           { label: "Delete", action: handleDelete, style: "btn-danger" },
         ];
       case "completed":
+      case "merged":
       case "failed":
         return [{ label: "Delete", action: handleDelete, style: "btn-danger" }];
       default:
@@ -118,6 +121,12 @@ export default function JobDetail() {
 
   if (error) return <p style={{ color: "var(--red)" }}>Error: {error}</p>;
   if (!job) return <p>Loading...</p>;
+
+  const sources = getJobSources(job);
+  const postId = job.post?.id ?? job.szuru_post_id;
+  const postRelations = job.post?.relations ?? job.related_post_ids ?? [];
+  const postSafety = job.post?.safety ?? job.safety;
+  const postTags = job.post?.tags ?? job.tags_applied;
 
   return (
     <>
@@ -172,25 +181,19 @@ export default function JobDetail() {
           <dt>Type</dt>
           <dd>{job.job_type}</dd>
 
-          <dt>URL</dt>
+          <dt>{sources.length > 1 ? "Sources" : "URL"}</dt>
           <dd>
-            {job.url ? (
+            {sources.length > 0 ? (
               <div className="sources-section">
-                {job.url.split("\n").length > 1 ? (
-                  <ul className="source-list">
-                    {job.url.split("\n").map((url, idx) => (
-                      <li key={idx}>
-                        <a href={url} target="_blank" rel="noopener noreferrer">
-                          {url}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <a href={job.url} target="_blank" rel="noopener noreferrer">
-                    {job.url}
-                  </a>
-                )}
+                <ul className="source-list">
+                  {sources.map((url, idx) => (
+                    <li key={idx}>
+                      <a href={url} target="_blank" rel="noopener noreferrer">
+                        {url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : (
               "-"
@@ -201,29 +204,29 @@ export default function JobDetail() {
           <dd>{job.original_filename || "-"}</dd>
 
           <dt>Safety</dt>
-          <dd>{job.safety || "-"}</dd>
+          <dd>{postSafety || "-"}</dd>
 
           <dt>Upload User</dt>
           <dd>{job.szuru_user || "-"}</dd>
 
           <dt>Szuru Post ID</dt>
           <dd>
-            {job.szuru_post_id ? (
+            {postId != null ? (
               <span className="post-links">
                 <a
-                  href={`${booruUrl}/post/${job.szuru_post_id}`}
+                  href={`${booruUrl}/post/${postId}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="post-link"
                 >
-                  View Post #{job.szuru_post_id}
+                  View Post #{postId}
                 </a>
-                {job.related_post_ids?.length ? (
+                {postRelations.length > 0 ? (
                   <span
                     className="related-posts"
                     style={{ marginLeft: "0.5rem", color: "var(--text-muted)" }}
                   >
-                    (+{job.related_post_ids.length} related)
+                    (+{postRelations.length} related)
                   </span>
                 ) : null}
               </span>
@@ -232,21 +235,21 @@ export default function JobDetail() {
             )}
           </dd>
 
-          {job.related_post_ids?.length ? (
+          {postRelations.length > 0 ? (
             <>
               <dt>Related Posts</dt>
               <dd>
                 <span className="related-post-list">
-                  {job.related_post_ids.map((postId, idx) => (
-                    <span key={postId}>
+                  {postRelations.map((pid, idx) => (
+                    <span key={pid}>
                       <a
-                        href={`${booruUrl}/post/${postId}`}
+                        href={`${booruUrl}/post/${pid}`}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        #{postId}
+                        #{pid}
                       </a>
-                      {idx < job.related_post_ids!.length - 1 ? ", " : ""}
+                      {idx < postRelations.length - 1 ? ", " : ""}
                     </span>
                   ))}
                 </span>
@@ -261,7 +264,7 @@ export default function JobDetail() {
           <dd>
             {job.tags_from_source?.length ? (
               <span className="tag-list tag-list--source">
-                {job.tags_from_source.map((t) => (
+                {sortTags(job.tags_from_source).map((t) => (
                   <span key={t} className="tag tag--source">
                     {t}
                   </span>
@@ -276,7 +279,7 @@ export default function JobDetail() {
           <dd>
             {job.tags_from_ai?.length ? (
               <span className="tag-list tag-list--ai">
-                {job.tags_from_ai.map((t) => (
+                {sortTags(job.tags_from_ai).map((t) => (
                   <span key={t} className="tag tag--ai">
                     {t}
                   </span>
@@ -287,12 +290,27 @@ export default function JobDetail() {
             )}
           </dd>
 
-          {!job.tags_from_source?.length &&
-            !job.tags_from_ai?.length &&
-            job.tags_applied?.length ? (
+          {postTags?.length ? (
             <>
-              <dt>Tags applied</dt>
-              <dd>{job.tags_applied.join(", ")}</dd>
+              <dt>Tags (on Szurubooru)</dt>
+              <dd>
+                <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.35rem" }}>
+                  Combined from source, AI, and metadata (applied to the post). Colors match origin above.
+                </p>
+                <span className="tag-list">
+                  {sortTags(postTags).map((t) => {
+                    const key = t.toLowerCase();
+                    const fromSource = job.tags_from_source?.some((s) => s.toLowerCase() === key);
+                    const fromAi = job.tags_from_ai?.some((s) => s.toLowerCase() === key);
+                    const variant = fromSource ? "source" : fromAi ? "ai" : "other";
+                    return (
+                      <span key={t} className={`tag tag--${variant}`}>
+                        {t}
+                      </span>
+                    );
+                  })}
+                </span>
+              </dd>
             </>
           ) : null}
 

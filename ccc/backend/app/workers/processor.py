@@ -170,6 +170,13 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
         if created_posts:
             primary = created_posts[0]
             related_ids = [p["post"]["id"] for p in created_posts[1:]]
+            # Store the same source string we uploaded to Szurubooru (primary post)
+            primary_media = extracted_media[0]
+            stored_sources = _build_source_string(
+                primary_media.source_url.strip() if primary_media.source_url else None,
+                job.url.strip() if job.url else None,
+                (job.source_override or "").strip() or None,
+            )
             await _complete_job(
                 job,
                 primary["post"]["id"],
@@ -177,7 +184,8 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 primary["tags_from_source"],
                 primary["tags_from_ai"],
                 related_post_ids=related_ids,
-                sources=all_sources,
+                stored_sources=stored_sources,
+                was_merge=primary.get("merged", False),
             )
         elif last_error:
             await _fail_job(job, last_error)
@@ -400,6 +408,7 @@ async def _upload_file(
     # Check for duplicates via reverse search
     existing = await szurubooru.reverse_search(fp)
     post: Optional[dict] = None
+    merged = False
 
     if existing.get("exactPost"):
         logger.info("Job %s: Duplicate found for %s, merging with existing post %d",
@@ -410,6 +419,7 @@ async def _upload_file(
             final_source,
             tag_result.get("wd14_character_tags"),
         )
+        merged = True
     else:
         result = await szurubooru.upload_post(
             file_path=fp, tags=all_tags, safety=safety, source=final_source,
@@ -432,6 +442,7 @@ async def _upload_file(
         "tags": all_tags,
         "tags_from_source": tag_result["tags_from_source"],
         "tags_from_ai": tag_result["tags_from_ai"],
+        "merged": merged,
     }
 
 
@@ -565,26 +576,30 @@ async def _complete_job(
     tags_from_source: List[str],
     tags_from_ai: List[str],
     related_post_ids: Optional[List[int]] = None,
-    sources: Optional[List[str]] = None,
+    stored_sources: Optional[str] = None,
+    was_merge: bool = False,
 ) -> None:
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
         j = result.scalar_one()
-        j.status = JobStatus.COMPLETED
+        j.status = JobStatus.MERGED if was_merge else JobStatus.COMPLETED
         j.szuru_post_id = szuru_post_id
         j.related_post_ids = related_post_ids or []
+        j.was_merge = 1 if was_merge else 0
         j.tags_applied = json.dumps(tags)
         j.tags_from_source = json.dumps(tags_from_source)
         j.tags_from_ai = json.dumps(tags_from_ai)
-        if sources:
-            j.source_override = "\n".join(sources)
+        if stored_sources:
+            j.source_override = stored_sources
+
         j.updated_at = datetime.now(timezone.utc)
         await db.commit()
     logger.info("Job %s completed -> Szuru post %d (related: %s)",
                 job.id, szuru_post_id, related_post_ids or [])
     await publish_job_update(
         job_id=job.id,
-        status="completed",
+        status="merged" if was_merge else "completed",
         szuru_post_id=szuru_post_id,
         tags=tags,
+        was_merge=was_merge,
     )
