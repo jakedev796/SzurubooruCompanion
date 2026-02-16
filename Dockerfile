@@ -60,6 +60,7 @@ RUN mkdir -p /data/jobs /data/postgres /data/wd14-models /config /run/postgresql
 
 # s6-overlay service definitions
 COPY s6-rc.d/ /etc/s6-overlay/s6-rc.d/
+RUN chmod +x /etc/s6-overlay/s6-rc.d/*/run /etc/s6-overlay/s6-rc.d/*/init.sh 2>/dev/null; true
 
 # Environment defaults for embedded services
 ENV PYTHONUNBUFFERED=1 \
