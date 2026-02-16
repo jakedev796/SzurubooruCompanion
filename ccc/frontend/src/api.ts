@@ -48,15 +48,26 @@ export interface JobsResponse {
   total: number;
 }
 
+/** Mirrors the post as stored on Szurubooru (what we offload to them). */
+export interface SzuruPostMirror {
+  id: number;
+  tags: string[];
+  source?: string | null;
+  safety?: string | null;
+  relations: number[];
+}
+
 export interface Job {
   id: number;
   status: string;
   job_type: string;
   url?: string;
   original_filename?: string;
+  source_override?: string;
   safety?: string;
   szuru_post_id?: number;
   related_post_ids?: number[];
+  was_merge?: boolean;
   tags_from_source?: string[];
   tags_from_ai?: string[];
   tags_applied?: string[];
@@ -65,6 +76,8 @@ export interface Job {
   skip_tagging?: boolean;
   created_at?: string;
   updated_at?: string;
+  /** When completed, mirrors the post on Szurubooru. */
+  post?: SzuruPostMirror | null;
 }
 
 export interface StatsResponse {
@@ -77,13 +90,45 @@ export interface ConfigResponse {
   booru_url?: string;
 }
 
+/** Original page URL first, then stored source list (direct media etc.), deduped. */
+export function getJobSources(job: Job): string[] {
+  const overrideRaw = (job.post?.source ?? job.source_override ?? "").trim();
+  const overrideLines = overrideRaw
+    ? overrideRaw.split("\n").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const url = (job.url ?? "").trim();
+  const norm = (s: string) => s.replace(/\/$/, "");
+  const result: string[] = [];
+  if (url) result.push(url);
+  const seen = new Set(result.map(norm));
+  for (const s of overrideLines) {
+    if (seen.has(norm(s))) continue;
+    seen.add(norm(s));
+    result.push(s);
+  }
+  return result;
+}
+
+/** Sort tags: digit-prefixed first (123), then A–Z (case-insensitive). */
+export function sortTags(tags: string[]): string[] {
+  return [...tags].sort((a, b) => {
+    const aDigit = /^\d/.test(a);
+    const bDigit = /^\d/.test(b);
+    if (aDigit && !bDigit) return -1;
+    if (!aDigit && bDigit) return 1;
+    return a.localeCompare(b, undefined, { sensitivity: "base" });
+  });
+}
+
 export async function fetchJobs({
   status,
+  was_merge,
   offset = 0,
   limit = 50,
-}: { status?: string; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
+}: { status?: string; was_merge?: boolean; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (status) params.set("status", status);
+  if (was_merge !== undefined) params.set("was_merge", String(was_merge));
   const res = await fetch(`${BASE}/jobs?${params}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson(res) as Promise<JobsResponse>;

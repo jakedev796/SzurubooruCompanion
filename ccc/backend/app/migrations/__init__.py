@@ -63,6 +63,20 @@ MIGRATIONS: List[Tuple[str, str]] = [
         END $$;
         """,
     ),
+    (
+        "004_add_was_merge",
+        """
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'was_merge'
+          ) THEN
+            ALTER TABLE jobs ADD COLUMN was_merge INTEGER NOT NULL DEFAULT 0;
+          END IF;
+        END $$;
+        """,
+    ),
 ]
 
 
@@ -115,9 +129,11 @@ async def _ensure_enum_values() -> None:
     - Connection pooling issues by using fresh connections
     - PostgreSQL version differences in transaction handling
     """
+    # SQLAlchemy persists enum member names by default, so use uppercase to match DB.
     enum_values = [
         ("jobstatus", "paused"),
         ("jobstatus", "stopped"),
+        ("jobstatus", "MERGED"),
     ]
     
     for enum_name, value in enum_values:

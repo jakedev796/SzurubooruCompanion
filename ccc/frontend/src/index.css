@@ -179,6 +179,10 @@ tr:hover td {
   background: rgba(74, 222, 128, 0.15);
   color: var(--green);
 }
+.badge.merged {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c4b5fd;
+}
 .badge.failed {
   background: rgba(248, 113, 113, 0.15);
   color: var(--red);
@@ -250,7 +254,7 @@ tr:hover td {
   word-break: break-all;
 }
 
-/* Tag lists (source vs AI) */
+/* Tag lists (source vs AI vs other) – distinct colors so applied list can match by origin */
 .tag-list {
   display: flex;
   flex-wrap: wrap;
@@ -262,15 +266,23 @@ tr:hover td {
   border-radius: 6px;
   font-size: 0.8rem;
 }
+/* From source / metadata / client */
 .tag--source {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
+  background: rgba(34, 211, 238, 0.12);
+  color: #67e8f9;
+  border: 1px solid rgba(34, 211, 238, 0.35);
 }
+/* From AI (WD14) */
 .tag--ai {
   background: rgba(196, 30, 58, 0.2);
   color: #f0a0a8;
   border: 1px solid rgba(196, 30, 58, 0.35);
+}
+/* In applied list but not in source or AI (e.g. tagme, normalized) */
+.tag--other {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
 }
 
 /* Filters */
@@ -288,6 +300,30 @@ tr:hover td {
   border-radius: 6px;
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
+}
+
+/* Status filter pills – same colors as status column badges */
+.filter-pills {
+  align-items: center;
+  justify-content: center;
+}
+.filter-pill {
+  cursor: pointer;
+  border: 1px solid transparent;
+  font: inherit;
+  transition: opacity 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.filter-pill:hover {
+  opacity: 0.9;
+}
+.filter-pill.active {
+  box-shadow: 0 0 0 2px var(--bg);
+  outline: 1px solid currentColor;
+}
+.badge.all {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
 }
 
 /* Post links */

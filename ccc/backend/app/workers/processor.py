@@ -421,13 +421,21 @@ async def _process_job(job: Job) -> None:
                     logger.info("Job %s: Duplicate found for %s, merging with existing post %d",
                                job.id, media.filename, existing["exactPost"]["id"])
                     post = await _merge_with_existing(
-                        existing["exactPost"], 
-                        all_tags, 
+                        existing["exactPost"],
+                        all_tags,
                         final_source,
                         wd14_character_tags
                     )
                     if post:
                         all_sources.append(media.source_url)
+                        created_posts.append({
+                            "post": post,
+                            "tags": all_tags,
+                            "tags_from_source": tags_from_source,
+                            "tags_from_ai": tags_from_ai,
+                            "merged": True,
+                        })
+                        post = None  # skip the generic created_posts.append below
                 else:
                     # Create new post
                     result = await szurubooru.upload_post(
@@ -455,6 +463,7 @@ async def _process_job(job: Job) -> None:
                         "tags": all_tags,
                         "tags_from_source": tags_from_source,
                         "tags_from_ai": tags_from_ai,
+                        "merged": False,
                     })
 
             except Exception as exc:
@@ -486,14 +495,22 @@ async def _process_job(job: Job) -> None:
         if created_posts:
             primary_post = created_posts[0]
             related_ids = [p["post"]["id"] for p in created_posts[1:]]
+            # Store the same source string we uploaded to Szurubooru (primary post)
+            primary_media = extracted_media[0]
+            stored_sources = _build_source_string(
+                primary_media.source_url.strip() if primary_media.source_url else None,
+                job.url.strip() if job.url else None,
+                (job.source_override or "").strip() or None,
+            )
             await _complete_job(
-                job, 
+                job,
                 primary_post["post"]["id"],
                 primary_post["tags"],
                 primary_post["tags_from_source"],
                 primary_post["tags_from_ai"],
                 related_post_ids=related_ids,
-                sources=all_sources
+                stored_sources=stored_sources,
+                was_merge=primary_post.get("merged", False),
             )
         elif last_error:
             await _fail_job(job, last_error)
@@ -715,19 +732,21 @@ async def _complete_job(
     tags_from_source: List[str],
     tags_from_ai: List[str],
     related_post_ids: Optional[List[int]] = None,
-    sources: Optional[List[str]] = None,
+    stored_sources: Optional[str] = None,
+    was_merge: bool = False,
 ) -> None:
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
         j = result.scalar_one()
-        j.status = JobStatus.COMPLETED
+        j.status = JobStatus.MERGED if was_merge else JobStatus.COMPLETED
         j.szuru_post_id = szuru_post_id
         j.related_post_ids = related_post_ids or []
+        j.was_merge = 1 if was_merge else 0
         j.tags_applied = json.dumps(tags)
         j.tags_from_source = json.dumps(tags_from_source)
         j.tags_from_ai = json.dumps(tags_from_ai)
-        if sources:
-            j.source_override = "\n".join(sources)  # Store all sources
+        if stored_sources:
+            j.source_override = stored_sources  # Full source list we uploaded to Szurubooru
         j.updated_at = datetime.now(timezone.utc)
         await db.commit()
     logger.info("Job %s completed -> Szuru post %d (related: %s)", 
@@ -735,7 +754,8 @@ async def _complete_job(
     # Publish SSE update
     await publish_job_update(
         job_id=job.id,
-        status="completed",
+        status="merged" if was_merge else "completed",
         szuru_post_id=szuru_post_id,
         tags=tags,
+        was_merge=was_merge,
     )

@@ -10,6 +10,8 @@ import {
   stopJob,
   deleteJob,
   resumeJob,
+  getJobSources,
+  sortTags,
   type Job,
   type JobsResponse,
   type StatsResponse,
@@ -41,9 +43,12 @@ function formatDate(iso: string | undefined): string {
   return new Date(iso).toLocaleString();
 }
 
+const MERGED_REPORT_LIMIT = 50;
+
 export default function Dashboard() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [recentJobs, setRecentJobs] = useState<JobsResponse | null>(null);
+  const [mergedJobs, setMergedJobs] = useState<JobsResponse | null>(null);
   const [booruUrl, setBooruUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loadingActions, setLoadingActions] = useState<Record<string, boolean>>({});
@@ -68,6 +73,9 @@ export default function Dashboard() {
           if (e.message.includes("401")) navigate("/login", { replace: true });
           else setRecentJobs(null);
         }),
+      fetchJobs({ was_merge: true, limit: MERGED_REPORT_LIMIT })
+        .then(setMergedJobs)
+        .catch(() => setMergedJobs(null)),
     ]).then(() => {});
   }, [navigate]);
 
@@ -95,6 +103,18 @@ export default function Dashboard() {
         .catch(() => {});
       return prev;
     });
+    if (payload.status === "merged" || (payload.status === "completed" && payload.was_merge)) {
+      fetchJob(String(id))
+        .then((job) => {
+          setMergedJobs((prev) => {
+            const list = prev?.results ?? [];
+            if (list.some((j) => String(j.id) === String(id))) return prev;
+            const next = [job, ...list].slice(0, MERGED_REPORT_LIMIT);
+            return { results: next, total: (prev?.total ?? 0) + 1, offset: 0, limit: prev?.limit ?? MERGED_REPORT_LIMIT };
+          });
+        })
+        .catch(() => {});
+    }
   });
 
   async function handleJobAction(
@@ -221,6 +241,7 @@ export default function Dashboard() {
           </>
         );
       case "completed":
+      case "merged":
       case "failed":
         return (
           <button
@@ -244,6 +265,7 @@ export default function Dashboard() {
   const statusChartData = [
     { name: "Pending", count: by_status.pending ?? 0 },
     { name: "Completed", count: by_status.completed ?? 0 },
+    { name: "Merged", count: by_status.merged ?? 0 },
     { name: "Failed", count: by_status.failed ?? 0 },
     { name: "Downloading", count: by_status.downloading ?? 0 },
     { name: "Tagging", count: by_status.tagging ?? 0 },
@@ -255,6 +277,7 @@ export default function Dashboard() {
       d.count > 0 ||
       d.name === "Pending" ||
       d.name === "Completed" ||
+      d.name === "Merged" ||
       d.name === "Failed"
   );
 
@@ -345,9 +368,10 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {recentJobs.results.map((j) => {
-                  const sources = j.url ? j.url.split("\n") : [];
-                  const hasMultipleSources = sources.length > 1;
-                  const firstSource = sources[0] || j.original_filename || "";
+                  const sources = getJobSources(j);
+                  const maxVisible = 3;
+                  const visible = sources.slice(0, maxVisible);
+                  const extra = sources.length - maxVisible;
                   return (
                     <tr key={j.id}>
                       <td>
@@ -355,34 +379,26 @@ export default function Dashboard() {
                       </td>
                       <td>{j.job_type}</td>
                       <td>
-                        {j.url ? (
-                          <div className="source-cell" title={j.url}>
-                            {hasMultipleSources ? (
-                              <span className="multi-source">
-                                <a
-                                  href={firstSource}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="source-link"
-                                >
-                                  {firstSource.length > 30
-                                    ? firstSource.substring(0, 30) + "..."
-                                    : firstSource}
-                                </a>
-                                <span className="source-count"> +{sources.length - 1} more</span>
-                              </span>
-                            ) : (
-                              <a
-                                href={firstSource}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="source-link"
-                              >
-                                {firstSource.length > 30
-                                  ? firstSource.substring(0, 30) + "..."
-                                  : firstSource}
-                              </a>
-                            )}
+                        {sources.length > 0 ? (
+                          <div className="source-cell" title={sources.join("\n")}>
+                            <span className="multi-source">
+                              {visible.map((src, idx) => (
+                                <span key={idx}>
+                                  {idx > 0 && " "}
+                                  <a
+                                    href={src}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="source-link"
+                                  >
+                                    {src.length > 30 ? src.substring(0, 30) + "..." : src}
+                                  </a>
+                                </span>
+                              ))}
+                              {extra > 0 && (
+                                <span className="source-count"> +{extra} more</span>
+                              )}
+                            </span>
                           </div>
                         ) : j.original_filename ? (
                           <span>{j.original_filename}</span>
@@ -391,23 +407,23 @@ export default function Dashboard() {
                         )}
                       </td>
                       <td>
-                        {j.szuru_post_id ? (
+                        {(j.post?.id ?? j.szuru_post_id) ? (
                           <span className="post-links">
                             <a
-                              href={`${booruUrl}/post/${j.szuru_post_id}`}
+                              href={`${booruUrl}/post/${j.post?.id ?? j.szuru_post_id!}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="post-link"
                             >
-                              #{j.szuru_post_id}
+                              #{j.post?.id ?? j.szuru_post_id}
                             </a>
-                            {j.related_post_ids?.length ? (
+                            {(j.post?.relations ?? j.related_post_ids)?.length ? (
                               <span
                                 className="related-posts"
-                                title={`Related: ${j.related_post_ids.map((id) => `#${id}`).join(", ")}`}
+                                title={`Related: ${(j.post?.relations ?? j.related_post_ids)!.map((id) => `#${id}`).join(", ")}`}
                               >
                                 {" "}
-                                +{j.related_post_ids.length}
+                                +{(j.post?.relations ?? j.related_post_ids)!.length}
                               </span>
                             ) : null}
                           </span>

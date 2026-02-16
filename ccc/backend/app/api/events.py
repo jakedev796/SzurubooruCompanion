@@ -179,13 +179,14 @@ async def publish_job_update(
     error: Optional[str] = None,
     szuru_post_id: Optional[int] = None,
     tags: Optional[list] = None,
+    was_merge: Optional[bool] = None,
 ) -> None:
     """
     Publish a job update to Redis for SSE distribution.
-    
+
     This function is called by the job processor when job status changes.
     All connected SSE clients will receive the update.
-    
+
     Args:
         job_id: The job ID (UUID or string)
         status: New job status (pending, downloading, tagging, uploading, completed, failed)
@@ -193,20 +194,21 @@ async def publish_job_update(
         error: Optional error message for failed jobs
         szuru_post_id: Optional Szurubooru post ID for completed jobs
         tags: Optional list of applied tags for completed jobs
+        was_merge: Optional; True if job was merged into an existing post
     """
     redis = get_redis_client()
-    
+
     try:
         # Convert UUID to string if necessary
         if hasattr(job_id, 'hex'):
             job_id = str(job_id)
-        
+
         data = {
             "job_id": job_id,
             "status": status,
             "timestamp": get_timestamp(),
         }
-        
+
         if progress is not None:
             data["progress"] = progress
         if error is not None:
@@ -215,7 +217,9 @@ async def publish_job_update(
             data["szuru_post_id"] = szuru_post_id
         if tags is not None:
             data["tags"] = tags
-        
+        if was_merge is not None:
+            data["was_merge"] = was_merge
+
         await redis.publish(JOB_UPDATES_CHANNEL, json.dumps(data))
         logger.debug("Published job update: %s", data)
         

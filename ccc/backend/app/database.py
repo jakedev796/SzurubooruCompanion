@@ -52,6 +52,7 @@ class JobStatus(str, PyEnum):
     TAGGING = "tagging"
     UPLOADING = "uploading"
     COMPLETED = "completed"
+    MERGED = "merged"
     FAILED = "failed"
     PAUSED = "paused"
     STOPPED = "stopped"
@@ -85,6 +86,7 @@ class Job(Base):
     # Output
     szuru_post_id = Column(Integer, nullable=True)
     related_post_ids = Column(ARRAY(Integer), default=list)  # Related posts from multi-file sources
+    was_merge = Column(Integer, nullable=False, default=0)  # 1 if job merged into existing post
     error_message = Column(Text, nullable=True)
     tags_applied = Column(Text, nullable=True)  # JSON array stored as text
     tags_from_source = Column(Text, nullable=True)  # JSON array: from metadata / initial / inferred

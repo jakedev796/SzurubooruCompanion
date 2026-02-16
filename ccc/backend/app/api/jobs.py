@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -50,6 +50,16 @@ def _parse_json_tags(raw: Optional[str]) -> Optional[List[str]]:
         return None
 
 
+class SzuruPostMirror(BaseModel):
+    """Mirrors the post as stored on Szurubooru (what we offload to them)."""
+
+    id: int
+    tags: List[str] = []
+    source: Optional[str] = None
+    safety: Optional[str] = None
+    relations: List[int] = []
+
+
 class JobOut(BaseModel):
     id: str
     status: str
@@ -61,6 +71,7 @@ class JobOut(BaseModel):
     skip_tagging: bool = False
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
+    was_merge: bool = False
     error_message: Optional[str] = None
     tags_applied: Optional[List[str]] = None
     tags_from_source: Optional[List[str]] = None
@@ -68,12 +79,23 @@ class JobOut(BaseModel):
     retry_count: int = 0
     created_at: datetime
     updated_at: datetime
+    post: Optional[SzuruPostMirror] = None
 
     class Config:
         from_attributes = True
 
 
 def _job_to_out(job: Job) -> JobOut:
+    tags_applied = _parse_json_tags(job.tags_applied)
+    post = None
+    if job.szuru_post_id is not None:
+        post = SzuruPostMirror(
+            id=job.szuru_post_id,
+            tags=tags_applied or [],
+            source=job.source_override,
+            safety=job.safety,
+            relations=job.related_post_ids or [],
+        )
     return JobOut(
         id=str(job.id),
         status=job.status.value if isinstance(job.status, JobStatus) else job.status,
@@ -85,13 +107,15 @@ def _job_to_out(job: Job) -> JobOut:
         skip_tagging=bool(job.skip_tagging),
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
+        was_merge=bool(job.was_merge),
         error_message=job.error_message,
-        tags_applied=_parse_json_tags(job.tags_applied),
+        tags_applied=tags_applied,
         tags_from_source=_parse_json_tags(job.tags_from_source),
         tags_from_ai=_parse_json_tags(job.tags_from_ai),
         retry_count=job.retry_count,
         created_at=job.created_at,
         updated_at=job.updated_at,
+        post=post,
     )
 
 
@@ -165,33 +189,56 @@ async def create_job_file(
 @router.get("/jobs", response_model=dict)
 async def list_jobs(
     status: Optional[str] = Query(None),
+    was_merge: Optional[bool] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs with optional status filter, paginated."""
-    query = select(Job)
-    count_query = select(func.count(Job.id))
-
+    """List jobs with optional status and was_merge filter, paginated."""
+    valid_statuses = {s.value.lower() for s in JobStatus}
     if status:
-        query = query.where(Job.status == status)
-        count_query = count_query.where(Job.status == status)
+        status_lower = status.strip().lower()
+        if status_lower not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
+            )
 
-    query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
+    try:
+        query = select(Job)
+        count_query = select(func.count(Job.id))
 
-    result = await db.execute(query)
-    jobs = result.scalars().all()
+        if status:
+            status_lower = status.strip().lower()
+            # Compare as text to avoid PostgreSQL enum name/value mismatch (e.g. PAUSED vs paused)
+            query = query.where(func.lower(cast(Job.status, String)) == status_lower)
+            count_query = count_query.where(func.lower(cast(Job.status, String)) == status_lower)
+        if was_merge is not None:
+            query = query.where(Job.was_merge == (1 if was_merge else 0))
+            count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
 
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
+        query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
 
-    return {
-        "results": [_job_to_out(j) for j in jobs],
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-    }
+        result = await db.execute(query)
+        jobs = result.scalars().all()
+
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        return {
+            "results": [_job_to_out(j) for j in jobs],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Jobs list temporarily unavailable: {str(e)[:200]}",
+        ) from e
 
 
 @router.get("/jobs/{job_id}", response_model=JobOut)
@@ -295,7 +342,7 @@ async def stop_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    terminal_statuses = {JobStatus.COMPLETED, JobStatus.FAILED}
+    terminal_statuses = {JobStatus.COMPLETED, JobStatus.MERGED, JobStatus.FAILED}
     if job.status in terminal_statuses:
         raise HTTPException(
             status_code=400,

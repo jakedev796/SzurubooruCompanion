@@ -9,6 +9,7 @@ import {
   stopJob,
   deleteJob,
   resumeJob,
+  getJobSources,
   type Job,
   type JobsResponse,
 } from "../api";
@@ -42,12 +43,16 @@ export default function JobList() {
   }, []);
 
   useEffect(() => {
+    setError(null);
     fetchJobs({
       status: statusFilter || undefined,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
     })
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        setError(null);
+      })
       .catch((e: Error) => setError(e.message));
   }, [statusFilter, page]);
 
@@ -237,28 +242,58 @@ export default function JobList() {
     }
   }
 
-  if (error) return <p style={{ color: "var(--red)" }}>Error: {error}</p>;
-  if (!data) return <p>Loading...</p>;
+  if (!data && !error) return <p>Loading...</p>;
 
-  const totalPages = Math.ceil(data.total / PAGE_SIZE);
+  const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
   return (
     <>
-      <div className="filters">
-        <select value={statusFilter} onChange={(e) => setFilter(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="downloading">Downloading</option>
-          <option value="tagging">Tagging</option>
-          <option value="uploading">Uploading</option>
-          <option value="paused">Paused</option>
-          <option value="stopped">Stopped</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-        </select>
+      {error && (
+        <div
+          style={{
+            marginBottom: "1rem",
+            padding: "0.75rem 1rem",
+            background: "rgba(248, 113, 113, 0.15)",
+            border: "1px solid var(--red)",
+            borderRadius: 8,
+            color: "var(--red)",
+          }}
+        >
+          {error}
+          {data ? " Showing last loaded results." : ""}
+        </div>
+      )}
+      <div className="filters filter-pills">
+        {[
+          { value: "", label: "All statuses" },
+          { value: "pending", label: "Pending" },
+          { value: "downloading", label: "Downloading" },
+          { value: "tagging", label: "Tagging" },
+          { value: "uploading", label: "Uploading" },
+          { value: "paused", label: "Paused" },
+          { value: "stopped", label: "Stopped" },
+          { value: "completed", label: "Completed" },
+          { value: "merged", label: "Merged" },
+          { value: "failed", label: "Failed" },
+        ].map(({ value, label }) => {
+          const isActive = statusFilter === value;
+          return (
+            <button
+              key={value || "all"}
+              type="button"
+              className={`filter-pill badge ${value ? value : "all"} ${isActive ? "active" : ""}`}
+              onClick={() => setFilter(value)}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="card">
+        {!data ? (
+          <p style={{ color: "var(--text-muted)" }}>No job list loaded. Try changing the filter or refresh.</p>
+        ) : (
         <table>
           <thead>
             <tr>
@@ -273,9 +308,10 @@ export default function JobList() {
           </thead>
           <tbody>
             {data.results.map((j) => {
-              const sources = j.url ? j.url.split("\n") : [];
-              const hasMultipleSources = sources.length > 1;
-              const firstSource = sources[0] || j.original_filename || "";
+              const sources = getJobSources(j);
+              const maxVisible = 3;
+              const visible = sources.slice(0, maxVisible);
+              const extra = sources.length - maxVisible;
               return (
                 <tr key={j.id}>
                   <td>
@@ -283,34 +319,26 @@ export default function JobList() {
                   </td>
                   <td>{j.job_type}</td>
                   <td>
-                    {j.url ? (
-                      <div className="source-cell" title={j.url}>
-                        {hasMultipleSources ? (
-                          <span className="multi-source">
-                            <a
-                              href={firstSource}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="source-link"
-                            >
-                              {firstSource.length > 30
-                                ? firstSource.substring(0, 30) + "..."
-                                : firstSource}
-                            </a>
-                            <span className="source-count"> +{sources.length - 1} more</span>
-                          </span>
-                        ) : (
-                          <a
-                            href={firstSource}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="source-link"
-                          >
-                            {firstSource.length > 30
-                              ? firstSource.substring(0, 30) + "..."
-                              : firstSource}
-                          </a>
-                        )}
+                    {sources.length > 0 ? (
+                      <div className="source-cell" title={sources.join("\n")}>
+                        <span className="multi-source">
+                          {visible.map((src, idx) => (
+                            <span key={idx}>
+                              {idx > 0 && " "}
+                              <a
+                                href={src}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="source-link"
+                              >
+                                {src.length > 30 ? src.substring(0, 30) + "..." : src}
+                              </a>
+                            </span>
+                          ))}
+                          {extra > 0 && (
+                            <span className="source-count"> +{extra} more</span>
+                          )}
+                        </span>
                       </div>
                     ) : j.original_filename ? (
                       <span>{j.original_filename}</span>
@@ -319,23 +347,23 @@ export default function JobList() {
                     )}
                   </td>
                   <td>
-                    {j.szuru_post_id ? (
+                    {(j.post?.id ?? j.szuru_post_id) ? (
                       <span className="post-links">
                         <a
-                          href={`${booruUrl}/post/${j.szuru_post_id}`}
+                          href={`${booruUrl}/post/${j.post?.id ?? j.szuru_post_id!}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="post-link"
                         >
-                          #{j.szuru_post_id}
+                          #{j.post?.id ?? j.szuru_post_id}
                         </a>
-                        {j.related_post_ids?.length ? (
+                        {(j.post?.relations ?? j.related_post_ids)?.length ? (
                           <span
                             className="related-posts"
-                            title={`Related: ${j.related_post_ids.map((id) => `#${id}`).join(", ")}`}
+                            title={`Related: ${(j.post?.relations ?? j.related_post_ids)!.map((id) => `#${id}`).join(", ")}`}
                           >
                             {" "}
-                            +{j.related_post_ids.length}
+                            +{(j.post?.relations ?? j.related_post_ids)!.length}
                           </span>
                         ) : null}
                       </span>
@@ -364,6 +392,7 @@ export default function JobList() {
             )}
           </tbody>
         </table>
+        )}
       </div>
 
       {totalPages > 1 && (
