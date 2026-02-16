@@ -51,6 +51,9 @@ COPY ccc/backend/app/ ./app/
 # Frontend static files
 COPY --from=frontend-build /build/dist /app/frontend
 
+# Default gallery-dl config (copied to /config on first run if missing)
+COPY config.json /defaults/config.json
+
 # Data directories
 RUN mkdir -p /data/jobs /data/postgres /data/wd14-models /config /run/postgresql \
  && chown -R postgres:postgres /data/postgres /run/postgresql
