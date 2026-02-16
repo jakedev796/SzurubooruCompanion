@@ -28,8 +28,9 @@ The mobile app includes an optional floating bubble overlay. When enabled in set
 
 - Finetune browser extension / ccc for popular sites
 - Further enhancements to performance
-- **Cookie sync (shelved):** Browser extension could capture cookies for sites (e.g. Twitter) and send them to CCC; CCC stores/updates them in Postgres and reads when needed instead of env. Would remove manual cookie export/paste.
+- Cookie sync (shelved): Browser extension could capture cookies for sites (e.g. Twitter) and send them to CCC; CCC stores/updates them in Postgres and reads when needed instead of env. Would remove manual cookie export/paste.
 - Allow right click individual images on TWT/X so it grabs the post and not the entire feed/profile
+- Refactor settings handler to save to database instead of ENV so individual users can have their own cookies/logins(?)
 
 ## Architecture
 
