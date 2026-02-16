@@ -76,12 +76,12 @@ object BubbleOverlayHelper {
             clipToOutline = true
         }
 
-        val iconDrawable = loadBubbleIcon(context, (24 * density).toInt())
+        val iconDrawable = loadBubbleIcon(context, sizePx)
         val icon = AppCompatImageView(context).apply {
             setImageDrawable(iconDrawable)
             imageTintList = null
             scaleType = ImageView.ScaleType.FIT_CENTER
-            val padding = (12 * density).toInt()
+            val padding = 0
             setPadding(padding, padding, padding, padding)
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
