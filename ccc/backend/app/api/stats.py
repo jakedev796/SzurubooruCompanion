@@ -5,8 +5,9 @@ enum or schema diverges from the app (e.g. old status values in the DB).
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import String, func, select, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,14 +21,21 @@ router = APIRouter()
 async def get_stats(
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
+    szuru_user: Optional[str] = Query(None),
 ):
-    """Return aggregate job statistics."""
-    total_q = select(func.count(Job.id))
+    """Return aggregate job statistics, optionally filtered by szuru_user."""
+
+    def _apply_user_filter(q):
+        if szuru_user:
+            return q.where(Job.szuru_user == szuru_user)
+        return q
+
+    total_q = _apply_user_filter(select(func.count(Job.id)).select_from(Job))
     total = (await db.execute(total_q)).scalar() or 0
 
     # Single GROUP BY query for all status counts; read status as text to avoid
     # Python/DB enum mismatch leaving the transaction aborted.
-    status_q = (
+    status_q = _apply_user_filter(
         select(
             cast(Job.status, String).label("status"),
             func.count(Job.id).label("count"),
@@ -52,7 +60,7 @@ async def get_stats(
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     day_utc_expr = text("(jobs.created_at AT TIME ZONE 'UTC')::date")
     day_utc_select = text("(jobs.created_at AT TIME ZONE 'UTC')::date AS day")
-    daily_q = (
+    daily_q = _apply_user_filter(
         select(day_utc_select, func.count(Job.id).label("count"))
         .select_from(Job)
         .where(Job.created_at >= thirty_days_ago)

@@ -77,6 +77,7 @@ class ShareReceiverActivity : Activity() {
         val defaultTags = prefs.getString("flutter.defaultTags", "") ?: ""
         val defaultSafety = prefs.getString("flutter.defaultSafety", DEFAULT_SAFETY) ?: DEFAULT_SAFETY
         val skipTagging = prefs.getBoolean("flutter.skipTagging", false)
+        val szuruUser = prefs.getString("flutter.szuruUser", "") ?: ""
 
         Log.d(TAG, "Settings loaded - backendUrl: $backendUrl, apiKey: ${if (apiKey.isNullOrBlank()) "not set" else "present"}")
         Log.d(TAG, "Default settings - tags: $defaultTags, safety: $defaultSafety, skipTagging: $skipTagging")
@@ -107,7 +108,7 @@ class ShareReceiverActivity : Activity() {
             var failCount = 0
 
             for (urlData in extractedUrls) {
-                val payload = buildPayload(urlData, tags, defaultSafety, skipTagging)
+                val payload = buildPayload(urlData, tags, defaultSafety, skipTagging, szuruUser)
                 val success = sendJobToBackend(backendUrl, apiKey, payload)
                 if (success) successCount++ else failCount++
             }
@@ -188,19 +189,24 @@ class ShareReceiverActivity : Activity() {
         urlData: UrlData,
         tags: List<String>,
         safety: String,
-        skipTagging: Boolean
+        skipTagging: Boolean,
+        szuruUser: String
     ): JSONObject {
         return JSONObject().apply {
             put("url", urlData.url)
             put("source", urlData.url)
-            
+
             if (tags.isNotEmpty()) {
                 put("tags", JSONArray(tags))
             }
-            
+
             put("safety", safety)
             put("skip_tagging", skipTagging)
-            
+
+            if (szuruUser.isNotEmpty()) {
+                put("szuru_user", szuruUser)
+            }
+
             if (urlData.mimeType != null) {
                 put("content_type", urlData.mimeType)
             }

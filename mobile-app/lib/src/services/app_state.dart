@@ -246,7 +246,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     
     try {
-      stats = await backendClient.fetchStats();
+      final user = settings.szuruUser;
+      stats = await backendClient.fetchStats(
+        szuruUser: user.isNotEmpty ? user : null,
+      );
       errorMessage = null;
     } catch (error) {
       errorMessage = userFriendlyErrorMessage(error);

@@ -35,7 +35,8 @@
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <!-- Szurubooru (required)                                            -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Szurubooru URL" Target="SZURU_URL" Default="http://your-szurubooru:8080" Mode="" Description="URL of your Szurubooru instance" Type="Variable" Display="always" Required="true" Mask="false">http://your-szurubooru:8080</Config>
+  <Config Name="Szurubooru URL" Target="SZURU_URL" Default="http://your-szurubooru:8080" Mode="" Description="Internal URL of your Szurubooru instance (used for API calls)" Type="Variable" Display="always" Required="true" Mask="false">http://your-szurubooru:8080</Config>
+  <Config Name="Szurubooru Public URL" Target="SZURU_PUBLIC_URL" Default="" Mode="" Description="Public URL for browser links to Szurubooru (e.g. https://booru.example.com). Falls back to SZURU_URL if empty." Type="Variable" Display="always" Required="false" Mask="false"/>
   <Config Name="Szurubooru Username" Target="SZURU_USERNAME" Default="" Mode="" Description="Szurubooru username (comma-separated for multi-user)" Type="Variable" Display="always" Required="true" Mask="false"/>
   <Config Name="Szurubooru Token" Target="SZURU_TOKEN" Default="" Mode="" Description="Szurubooru API token (comma-separated for multi-user)" Type="Variable" Display="always" Required="true" Mask="true"/>
 

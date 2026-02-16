@@ -14,6 +14,7 @@ class Settings:
 
     # --- Szurubooru connection ---
     szuru_url: str = os.getenv("SZURU_URL", "http://localhost:8080")
+    szuru_public_url: str = os.getenv("SZURU_PUBLIC_URL", "")
     szuru_username: str = os.getenv("SZURU_USERNAME", "")
     szuru_token: str = os.getenv("SZURU_TOKEN", "")
 
