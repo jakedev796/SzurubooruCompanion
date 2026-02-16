@@ -28,6 +28,7 @@ class SettingsModel extends ChangeNotifier {
   bool _showPersistentNotification = true;
   int _folderSyncIntervalSeconds = 900;
   String _szuruUser = '';
+  bool _showFloatingBubble = false;
 
   String get backendUrl => _backendUrl;
   String get apiKey => _apiKey;
@@ -42,6 +43,7 @@ class SettingsModel extends ChangeNotifier {
   bool get showPersistentNotification => _showPersistentNotification;
   int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
   String get szuruUser => _szuruUser;
+  bool get showFloatingBubble => _showFloatingBubble;
 
   /// Load settings from persistent storage
   Future<void> loadSettings() async {
@@ -58,6 +60,7 @@ class SettingsModel extends ChangeNotifier {
     _showPersistentNotification = prefs.getBool('showPersistentNotification') ?? true;
     _folderSyncIntervalSeconds = prefs.getInt('folderSyncIntervalSeconds') ?? 900;
     _szuruUser = prefs.getString('szuruUser') ?? '';
+    _showFloatingBubble = prefs.getBool('showFloatingBubble') ?? false;
     _isConfigured = _backendUrl.isNotEmpty;
     notifyListeners();
   }
@@ -76,6 +79,7 @@ class SettingsModel extends ChangeNotifier {
     bool? showPersistentNotification,
     int? folderSyncIntervalSeconds,
     String? szuruUser,
+    bool? showFloatingBubble,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -132,6 +136,10 @@ class SettingsModel extends ChangeNotifier {
       _szuruUser = szuruUser;
       await prefs.setString('szuruUser', _szuruUser);
     }
+    if (showFloatingBubble != null) {
+      _showFloatingBubble = showFloatingBubble;
+      await prefs.setBool('showFloatingBubble', _showFloatingBubble);
+    }
     _isConfigured = _backendUrl.isNotEmpty;
     notifyListeners();
   }
@@ -153,6 +161,7 @@ class SettingsModel extends ChangeNotifier {
     _showPersistentNotification = true;
     _folderSyncIntervalSeconds = 900;
     _szuruUser = '';
+    _showFloatingBubble = false;
     _isConfigured = false;
     notifyListeners();
   }

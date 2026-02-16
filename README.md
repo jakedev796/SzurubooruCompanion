@@ -18,6 +18,10 @@ A multi-component workflow for uploading media to [Szurubooru](https://github.co
 
 **Releases:** Current release builds (browser extension and mobile app) are in [`builds/`](builds/).
 
+### Floating Bubble (Android)
+
+The mobile app includes an optional floating bubble overlay. When enabled in settings, a small draggable bubble sits on top of other apps. Copy a URL in any browser or app, then tap the bubble to instantly queue it to the CCC backend — no share sheet required. Requires the "Display over other apps" permission.
+
 ---
 
 ## TODO
