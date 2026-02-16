@@ -1,16 +1,29 @@
-# szuruqueue
+# SzuruCompanion Mobile App
 
-A new Flutter project.
+A Flutter-based mobile companion for [Szurubooru](https://github.com/rr-/szurubooru) that works with the CCC backend to queue and manage image uploads.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- Submit URLs for download, tagging, and upload to your Szurubooru instance
+- Real-time job status updates via SSE (Server-Sent Events)
+- View job history with status filtering
+- Multi-user support — select which Szurubooru user to upload as
+- Share URLs directly from other apps via Android share intent
+- Folder sync — automatically enqueue images from a local folder
 
-A few resources to get you started if this is your first Flutter project:
+## Setup
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+1. Install [Flutter](https://docs.flutter.dev/get-started/install)
+2. Run `flutter pub get` in this directory
+3. Run `flutter run` to launch on a connected device or emulator
+4. Configure the backend URL and API key in the app's Settings tab
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Building
+
+```bash
+# Android APK
+flutter build apk --release
+
+# Android App Bundle
+flutter build appbundle --release
+```

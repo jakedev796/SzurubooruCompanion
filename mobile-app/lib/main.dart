@@ -126,6 +126,7 @@ class _MainScreenState extends State<MainScreen> {
   bool _deleteMediaAfterSync = false;
   bool _showPersistentNotification = true;
   int _folderSyncIntervalSeconds = 900;
+  String _szuruUser = '';
   int _selectedIndex = 0;
   bool _isProcessingShare = false;
   bool _isSyncingFolders = false;
@@ -206,6 +207,7 @@ class _MainScreenState extends State<MainScreen> {
     _deleteMediaAfterSync = settings.deleteMediaAfterSync;
     _showPersistentNotification = settings.showPersistentNotification;
     _folderSyncIntervalSeconds = settings.folderSyncIntervalSeconds;
+    _szuruUser = settings.szuruUser;
   }
 
   Future<void> _checkInitialShare() async {
@@ -257,6 +259,7 @@ class _MainScreenState extends State<MainScreen> {
             'tags': tags,
             'safety': _selectedSafety,
             'skipTagging': _skipTagging,
+            'szuruUser': settings.szuruUser,
           },
         );
         await NotificationService.instance.showUploadSuccess(url);
@@ -649,6 +652,43 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            Consumer<AppState>(
+              builder: (context, appState, _) {
+                if (appState.szuruUsers.length <= 1) {
+                  return const SizedBox.shrink();
+                }
+                // Ensure current selection is valid
+                final validUser = appState.szuruUsers.contains(_szuruUser)
+                    ? _szuruUser
+                    : '';
+                return Column(
+                  children: [
+                    DropdownButtonFormField<String>(
+                      value: validUser,
+                      decoration: const InputDecoration(
+                        labelText: 'Upload as',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem(
+                          value: '',
+                          child: Text('Default user'),
+                        ),
+                        ...appState.szuruUsers.map(
+                          (u) => DropdownMenuItem(value: u, child: Text(u)),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _szuruUser = value ?? '';
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                );
+              },
+            ),
             SwitchListTile(
               title: const Text('Background processing'),
               subtitle: const Text(
@@ -1060,6 +1100,7 @@ class _MainScreenState extends State<MainScreen> {
       deleteMediaAfterSync: _deleteMediaAfterSync,
       showPersistentNotification: _showPersistentNotification,
       folderSyncIntervalSeconds: _folderSyncIntervalSeconds,
+      szuruUser: _szuruUser,
     );
 
     if (!_showPersistentNotification) {

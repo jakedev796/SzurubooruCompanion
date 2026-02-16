@@ -13,21 +13,22 @@ import {
   getJobSources,
   sortTags,
   type Job,
+  type JobSummary,
   type JobsResponse,
   type StatsResponse,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
 } from "recharts";
 
-const ACTIVITY_LIMIT = 20;
+const ACTIVITY_LIMIT = 10;
 const CHART_ACCENT = "#C41E3A";
 const CHART_GRID = "rgba(255, 255, 255, 0.06)";
 const CHART_TOOLTIP_BG = "#252220";
@@ -45,7 +46,7 @@ function formatDate(iso: string | undefined): string {
 
 const MERGED_REPORT_LIMIT = 50;
 
-export default function Dashboard() {
+export default function Dashboard({ szuruUser }: { szuruUser?: string }) {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [recentJobs, setRecentJobs] = useState<JobsResponse | null>(null);
   const [mergedJobs, setMergedJobs] = useState<JobsResponse | null>(null);
@@ -67,7 +68,7 @@ export default function Dashboard() {
         if (e.message.includes("401")) navigate("/login", { replace: true });
         else setError(e.message);
       }),
-      fetchJobs({ offset: 0, limit: ACTIVITY_LIMIT })
+      fetchJobs({ szuru_user: szuruUser || undefined, offset: 0, limit: ACTIVITY_LIMIT })
         .then(setRecentJobs)
         .catch((e: Error) => {
           if (e.message.includes("401")) navigate("/login", { replace: true });
@@ -77,11 +78,11 @@ export default function Dashboard() {
         .then(setMergedJobs)
         .catch(() => setMergedJobs(null)),
     ]).then(() => {});
-  }, [navigate]);
+  }, [navigate, szuruUser]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = (payload.id ?? payload.job_id) as number;
-    const updatedJob = { ...payload, id } as Job;
+    const updatedJob = { ...payload, id } as JobSummary;
     setRecentJobs((prev) => {
       if (!prev?.results) return prev;
       const index = prev.results.findIndex((j) => String(j.id) === String(id));
@@ -162,7 +163,7 @@ export default function Dashboard() {
     }
   }
 
-  function getQuickActions(job: Job) {
+  function getQuickActions(job: JobSummary) {
     const { id, status } = job;
     const isLoading = (action: string) => loadingActions[`${id}-${action}`];
     switch (status) {
@@ -262,62 +263,62 @@ export default function Dashboard() {
   if (!stats) return <p>Loading...</p>;
 
   const { by_status, daily_uploads } = stats;
-  const statusChartData = [
-    { name: "Pending", count: by_status.pending ?? 0 },
-    { name: "Completed", count: by_status.completed ?? 0 },
-    { name: "Merged", count: by_status.merged ?? 0 },
-    { name: "Failed", count: by_status.failed ?? 0 },
-    { name: "Downloading", count: by_status.downloading ?? 0 },
-    { name: "Tagging", count: by_status.tagging ?? 0 },
-    { name: "Uploading", count: by_status.uploading ?? 0 },
-    { name: "Paused", count: by_status.paused ?? 0 },
-    { name: "Stopped", count: by_status.stopped ?? 0 },
-  ].filter(
-    (d) =>
-      d.count > 0 ||
-      d.name === "Pending" ||
-      d.name === "Completed" ||
-      d.name === "Merged" ||
-      d.name === "Failed"
-  );
-
-  if (statusChartData.length === 0) {
-    statusChartData.push(
-      { name: "Pending", count: 0 },
-      { name: "Completed", count: 0 },
-      { name: "Failed", count: 0 }
-    );
-  }
 
   return (
     <>
-      <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ marginBottom: "0.75rem" }}>Jobs by status</h3>
-        <div className="chart-container" style={{ minHeight: 220 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={statusChartData} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-              <XAxis dataKey="name" type="category" tick={{ fill: CHART_TICK, fontSize: 11 }} />
-              <YAxis tick={{ fill: CHART_TICK, fontSize: 11 }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{
-                  background: CHART_TOOLTIP_BG,
-                  border: `1px solid ${CHART_TOOLTIP_BORDER}`,
-                  borderRadius: 8,
-                }}
-              />
-              <Bar dataKey="count" fill={CHART_ACCENT} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Primary stat cards */}
+      <div className="stat-grid--primary">
+        <div className="stat-card--colored stat-card--pending">
+          <div className="value">{by_status.pending ?? 0}</div>
+          <div className="label">Pending</div>
+        </div>
+        <div className="stat-card--colored stat-card--active">
+          <div className="value">
+            {(by_status.downloading ?? 0) + (by_status.tagging ?? 0) + (by_status.uploading ?? 0)}
+          </div>
+          <div className="label">Active</div>
+        </div>
+        <div className="stat-card--colored stat-card--completed">
+          <div className="value">{by_status.completed ?? 0}</div>
+          <div className="label">Completed</div>
+        </div>
+        <div className="stat-card--colored stat-card--failed">
+          <div className="value">{by_status.failed ?? 0}</div>
+          <div className="label">Failed</div>
         </div>
       </div>
 
+      {/* Secondary stat cards (only when non-zero) */}
+      {((by_status.paused ?? 0) > 0 || (by_status.stopped ?? 0) > 0) && (
+        <div className="stat-grid--secondary">
+          {(by_status.paused ?? 0) > 0 && (
+            <div className="stat-card--colored stat-card--paused">
+              <div className="value">{by_status.paused}</div>
+              <div className="label">Paused</div>
+            </div>
+          )}
+          {(by_status.stopped ?? 0) > 0 && (
+            <div className="stat-card--colored stat-card--stopped">
+              <div className="value">{by_status.stopped}</div>
+              <div className="label">Stopped</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Daily uploads area chart */}
       {daily_uploads && daily_uploads.length > 0 && (
         <div className="card" style={{ marginBottom: "1.5rem" }}>
-          <h3 style={{ marginBottom: "0.75rem" }}>Uploads – last 30 days</h3>
+          <h3 style={{ marginBottom: "0.75rem" }}>Uploads - last 30 days</h3>
           <div className="chart-container" style={{ minHeight: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={daily_uploads}>
+              <AreaChart data={daily_uploads}>
+                <defs>
+                  <linearGradient id="uploadGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_ACCENT} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={CHART_ACCENT} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                 <XAxis
                   dataKey="date"
@@ -333,13 +334,20 @@ export default function Dashboard() {
                     borderRadius: 8,
                   }}
                 />
-                <Bar dataKey="count" fill={CHART_ACCENT} radius={[4, 4, 0, 0]} />
-              </BarChart>
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  stroke={CHART_ACCENT}
+                  strokeWidth={2}
+                  fill="url(#uploadGradient)"
+                />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
       )}
 
+      {/* Recent activity table */}
       <div className="card">
         <div
           style={{
@@ -359,6 +367,7 @@ export default function Dashboard() {
                 <tr>
                   <th>Status</th>
                   <th>Type</th>
+                  <th>User</th>
                   <th>Source</th>
                   <th>Szuru Post</th>
                   <th>Created</th>
@@ -378,6 +387,7 @@ export default function Dashboard() {
                         <StatusBadge status={j.status} />
                       </td>
                       <td>{j.job_type}</td>
+                      <td>{j.szuru_user || "-"}</td>
                       <td>
                         {sources.length > 0 ? (
                           <div className="source-cell" title={sources.join("\n")}>

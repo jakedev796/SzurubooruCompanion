@@ -295,6 +295,7 @@ class BackendClient {
   /// Response: { results: [...], total, offset, limit }
   Future<List<Job>> fetchJobs({
     String? status,
+    String? szuruUser,
     int limit = 30,
     int offset = 0,
   }) async {
@@ -303,9 +304,13 @@ class BackendClient {
         'limit': limit,
         'offset': offset,
       };
-      
+
       if (status != null && status != 'all') {
         queryParams['status'] = status;
+      }
+
+      if (szuruUser != null && szuruUser.isNotEmpty) {
+        queryParams['szuru_user'] = szuruUser;
       }
 
       final response = await _dio.get(
@@ -422,6 +427,7 @@ class BackendClient {
     List<String>? tags,
     String? safety,
     bool? skipTagging,
+    String? szuruUser,
   }) async {
     try {
       final payload = <String, dynamic>{
@@ -442,6 +448,10 @@ class BackendClient {
 
       if (skipTagging != null) {
         payload['skip_tagging'] = skipTagging;
+      }
+
+      if (szuruUser != null && szuruUser.isNotEmpty) {
+        payload['szuru_user'] = szuruUser;
       }
 
       final response = await _dio.post('/api/jobs', data: payload);
@@ -470,6 +480,7 @@ class BackendClient {
     List<String>? tags,
     String? safety,
     bool? skipTagging,
+    String? szuruUser,
   }) async {
     final uri = Uri.parse('$baseUrl/api/jobs/upload');
     final request = http.MultipartRequest('POST', uri);
@@ -492,6 +503,9 @@ class BackendClient {
     }
     if (skipTagging != null) {
       request.fields['skip_tagging'] = skipTagging.toString();
+    }
+    if (szuruUser != null && szuruUser.isNotEmpty) {
+      request.fields['szuru_user'] = szuruUser;
     }
 
     try {

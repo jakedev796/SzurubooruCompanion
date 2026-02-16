@@ -6,7 +6,7 @@ Android app for sending URLs and media to the CCC backend via the system share s
 
 Release APKs are in the repo root [`builds/`](../builds/) folder. Sideload the APK (copy to device and open, or use `adb install <path-to-apk>`).
 
-After installing, open the app and set the CCC URL in Settings. Use the system share sheet to send URLs or media to the app.
+After installing, open the app and configure the backend URL and API key in the Settings tab. If the backend has multiple Szurubooru users configured, a user selector will appear in Settings. Use the system share sheet to send URLs or media to the app.
 
 ## Build from source (developers)
 

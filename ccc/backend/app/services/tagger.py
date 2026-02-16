@@ -1,14 +1,17 @@
 """
-WD14 Tagger using wdtagger in-process.
-Results are filtered by confidence threshold and max-tag count.
+WD14 Tagger using wdtagger.
+CPU: run in a subprocess (ProcessPoolExecutor) so PyTorch can use all cores without GIL.
+Optional batch tagging runs multiple images in parallel (thread pool).
 """
 
 import asyncio
 import logging
+import os
 import re
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.config import get_settings
 
@@ -26,6 +29,41 @@ except ImportError:
     torch = None  # type: ignore[assignment]
 
 
+# Process-pool worker state (only in worker process)
+_worker_tagger: Any = None
+
+
+def _process_pool_init(model_name: str) -> None:
+    """Run in worker process: set CPU threads and load model once."""
+    global _worker_tagger
+    os.environ.setdefault("OMP_NUM_THREADS", str(os.cpu_count() or 4))
+    if torch is not None and torch.get_num_threads() == 1:
+        n = int(os.environ.get("OMP_NUM_THREADS", "4"))
+        try:
+            torch.set_num_threads(n)
+        except Exception:
+            pass
+    _worker_tagger = Tagger(model_repo=model_name)
+
+
+def _process_pool_tag(path_str: str) -> Dict[str, Any]:
+    """Run in worker process: tag one image, return serializable dict."""
+    global _worker_tagger
+    if _worker_tagger is None:
+        return {}
+    try:
+        result = _worker_tagger.tag(path_str)
+        if result is None:
+            return {}
+        return {
+            "general_tag_data": getattr(result, "general_tag_data", None) or {},
+            "character_tag_data": getattr(result, "character_tag_data", None) or {},
+            "rating_data": getattr(result, "rating_data", None) or {},
+        }
+    except Exception:
+        return {}
+
+
 @dataclass
 class TagResult:
     """Parsed tagging result for a single image."""
@@ -35,13 +73,38 @@ class TagResult:
     raw: Optional[Dict] = None
 
 
-# Lazy-initialized in-process tagger (singleton)
+# In-process state (when not using process pool)
 _tagger: Optional["Tagger"] = None
 _tagger_lock = asyncio.Lock()
+_thread_executor: Optional[ThreadPoolExecutor] = None
+_process_executor: Optional[ProcessPoolExecutor] = None
+
+
+def _get_thread_executor() -> ThreadPoolExecutor:
+    global _thread_executor
+    if _thread_executor is None:
+        n = max(1, getattr(settings, "wd14_num_workers", 4))
+        _thread_executor = ThreadPoolExecutor(max_workers=n, thread_name_prefix="wd14")
+    return _thread_executor
+
+
+def _get_process_executor() -> ProcessPoolExecutor:
+    global _process_executor
+    if _process_executor is None:
+        model_name = getattr(settings, "wd14_model", "SmilingWolf/wd-swinv2-tagger-v3")
+        if not os.environ.get("OMP_NUM_THREADS"):
+            os.environ.setdefault("OMP_NUM_THREADS", str(os.cpu_count() or 4))
+        _process_executor = ProcessPoolExecutor(
+            max_workers=1,
+            initializer=_process_pool_init,
+            initargs=(model_name,),
+        )
+        logger.info("WD14 Tagger using process pool (CPU, no GIL)")
+    return _process_executor
 
 
 def _get_tagger():
-    """Initialize and return the wdtagger Tagger (blocking). Called from executor."""
+    """Initialize and return the wdtagger Tagger (blocking). For thread-pool path only."""
     global _tagger
     if _tagger is not None:
         return _tagger
@@ -49,28 +112,57 @@ def _get_tagger():
         raise RuntimeError("WD14 Tagger not available. Install: pip install wdtagger torch torchvision")
     model_name = settings.wd14_model
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    logger.info("WD14 Tagger using device: %s", device)
+    if device.type == "cpu":
+        n = os.environ.get("OMP_NUM_THREADS") or os.environ.get("TORCH_NUM_THREADS")
+        if n is not None:
+            try:
+                torch.set_num_threads(int(n))
+            except (ValueError, TypeError):
+                pass
+        if torch.get_num_threads() == 1:
+            cpu_count = os.cpu_count()
+            if cpu_count and cpu_count > 1:
+                torch.set_num_threads(min(cpu_count, 8))
+    try:
+        nthreads = torch.get_num_threads()
+    except Exception:
+        nthreads = "?"
+    logger.info("WD14 Tagger using device: %s (threads: %s)", device, nthreads)
     _tagger = Tagger(model_repo=model_name)
     return _tagger
 
 
 async def _ensure_tagger():
-    """Ensure tagger is initialized (thread-safe)."""
+    """Ensure in-process tagger is initialized (thread-pool path only)."""
     loop = asyncio.get_event_loop()
     async with _tagger_lock:
         if _tagger is None:
-            await loop.run_in_executor(None, _get_tagger)
+            executor = _get_thread_executor()
+            await loop.run_in_executor(executor, _get_tagger)
 
 
 def _clean_tag(tag: str) -> str:
-    """Normalise a tag string (strip whitespace, remove trailing confidence, replace spaces with underscores)."""
+    """Normalise a tag string."""
     tag = re.sub(r"\s*\([\d.]+\)$", "", str(tag))
     tag = tag.strip().replace(" ", "_")
     return tag if len(tag) > 1 else ""
 
 
-def _process_wdtagger_result(result) -> TagResult:
-    """Convert wdtagger result (general_tag_data, character_tag_data, rating_data) to TagResult."""
+def _result_to_namespace(d: Dict[str, Any]) -> Any:
+    """Convert dict (from process pool) to object with .general_tag_data etc."""
+    class NS:
+        pass
+    n = NS()
+    n.general_tag_data = d.get("general_tag_data") or {}
+    n.character_tag_data = d.get("character_tag_data") or {}
+    n.rating_data = d.get("rating_data") or {}
+    return n
+
+
+def _process_wdtagger_result(result: Any) -> TagResult:
+    """Convert wdtagger result (object or dict) to TagResult."""
+    if isinstance(result, dict):
+        result = _result_to_namespace(result)
     out = TagResult()
     threshold = settings.wd14_confidence_threshold
     max_tags = settings.wd14_max_tags
@@ -111,27 +203,66 @@ def _process_wdtagger_result(result) -> TagResult:
     return out
 
 
+def _use_process_pool() -> bool:
+    """Use process pool when CPU-only and enabled (avoids GIL for single-image)."""
+    if not getattr(settings, "wd14_use_process_pool", True):
+        return False
+    if torch is not None and torch.cuda.is_available():
+        return False
+    return True
+
+
 async def tag_image(image_path: Path) -> TagResult:
     """
-    Tag an image using WD14 (wdtagger) in-process.
-    Runs tagging in a thread so the event loop is not blocked.
+    Tag an image using WD14.
+    On CPU with process pool: runs in subprocess so PyTorch can use all cores.
+    Otherwise: runs in dedicated thread pool.
     """
     if not settings.wd14_enabled:
         logger.debug("WD14 tagging disabled; skipping %s", image_path.name)
         return TagResult()
 
     if not WD14_AVAILABLE:
-        logger.warning("WD14 Tagger not available (wdtagger/torch not installed); skipping %s", image_path.name)
+        logger.warning("WD14 Tagger not available; skipping %s", image_path.name)
         return TagResult()
 
+    path_str = str(Path(image_path).resolve())
     try:
-        await _ensure_tagger()
-        loop = asyncio.get_event_loop()
-        path_str = str(image_path)
-        result = await loop.run_in_executor(None, lambda: _tagger.tag(path_str))
-        if result is None:
-            return TagResult()
-        return _process_wdtagger_result(result)
+        if _use_process_pool():
+            executor = _get_process_executor()
+            loop = asyncio.get_event_loop()
+            result_dict = await loop.run_in_executor(executor, _process_pool_tag, path_str)
+            if not result_dict:
+                return TagResult()
+            return _process_wdtagger_result(result_dict)
+        else:
+            await _ensure_tagger()
+            loop = asyncio.get_event_loop()
+            thread_exec = _get_thread_executor()
+            result = await loop.run_in_executor(thread_exec, lambda: _tagger.tag(path_str))
+            if result is None:
+                return TagResult()
+            return _process_wdtagger_result(result)
     except Exception as exc:
         logger.warning("WD14 tagger failed for %s: %s", image_path.name, exc)
         return TagResult()
+
+
+async def tag_images_batch(image_paths: List[Path]) -> List[TagResult]:
+    """
+    Tag multiple images in parallel (like reference project).
+    When using thread pool, runs N tag() calls concurrently.
+    When using process pool (1 worker), runs one at a time but each uses all cores.
+    """
+    if not image_paths or not settings.wd14_enabled or not WD14_AVAILABLE:
+        return [TagResult() for _ in image_paths]
+    tasks = [tag_image(p) for p in image_paths]
+    raw = await asyncio.gather(*tasks, return_exceptions=True)
+    out: List[TagResult] = []
+    for r in raw:
+        if isinstance(r, Exception):
+            logger.warning("WD14 batch tag failed: %s", r)
+            out.append(TagResult())
+        else:
+            out.append(r)
+    return out

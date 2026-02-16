@@ -11,6 +11,11 @@ The following sites have been confirmed working with CCC. Any site [supported by
 | Yande.re |
 | X / Twitter\** |
 | Danbooru |
+| Gelbooru |
+| Rule34.xxx |
+| Rule34Vault |
+| Misskey |
+| Reddit |
 | Moeview\* |
 | 4chan\** |
 
@@ -22,6 +27,18 @@ Some sources need env vars (e.g. login credentials) for gallery-dl to work; with
 |------|---------|------------------------|
 | **Sankaku** | sankaku.app, chan.sankakucomplex.com, idol.sankakucomplex.com, www.sankakucomplex.com | Set `SANKAKU_USERNAME` and `SANKAKU_PASSWORD` in `ccc/backend/.env`. Login is required for the extractor to work. |
 | **Twitter / X** | twitter.com, x.com | Set `TWITTER_COOKIES` in `ccc/backend/.env` to the Netscape-format cookie content. See [Twitter Cookie Setup](#twitter-cookie-setup) below. |
+
+### Sites with optional credentials
+
+These sites work without credentials but may have rate limits or restricted content. Set the env vars in `ccc/backend/.env` if needed.
+
+| Site | Domains | Optional configuration |
+|------|---------|------------------------|
+| **Danbooru** | danbooru.donmai.us, safebooru.org | `DANBOORU_API_KEY`, `DANBOORU_USER_ID` |
+| **Gelbooru** | gelbooru.com | `GELBOORU_API_KEY`, `GELBOORU_USER_ID` |
+| **Rule34.xxx** | rule34.xxx | `RULE34_API_KEY`, `RULE34_USER_ID` |
+| **Misskey** | misskey.io, misskey.art, misskey.net, and other instances | `MISSKEY_USERNAME`, `MISSKEY_PASSWORD` |
+| **Reddit** | reddit.com | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USERNAME` |
 
 ## Sites requiring special handling
 

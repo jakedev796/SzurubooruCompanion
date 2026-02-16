@@ -64,7 +64,31 @@ MIGRATIONS: List[Tuple[str, str]] = [
         """,
     ),
     (
-        "004_add_was_merge",
+        "004_create_tag_cache",
+        """
+        CREATE TABLE IF NOT EXISTS tag_cache (
+            tag_name    VARCHAR(512) PRIMARY KEY,
+            category    VARCHAR(128) NOT NULL,
+            verified_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        """,
+    ),
+    (
+        "005_add_szuru_user",
+        """
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'szuru_user'
+          ) THEN
+            ALTER TABLE jobs ADD COLUMN szuru_user VARCHAR(255);
+          END IF;
+        END $$;
+        """,
+    ),
+    (
+        "006_add_was_merge",
         """
         DO $$
         BEGIN
@@ -78,7 +102,6 @@ MIGRATIONS: List[Tuple[str, str]] = [
         """,
     ),
 ]
-
 
 async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:
     """

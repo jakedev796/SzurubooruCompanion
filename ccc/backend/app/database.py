@@ -82,6 +82,7 @@ class Job(Base):
     initial_tags = Column(Text, nullable=True)  # JSON array from client (e.g. browser-ext)
     safety = Column(String(16), nullable=True, default="unsafe")
     skip_tagging = Column(Integer, nullable=False, default=0)
+    szuru_user = Column(String(255), nullable=True)  # Which Szurubooru user to upload as
 
     # Output
     szuru_post_id = Column(Integer, nullable=True)
@@ -103,6 +104,17 @@ class Job(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class TagCache(Base):
+    """Cache of tags verified to exist in Szurubooru with the correct category."""
+
+    __tablename__ = "tag_cache"
+
+    tag_name = Column(String(512), primary_key=True)  # stored lowercased
+    category = Column(String(128), nullable=False)
+    verified_at = Column(DateTime(timezone=True), nullable=False,
+                         default=lambda: datetime.now(timezone.utc))
 
 
 class SchemaMigration(Base):

@@ -1,77 +1,199 @@
 """
 Szurubooru API client.
 Handles authentication, post creation, tag creation, and error surfacing.
+
+Uses a persistent aiohttp session for connection reuse and a two-tier
+tag cache (in-memory + PostgreSQL) to minimise redundant API calls.
 """
 
+import asyncio
 import base64
+import contextvars
 import json
 import logging
-import mimetypes
+import time
+from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 import aiohttp
 
-# Initialize mimetypes to ensure common types are recognized
-mimetypes.init()
-
-# Explicitly add common MIME types that might be missing in minimal Docker images
-# This ensures detection works even without /etc/mime.types
-COMMON_MIME_TYPES = {
-    # Images
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.bmp': 'image/bmp',
-    '.tiff': 'image/tiff',
-    '.tif': 'image/tiff',
-    '.svg': 'image/svg+xml',
-    # Videos
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-    '.mkv': 'video/x-matroska',
-    '.avi': 'video/x-msvideo',
-    '.mov': 'video/quicktime',
-    '.wmv': 'video/x-ms-wmv',
-    '.flv': 'video/x-flv',
-    # Audio
-    '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav',
-    '.ogg': 'audio/ogg',
-    '.m4a': 'audio/mp4',
-}
-
-# Add any missing types to the mimetypes database
-for ext, mime in COMMON_MIME_TYPES.items():
-    if ext not in mimetypes.types_map:
-        mimetypes.add_type(mime, ext)
-
-from app.config import get_settings
+from app.config import get_settings, get_szuru_users
+from app.utils.mime import guess_mime_type
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Log common MIME types for debugging (after logger is defined)
-logger.info("MIME types loaded: .jpg=%s, .png=%s, .mp4=%s", 
-             mimetypes.types_map.get('.jpg'), 
-             mimetypes.types_map.get('.png'),
-             mimetypes.types_map.get('.mp4'))
+# ---------------------------------------------------------------------------
+# Per-job user context (set by processor, read by _auth_headers)
+# ---------------------------------------------------------------------------
 
-# ANSI colours for terminal output
-RED = "\033[91m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RESET = "\033[0m"
+_current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "szuru_user", default=None
+)
 
 
-def _auth_header() -> Dict[str, str]:
-    """Build the Szurubooru Token auth header."""
-    raw = f"{settings.szuru_username}:{settings.szuru_token}"
+def set_current_user(username: Optional[str]) -> None:
+    """Set the Szurubooru user for the current async task."""
+    _current_user.set(username)
+
+
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+
+def _auth_headers() -> Dict[str, str]:
+    """Build the Szurubooru Token auth header for the current user context."""
+    username = _current_user.get()
+    users = get_szuru_users()
+    if username:
+        token = next((t for u, t in users if u == username), None)
+        if not token:
+            username, token = users[0]
+    else:
+        username, token = users[0]
+    raw = f"{username}:{token}"
     encoded = base64.b64encode(raw.encode()).decode()
-    return {"Authorization": f"Token {encoded}"}
+    return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
+
+
+# ---------------------------------------------------------------------------
+# Persistent HTTP session
+# ---------------------------------------------------------------------------
+
+_session: Optional[aiohttp.ClientSession] = None
+
+
+async def init_session() -> None:
+    """Create the persistent aiohttp session.  Call once at startup."""
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession()
+
+
+async def close_session() -> None:
+    """Close the persistent aiohttp session.  Call once at shutdown."""
+    global _session
+    if _session and not _session.closed:
+        await _session.close()
+    _session = None
+
+
+async def _request(
+    method: str,
+    endpoint: str,
+    *,
+    json_payload: Optional[dict] = None,
+    form_data: Optional[aiohttp.FormData] = None,
+    params: Optional[dict] = None,
+    timeout: float = 30,
+    extra_headers: Optional[Dict[str, str]] = None,
+) -> dict:
+    """
+    Make an authenticated request to the Szurubooru API.
+
+    Returns the JSON response on success, or {"error": ..., "status": ...} on failure.
+    """
+    global _session
+    if _session is None or _session.closed:
+        await init_session()
+
+    url = f"{settings.szuru_url}{endpoint}"
+
+    # Per-request auth headers (session has no baked-in auth for multi-user support)
+    headers: Dict[str, str] = _auth_headers()
+    if extra_headers:
+        headers.update(extra_headers)
+    if json_payload is not None and form_data is None:
+        headers["Content-Type"] = "application/json"
+
+    try:
+        kwargs: Dict[str, Any] = {
+            "timeout": aiohttp.ClientTimeout(total=timeout),
+            "headers": headers,
+        }
+        if json_payload is not None and form_data is None:
+            kwargs["json"] = json_payload
+        if form_data is not None:
+            kwargs["data"] = form_data
+        if params is not None:
+            kwargs["params"] = params
+
+        async with _session.request(method, url, **kwargs) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            error_text = await resp.text()
+            return {"error": error_text, "status": resp.status}
+    except Exception as exc:
+        return {"error": str(exc), "status": 0}
+
+
+# ---------------------------------------------------------------------------
+# Tag cache (in-memory + PostgreSQL)
+# ---------------------------------------------------------------------------
+
+TAG_CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 days
+
+
+@dataclass
+class _TagCacheEntry:
+    category: str        # lowercased
+    verified_at: float   # time.time() epoch
+
+
+_tag_cache: Dict[str, _TagCacheEntry] = {}  # key: tag_name.lower()
+
+
+async def load_tag_cache() -> None:
+    """Warm-start the in-memory tag cache from PostgreSQL.  Call at startup."""
+    from app.database import TagCache, async_session
+    from sqlalchemy import select
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=TAG_CACHE_TTL_SECONDS)
+    async with async_session() as db:
+        result = await db.execute(
+            select(TagCache).where(TagCache.verified_at >= cutoff)
+        )
+        rows = result.scalars().all()
+        for row in rows:
+            _tag_cache[row.tag_name.lower()] = _TagCacheEntry(
+                category=row.category.lower(),
+                verified_at=row.verified_at.timestamp(),
+            )
+    logger.info("Tag cache: loaded %d entries from database", len(_tag_cache))
+
+
+async def _update_tag_cache_db(tag_name: str, category: str) -> None:
+    """Upsert a tag cache entry into PostgreSQL."""
+    from app.database import TagCache, async_session
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    now = datetime.now(timezone.utc)
+    try:
+        async with async_session() as db:
+            stmt = pg_insert(TagCache).values(
+                tag_name=tag_name.lower(),
+                category=category.lower(),
+                verified_at=now,
+            ).on_conflict_do_update(
+                index_elements=["tag_name"],
+                set_={"category": category.lower(), "verified_at": now},
+            )
+            await db.execute(stmt)
+            await db.commit()
+    except Exception:
+        logger.debug("Failed to persist tag cache entry for %s", tag_name, exc_info=True)
+
+
+def _cache_tag(tag_name: str, category: str) -> None:
+    """Update the in-memory cache for a tag."""
+    _tag_cache[tag_name.lower()] = _TagCacheEntry(
+        category=category.lower(),
+        verified_at=time.time(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -81,20 +203,12 @@ def _auth_header() -> Dict[str, str]:
 
 async def test_connection() -> bool:
     """Return True if we can reach the Szurubooru API and authenticate."""
-    url = f"{settings.szuru_url}/api/info"
-    try:
-        async with aiohttp.ClientSession(headers=_auth_header()) as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if "serverTime" in data or "config" in data:
-                        logger.info("Szurubooru connection OK")
-                        return True
-                logger.warning("Szurubooru returned %d", resp.status)
-                return False
-    except Exception as exc:
-        logger.error("Szurubooru connection failed: %s", exc)
-        return False
+    result = await _request("GET", "/api/info", timeout=10)
+    if "error" not in result and ("serverTime" in result or "config" in result):
+        logger.info("Szurubooru connection OK")
+        return True
+    logger.warning("Szurubooru connection failed: %s", result.get("error", "unknown"))
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -112,44 +226,24 @@ async def upload_post(
     Upload a file as a new post to Szurubooru.
     Returns the post JSON on success, or {"error": ..., "status": ...} on failure.
     """
-    szuru_api = f"{settings.szuru_url}/api/posts/"
-    headers = {**_auth_header(), "Accept": "application/json"}
-
     metadata: Dict = {"tags": tags, "safety": safety}
     if source:
         metadata["source"] = source
 
-    try:
-        data = aiohttp.FormData()
-        data.add_field(
-            "metadata",
-            json.dumps(metadata),
-            content_type="application/json",
-        )
+    data = aiohttp.FormData()
+    data.add_field(
+        "metadata",
+        json.dumps(metadata),
+        content_type="application/json",
+    )
 
-        with open(file_path, "rb") as f:
-            file_bytes = f.read()
-        
-        # Detect MIME type from file extension
-        mime_type, _ = mimetypes.guess_type(str(file_path))
-        logger.info("MIME type detection for %s: %s (extension: %s)", file_path.name, mime_type, file_path.suffix)
-        if mime_type is None:
-            # Fallback to octet-stream if detection fails
-            mime_type = "application/octet-stream"
-            logger.warning("Could not detect MIME type for %s (suffix: %s), using fallback", file_path.name, file_path.suffix)
-        
-        data.add_field("content", file_bytes, filename=file_path.name, content_type=mime_type)
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
 
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.post(szuru_api, data=data, timeout=aiohttp.ClientTimeout(total=60)) as resp:
-                if resp.status == 200:
-                    return await resp.json()
-                else:
-                    error_text = await resp.text()
-                    return {"error": error_text, "status": resp.status}
+    mime_type = guess_mime_type(str(file_path))
+    data.add_field("content", file_bytes, filename=file_path.name, content_type=mime_type)
 
-    except Exception as exc:
-        return {"error": str(exc), "status": 0}
+    return await _request("POST", "/api/posts/", form_data=data, timeout=60)
 
 
 # ---------------------------------------------------------------------------
@@ -159,66 +253,128 @@ async def upload_post(
 
 async def _get_tag_by_name(tag_name: str) -> Optional[Dict]:
     """Fetch a tag by exact name. Returns the tag resource or None."""
-    url = f"{settings.szuru_url}/api/tags/?query=name:{quote(tag_name, safe='')}&limit=1"
-    headers = {**_auth_header(), "Accept": "application/json"}
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-                results = data.get("results") or []
-                for tag in results:
-                    names = tag.get("names") or []
-                    if any(n.lower() == tag_name.lower() for n in names):
-                        return tag
-                return None
-    except Exception:
+    result = await _request(
+        "GET",
+        f"/api/tags/?query=name:{quote(tag_name, safe='')}&limit=1",
+        timeout=10,
+    )
+    if "error" in result:
         return None
+    results = result.get("results") or []
+    for tag in results:
+        names = tag.get("names") or []
+        if any(n.lower() == tag_name.lower() for n in names):
+            return tag
+    return None
 
 
 async def ensure_tag(tag_name: str, category: str = "default") -> bool:
-    """Create a tag if it doesn't already exist, or update its category if it exists with a different one."""
-    url = f"{settings.szuru_url}/api/tags"
-    headers = {**_auth_header(), "Accept": "application/json", "Content-Type": "application/json"}
-    payload = {"names": [tag_name], "category": category}
+    """
+    Create a tag if it doesn't already exist, or update its category if needed.
 
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status == 200:
-                    return True
-                text = await resp.text()
-                if "TagAlreadyExistsError" in text or resp.status == 409:
-                    # Tag exists; fetch it and update category if needed
-                    existing = await _get_tag_by_name(tag_name)
-                    if not existing:
-                        return True
-                    current_cat = existing.get("category")
-                    if isinstance(current_cat, dict):
-                        current_cat = (current_cat.get("name") or "").strip().lower()
-                    else:
-                        current_cat = (current_cat or "").strip().lower()
-                    if current_cat == category.lower():
-                        return True
-                    tag_id = existing.get("id")
-                    version = existing.get("version")
-                    if tag_id is None or version is None:
-                        return True
-                    put_url = f"{settings.szuru_url}/api/tag/{tag_id}"
-                    async with session.put(
-                        put_url, json={"version": version, "category": category}, timeout=aiohttp.ClientTimeout(total=10)
-                    ) as put_resp:
-                        if put_resp.status == 200:
-                            logger.debug("Updated tag %s category to %s", tag_name, category)
-                            return True
-                        logger.warning("Failed to update tag %s category: %s", tag_name, await put_resp.text())
-                    return True
-                logger.warning("Failed to create tag %s (%s): %s", tag_name, category, text)
-                return False
-    except Exception as exc:
-        logger.warning("Exception creating tag %s: %s", tag_name, exc)
+    Uses a two-tier cache (memory + PostgreSQL) with 30-day TTL to skip
+    redundant API calls.
+    """
+    cache_key = tag_name.lower()
+    now = time.time()
+
+    # Check in-memory cache
+    entry = _tag_cache.get(cache_key)
+    if (entry
+            and entry.category == category.lower()
+            and (now - entry.verified_at) < TAG_CACHE_TTL_SECONDS):
+        return True  # Fresh cache hit — skip all API calls
+
+    # Cache miss or stale — try to create the tag
+    result = await _request(
+        "POST", "/api/tags",
+        json_payload={"names": [tag_name], "category": category},
+        timeout=10,
+    )
+
+    if "error" not in result:
+        # Tag created successfully
+        _cache_tag(tag_name, category)
+        await _update_tag_cache_db(tag_name, category)
+        return True
+
+    error_text = result.get("error", "")
+    if "TagAlreadyExistsError" not in error_text and result.get("status") != 409:
+        logger.warning("Failed to create tag %s (%s): %s", tag_name, category, error_text)
         return False
+
+    # Tag already exists — fetch it and check category
+    existing = await _get_tag_by_name(tag_name)
+    if not existing:
+        # Can't fetch but it exists — cache optimistically
+        _cache_tag(tag_name, category)
+        await _update_tag_cache_db(tag_name, category)
+        return True
+
+    current_cat = existing.get("category")
+    if isinstance(current_cat, dict):
+        current_cat = (current_cat.get("name") or "").strip().lower()
+    else:
+        current_cat = (current_cat or "").strip().lower()
+
+    if current_cat == category.lower():
+        # Category already matches
+        _cache_tag(tag_name, category)
+        await _update_tag_cache_db(tag_name, category)
+        return True
+
+    # Category differs — update via PUT using the tag *name* (not numeric ID)
+    logger.debug("Tag %s category mismatch: szuru=%s, desired=%s — updating",
+                 tag_name, current_cat, category)
+    version = existing.get("version")
+    if version is None:
+        logger.warning("Tag %s has no version field, cannot update category", tag_name)
+        _cache_tag(tag_name, category)
+        await _update_tag_cache_db(tag_name, category)
+        return True
+
+    encoded_name = quote(tag_name, safe="")
+    put_result = await _request(
+        "PUT", f"/api/tag/{encoded_name}",
+        json_payload={"version": version, "category": category},
+        timeout=10,
+    )
+    if "error" not in put_result:
+        logger.debug("Updated tag %s category: %s -> %s", tag_name, current_cat, category)
+    else:
+        logger.warning("Failed to update tag %s category: %s", tag_name, put_result["error"])
+
+    _cache_tag(tag_name, category)
+    await _update_tag_cache_db(tag_name, category)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Batch tag ensure (concurrent with semaphore)
+# ---------------------------------------------------------------------------
+
+_TAG_CONCURRENCY = 10
+
+
+async def ensure_tags_batch(tags_with_categories: List[Tuple[str, str]]) -> None:
+    """
+    Ensure multiple tags exist concurrently.
+
+    Args:
+        tags_with_categories: List of ``(tag_name, category)`` tuples.
+    """
+    if not tags_with_categories:
+        return
+
+    sem = asyncio.Semaphore(_TAG_CONCURRENCY)
+
+    async def _limited(name: str, cat: str) -> None:
+        async with sem:
+            await ensure_tag(name, cat)
+
+    await asyncio.gather(
+        *(_limited(n, c) for n, c in tags_with_categories)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -227,24 +383,8 @@ async def ensure_tag(tag_name: str, category: str = "default") -> bool:
 
 
 async def get_post(post_id: int) -> dict:
-    """
-    Fetch a post by ID.
-
-    Returns the full post resource including version, tags, source, relations.
-    Returns {"error": ..., "status": ...} on failure.
-    """
-    url = f"{settings.szuru_url}/api/post/{post_id}"
-    headers = {**_auth_header(), "Accept": "application/json"}
-
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status == 200:
-                    return await resp.json()
-                error_text = await resp.text()
-                return {"error": error_text, "status": resp.status}
-    except Exception as exc:
-        return {"error": str(exc), "status": 0}
+    """Fetch a post by ID. Returns the full post resource or {"error": ..., "status": ...}."""
+    return await _request("GET", f"/api/post/{post_id}", timeout=10)
 
 
 # ---------------------------------------------------------------------------
@@ -262,21 +402,8 @@ async def update_post(
 ) -> dict:
     """
     Update an existing post.
-
-    Args:
-        post_id: The ID of the post to update.
-        version: Required for optimistic locking (must match current post version).
-        tags: If provided, REPLACES existing tags (must fetch and merge manually).
-        source: If provided, REPLACES existing source.
-        relations: If provided, REPLACES existing relations (list of post IDs).
-        safety: If provided, updates the safety rating.
-
-    Returns:
-        The updated post JSON on success, or {"error": ..., "status": ...} on failure.
+    Returns the updated post JSON on success, or {"error": ..., "status": ...} on failure.
     """
-    url = f"{settings.szuru_url}/api/post/{post_id}"
-    headers = {**_auth_header(), "Accept": "application/json", "Content-Type": "application/json"}
-
     payload: Dict = {"version": version}
     if tags is not None:
         payload["tags"] = tags
@@ -287,15 +414,7 @@ async def update_post(
     if safety is not None:
         payload["safety"] = safety
 
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.put(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                if resp.status == 200:
-                    return await resp.json()
-                error_text = await resp.text()
-                return {"error": error_text, "status": resp.status}
-    except Exception as exc:
-        return {"error": str(exc), "status": 0}
+    return await _request("PUT", f"/api/post/{post_id}", json_payload=payload, timeout=30)
 
 
 # ---------------------------------------------------------------------------
@@ -306,37 +425,16 @@ async def update_post(
 async def reverse_search(file_path: Path) -> dict:
     """
     Perform reverse image search to find exact and similar posts.
-
-    Args:
-        file_path: Path to the image file to search for.
-
-    Returns:
-        {"exactPost": {...} or None, "similarPosts": [...]} on success,
-        or {"error": ..., "status": ...} on failure.
+    Returns {"exactPost": {...} or None, "similarPosts": [...]} or {"error": ...}.
     """
-    url = f"{settings.szuru_url}/api/posts/reverse-search"
-    headers = {**_auth_header(), "Accept": "application/json"}
+    data = aiohttp.FormData()
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
 
-    try:
-        data = aiohttp.FormData()
-        with open(file_path, "rb") as f:
-            file_bytes = f.read()
-        
-        # Detect MIME type from file extension
-        mime_type, _ = mimetypes.guess_type(str(file_path))
-        if mime_type is None:
-            mime_type = "application/octet-stream"
-        
-        data.add_field("content", file_bytes, filename=file_path.name, content_type=mime_type)
+    mime_type = guess_mime_type(str(file_path))
+    data.add_field("content", file_bytes, filename=file_path.name, content_type=mime_type)
 
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=60)) as resp:
-                if resp.status == 200:
-                    return await resp.json()
-                error_text = await resp.text()
-                return {"error": error_text, "status": resp.status}
-    except Exception as exc:
-        return {"error": str(exc), "status": 0}
+    return await _request("POST", "/api/posts/reverse-search", form_data=data, timeout=60)
 
 
 # ---------------------------------------------------------------------------
@@ -347,64 +445,13 @@ async def reverse_search(file_path: Path) -> dict:
 async def search_by_checksum(checksum: str) -> List[dict]:
     """
     Search posts by SHA1 content checksum.
-
-    Args:
-        checksum: The SHA1 content checksum to search for.
-
-    Returns:
-        A list of matching posts, or an empty list if none found.
-        Returns [{"error": ..., "status": ...}] on failure.
+    Returns a list of matching posts, or an empty list if none found.
     """
-    url = f"{settings.szuru_url}/api/posts/"
-    headers = {**_auth_header(), "Accept": "application/json"}
-    params = {"query": f"content-checksum:{checksum}"}
-
-    try:
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    # Szurubooru returns {"results": [...]} for list endpoints
-                    return data.get("results", [])
-                error_text = await resp.text()
-                return [{"error": error_text, "status": resp.status}]
-    except Exception as exc:
-        return [{"error": str(exc), "status": 0}]
-
-
-# ---------------------------------------------------------------------------
-# Source helper
-# ---------------------------------------------------------------------------
-
-
-def append_source(existing_source: Optional[str], new_source: str) -> str:
-    """
-    Append a new source URL to existing sources (newline-separated).
-    Deduplicate if the source already exists.
-
-    Args:
-        existing_source: The current source string (may be None or empty).
-        new_source: The new source URL to append.
-
-    Returns:
-        The combined source string with the new source appended (if not duplicate).
-    """
-    if not existing_source:
-        return new_source
-
-    if not new_source:
-        return existing_source
-
-    # Split existing sources by newline and strip whitespace
-    existing_sources = [s.strip() for s in existing_source.split("\n") if s.strip()]
-
-    # Check if the new source already exists (case-insensitive comparison)
-    new_source_stripped = new_source.strip()
-    for existing in existing_sources:
-        if existing.lower() == new_source_stripped.lower():
-            # Already exists, return unchanged
-            return existing_source
-
-    # Append the new source
-    existing_sources.append(new_source_stripped)
-    return "\n".join(existing_sources)
+    result = await _request(
+        "GET", "/api/posts/",
+        params={"query": f"content-checksum:{checksum}"},
+        timeout=30,
+    )
+    if "error" in result:
+        return [result]
+    return result.get("results", [])

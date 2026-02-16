@@ -10,7 +10,7 @@ Pre-built unpacked extensions are in the repo root [`builds/`](../builds/) folde
 
 **Firefox:** go to `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on", and select any file inside the Firefox build folder (e.g. `builds/firefox-mv2/` or the path shown after building).
 
-After loading, open the extension popup to set your CCC URL and API key.
+After loading, open the extension popup to set your CCC URL and API key. If the backend has multiple Szurubooru users configured, a user selector will appear in the popup.
 
 ## Build from source (developers)
 

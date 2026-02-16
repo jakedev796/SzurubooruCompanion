@@ -44,7 +44,7 @@ async function parseJson(res: Response): Promise<unknown> {
 }
 
 export interface JobsResponse {
-  results: Job[];
+  results: JobSummary[];
   total: number;
 }
 
@@ -57,16 +57,22 @@ export interface SzuruPostMirror {
   relations: number[];
 }
 
-export interface Job {
+export interface JobSummary {
   id: number;
   status: string;
   job_type: string;
   url?: string;
   original_filename?: string;
-  source_override?: string;
-  safety?: string;
+  szuru_user?: string;
   szuru_post_id?: number;
   related_post_ids?: number[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Job extends JobSummary {
+  source_override?: string;
+  safety?: string;
   was_merge?: boolean;
   tags_from_source?: string[];
   tags_from_ai?: string[];
@@ -74,8 +80,6 @@ export interface Job {
   error_message?: string;
   retry_count?: number;
   skip_tagging?: boolean;
-  created_at?: string;
-  updated_at?: string;
   /** When completed, mirrors the post on Szurubooru. */
   post?: SzuruPostMirror | null;
 }
@@ -88,6 +92,7 @@ export interface StatsResponse {
 export interface ConfigResponse {
   auth_required?: boolean;
   booru_url?: string;
+  szuru_users?: string[];
 }
 
 /** Original page URL first, then stored source list (direct media etc.), deduped. */
@@ -123,12 +128,14 @@ export function sortTags(tags: string[]): string[] {
 export async function fetchJobs({
   status,
   was_merge,
+  szuru_user,
   offset = 0,
   limit = 50,
-}: { status?: string; was_merge?: boolean; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
+}: { status?: string; was_merge?: boolean; szuru_user?: string; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (status) params.set("status", status);
   if (was_merge !== undefined) params.set("was_merge", String(was_merge));
+  if (szuru_user) params.set("szuru_user", szuru_user);
   const res = await fetch(`${BASE}/jobs?${params}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson(res) as Promise<JobsResponse>;

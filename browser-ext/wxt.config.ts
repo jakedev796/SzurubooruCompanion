@@ -37,6 +37,7 @@ export default defineConfig({
         "*://danbooru.donmai.us/*",
         "*://safebooru.org/*",
         "*://*.gelbooru.com/*",
+        "*://rule34.xxx/*",
         "*://yande.re/*",
       ],
       runAt: "document_idle",

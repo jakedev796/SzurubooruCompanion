@@ -17,11 +17,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from pydantic import BaseModel
 from sqlalchemy import cast, func, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.config import get_settings
 from app.database import Job, JobStatus, JobType, get_db
 from app.api.deps import verify_api_key
-from app.services.downloader import normalize_sankaku_url
+from app.sites import normalize_url
 
 router = APIRouter()
 settings = get_settings()
@@ -38,6 +39,7 @@ class JobCreateURL(BaseModel):
     tags: Optional[List[str]] = None
     safety: Optional[str] = "unsafe"
     skip_tagging: Optional[bool] = False
+    szuru_user: Optional[str] = None
 
 
 def _parse_json_tags(raw: Optional[str]) -> Optional[List[str]]:
@@ -69,6 +71,7 @@ class JobOut(BaseModel):
     source_override: Optional[str] = None
     safety: Optional[str] = None
     skip_tagging: bool = False
+    szuru_user: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     was_merge: bool = False
@@ -83,6 +86,38 @@ class JobOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class JobSummaryOut(BaseModel):
+    """Slim job representation for list views. Excludes tags and other heavy fields."""
+    id: str
+    status: str
+    job_type: str
+    url: Optional[str] = None
+    original_filename: Optional[str] = None
+    szuru_user: Optional[str] = None
+    szuru_post_id: Optional[int] = None
+    related_post_ids: Optional[List[int]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+def _job_to_summary(job: Job) -> JobSummaryOut:
+    return JobSummaryOut(
+        id=str(job.id),
+        status=job.status.value if isinstance(job.status, JobStatus) else job.status,
+        job_type=job.job_type.value if isinstance(job.job_type, JobType) else job.job_type,
+        url=job.url,
+        original_filename=job.original_filename,
+        szuru_user=job.szuru_user,
+        szuru_post_id=job.szuru_post_id,
+        related_post_ids=job.related_post_ids,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
 
 
 def _job_to_out(job: Job) -> JobOut:
@@ -105,6 +140,7 @@ def _job_to_out(job: Job) -> JobOut:
         source_override=job.source_override,
         safety=job.safety,
         skip_tagging=bool(job.skip_tagging),
+        szuru_user=job.szuru_user,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         was_merge=bool(job.was_merge),
@@ -131,7 +167,7 @@ async def create_job_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a job from a URL."""
-    url = normalize_sankaku_url(body.url)
+    url = normalize_url(body.url)
     job = Job(
         job_type=JobType.URL,
         url=url,
@@ -139,6 +175,7 @@ async def create_job_url(
         initial_tags=json.dumps(body.tags) if body.tags else None,
         safety=body.safety or "unsafe",
         skip_tagging=1 if body.skip_tagging else 0,
+        szuru_user=body.szuru_user,
     )
     db.add(job)
     await db.commit()
@@ -153,6 +190,7 @@ async def create_job_file(
     skip_tagging: bool = Form(False),
     tags: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
+    szuru_user: Optional[str] = Form(None),
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
@@ -179,6 +217,7 @@ async def create_job_file(
         initial_tags=json.dumps(parsed_tags) if parsed_tags else None,
         safety=safety,
         skip_tagging=1 if skip_tagging else 0,
+        szuru_user=szuru_user,
     )
     db.add(job)
     await db.commit()
@@ -190,56 +229,66 @@ async def create_job_file(
 async def list_jobs(
     status: Optional[str] = Query(None),
     was_merge: Optional[bool] = Query(None),
+    szuru_user: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs with optional status and was_merge filter, paginated."""
-    valid_statuses = {s.value.lower() for s in JobStatus}
+  
+"""List jobs with optional status, was_merge, and user filter, paginated."""
+valid_statuses = {s.value.lower() for s in JobStatus}
+if status:
+    status_lower = status.strip().lower()
+    if status_lower not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
+        )
+
+try:
+    query = select(Job).options(
+        load_only(
+            Job.id, Job.status, Job.job_type, Job.url,
+            Job.original_filename, Job.szuru_user,
+            Job.szuru_post_id, Job.related_post_ids,
+            Job.created_at, Job.updated_at,
+        )
+    )
+    count_query = select(func.count(Job.id))
+
     if status:
         status_lower = status.strip().lower()
-        if status_lower not in valid_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
-            )
+        query = query.where(func.lower(cast(Job.status, String)) == status_lower)
+        count_query = count_query.where(func.lower(cast(Job.status, String)) == status_lower)
+    if was_merge is not None:
+        query = query.where(Job.was_merge == (1 if was_merge else 0))
+        count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
+    if szuru_user:
+        query = query.where(Job.szuru_user == szuru_user)
+        count_query = count_query.where(Job.szuru_user == szuru_user)
 
-    try:
-        query = select(Job)
-        count_query = select(func.count(Job.id))
+    query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
 
-        if status:
-            status_lower = status.strip().lower()
-            # Compare as text to avoid PostgreSQL enum name/value mismatch (e.g. PAUSED vs paused)
-            query = query.where(func.lower(cast(Job.status, String)) == status_lower)
-            count_query = count_query.where(func.lower(cast(Job.status, String)) == status_lower)
-        if was_merge is not None:
-            query = query.where(Job.was_merge == (1 if was_merge else 0))
-            count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
+    result = await db.execute(query)
+    jobs = result.scalars().all()
 
-        query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
 
-        result = await db.execute(query)
-        jobs = result.scalars().all()
-
-        total_result = await db.execute(count_query)
-        total = total_result.scalar() or 0
-
-        return {
-            "results": [_job_to_out(j) for j in jobs],
-            "total": total,
-            "offset": offset,
-            "limit": limit,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Jobs list temporarily unavailable: {str(e)[:200]}",
-        ) from e
-
+    return {
+        "results": [_job_to_summary(j) for j in jobs],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+except HTTPException:
+    raise
+except Exception as e:
+    raise HTTPException(
+        status_code=503,
+        detail=f"Jobs list temporarily unavailable: {str(e)[:200]}",
+    ) from e
 
 @router.get("/jobs/{job_id}", response_model=JobOut)
 async def get_job(

@@ -31,7 +31,7 @@ export default function Login() {
           Hello slacker,
           <br />
           is it all right for you to slack around here?
-          <cite>— Rumei</cite>
+          <cite>— Reimu</cite>
         </blockquote>
       </div>
       <div className="card login-card">

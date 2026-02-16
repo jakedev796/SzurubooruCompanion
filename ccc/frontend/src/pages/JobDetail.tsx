@@ -49,7 +49,7 @@ export default function JobDetail() {
 
   useJobUpdates((updatedJob: Record<string, unknown>) => {
     if (String(updatedJob.id) === id || String(updatedJob.job_id) === id) {
-      setJob((prev) => (prev ? { ...prev, ...updatedJob } : (updatedJob as Job)));
+      setJob((prev) => (prev ? { ...prev, ...updatedJob } : (updatedJob as unknown as Job)));
     }
   }, id ?? null);
 
@@ -205,6 +205,9 @@ export default function JobDetail() {
 
           <dt>Safety</dt>
           <dd>{postSafety || "-"}</dd>
+
+          <dt>Upload User</dt>
+          <dd>{job.szuru_user || "-"}</dd>
 
           <dt>Szuru Post ID</dt>
           <dd>

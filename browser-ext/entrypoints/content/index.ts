@@ -14,6 +14,7 @@ import { misskeyExtractor } from './sites/misskey';
 import { twitterExtractor } from './sites/twitter';
 import { danbooruExtractor } from './sites/danbooru';
 import { gelbooruExtractor } from './sites/gelbooru';
+import { rule34Extractor } from './sites/rule34';
 import { yandeExtractor } from './sites/yande';
 
 /** All available extractors */
@@ -22,6 +23,7 @@ const extractors: SiteExtractor[] = [
   twitterExtractor,
   danbooruExtractor,
   gelbooruExtractor,
+  rule34Extractor,
   yandeExtractor,
 ];
 
@@ -190,6 +192,7 @@ export default defineContentScript({
     '*://danbooru.donmai.us/*',
     '*://safebooru.org/*',
     '*://*.gelbooru.com/*',
+    '*://rule34.xxx/*',
     '*://yande.re/*',
   ],
   runAt: 'document_idle',

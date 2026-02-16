@@ -22,6 +22,11 @@ from app.api.stats import router as stats_router
 from app.api.health import router as health_router
 from app.api.events import router as events_router
 from app.api.config import router as config_router
+from app.services.szurubooru import (
+    init_session as init_szuru_session,
+    close_session as close_szuru_session,
+    load_tag_cache,
+)
 from app.workers.processor import start_worker, stop_worker
 
 settings = get_settings()
@@ -35,6 +40,11 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("ccc")
+
+# Reduce console noise: uvicorn access log and third-party libs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+for name in ("httpx", "httpcore", "huggingface_hub", "timm", "timm.models._hub", "wdtagger"):
+    logging.getLogger(name).setLevel(logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
@@ -50,18 +60,24 @@ async def lifespan(app: FastAPI):
     await run_migrations()
     logger.info("Database ready.")
 
-    logger.info("Starting background worker...")
-    worker_task = asyncio.create_task(start_worker())
+    logger.info("Initializing Szurubooru session and tag cache...")
+    await init_szuru_session()
+    await load_tag_cache()
+
+    num_workers = settings.worker_concurrency
+    logger.info("Starting %d background worker(s)...", num_workers)
+    worker_tasks = [asyncio.create_task(start_worker(i)) for i in range(num_workers)]
 
     yield
 
-    logger.info("Shutting down worker...")
+    logger.info("Shutting down workers...")
     await stop_worker()
-    worker_task.cancel()
-    try:
-        await worker_task
-    except asyncio.CancelledError:
-        pass
+    for task in worker_tasks:
+        task.cancel()
+    await asyncio.gather(*worker_tasks, return_exceptions=True)
+
+    logger.info("Closing Szurubooru session...")
+    await close_szuru_session()
     logger.info("Shutdown complete.")
 
 

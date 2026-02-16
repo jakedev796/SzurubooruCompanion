@@ -5,6 +5,7 @@
 export interface CccConfig {
   baseUrl: string;
   apiKey: string;
+  szuruUser: string;  // Selected Szurubooru user (empty = default)
 }
 
 const STORAGE_KEY = "ccc_config";
@@ -16,6 +17,7 @@ export async function loadConfig(): Promise<CccConfig> {
     result[STORAGE_KEY] ?? {
       baseUrl: "http://localhost:21425",
       apiKey: "",
+      szuruUser: "",
     }
   );
 }
@@ -44,18 +46,20 @@ export async function submitJob(
   };
   if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
 
-  const body: { 
-    url: string; 
-    source?: string; 
+  const body: {
+    url: string;
+    source?: string;
     tags?: string[];
     safety?: string;
     skip_tagging?: boolean;
+    szuru_user?: string;
   } = { url };
-  
+
   if (opts?.source) body.source = opts.source;
   if (opts?.tags?.length) body.tags = opts.tags;
   if (opts?.safety) body.safety = opts.safety;
   if (opts?.skipTagging) body.skip_tagging = opts.skipTagging;
+  if (cfg.szuruUser) body.szuru_user = cfg.szuruUser;
 
   const res = await fetch(`${cfg.baseUrl}/api/jobs`, {
     method: "POST",
@@ -69,6 +73,21 @@ export async function submitJob(
   }
 
   return res.json();
+}
+
+/** Fetch available Szurubooru users from the backend config endpoint. */
+export async function fetchSzuruUsers(): Promise<string[]> {
+  const cfg = await loadConfig();
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+  try {
+    const res = await fetch(`${cfg.baseUrl}/api/config`, { headers });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.szuru_users ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export interface Job {

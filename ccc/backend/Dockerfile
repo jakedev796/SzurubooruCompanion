@@ -28,4 +28,4 @@ ENV PYTHONPATH=/app
 
 EXPOSE 21425
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "21425"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "21425", "--no-access-log"]

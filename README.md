@@ -26,6 +26,8 @@ A multi-component workflow for uploading media to [Szurubooru](https://github.co
 - Implement tag extract on mobile app level
 - Further enhancements to performance
 - **Cookie sync (shelved):** Browser extension could capture cookies for sites (e.g. Twitter) and send them to CCC; CCC stores/updates them in Postgres and reads when needed instead of env. Would remove manual cookie export/paste.
+- Allow right click individual images on TWT/X so it grabs the post and not the entire feed/profile
+- Allow category updates to existing tags that don't match the category for a tag coming in
 
 ## Architecture
 
@@ -89,7 +91,18 @@ Point your reverse proxy at these ports as needed; see [docs/reverse-proxy.md](d
 
 ## Configuration
 
-All backend configuration is done via environment variables (see [ccc/backend/.env.example](ccc/backend/.env.example)):
+All backend configuration is done via environment variables (see [ccc/backend/.env.example](ccc/backend/.env.example)).
+
+### Multi-user support
+
+To upload as different Szurubooru users, provide comma-delimited credentials. The first user is the default:
+
+```env
+SZURU_USERNAME=user1,user2
+SZURU_TOKEN=token1,token2
+```
+
+Clients (browser extension, mobile app, dashboard) will show a user selector when multiple users are configured. Each job records which user it uploads as.
 
 ## Sites
 

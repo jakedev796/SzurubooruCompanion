@@ -33,6 +33,7 @@ class Job {
   final List<String> tagsApplied;
   final List<String> tagsFromSource;
   final List<String> tagsFromAi;
+  final String? szuruUser;
   final int retryCount;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -52,6 +53,7 @@ class Job {
     this.tagsApplied = const [],
     this.tagsFromSource = const [],
     this.tagsFromAi = const [],
+    this.szuruUser,
     this.retryCount = 0,
     required this.createdAt,
     required this.updatedAt,
@@ -73,6 +75,7 @@ class Job {
       tagsApplied: _parseStringList(json['tags_applied']),
       tagsFromSource: _parseStringList(json['tags_from_source']),
       tagsFromAi: _parseStringList(json['tags_from_ai']),
+      szuruUser: json['szuru_user'] as String?,
       retryCount: json['retry_count'] as int? ?? 0,
       createdAt: _parseDateTime(json['created_at']) ?? DateTime.now(),
       updatedAt: _parseDateTime(json['updated_at']) ?? DateTime.now(),
@@ -249,6 +252,7 @@ class Job {
       'tags_applied': tagsApplied,
       'tags_from_source': tagsFromSource,
       'tags_from_ai': tagsFromAi,
+      'szuru_user': szuruUser,
       'retry_count': retryCount,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
