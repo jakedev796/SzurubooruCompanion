@@ -170,13 +170,6 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
         if created_posts:
             primary = created_posts[0]
             related_ids = [p["post"]["id"] for p in created_posts[1:]]
-            # Store the same source string we uploaded to Szurubooru (primary post)
-            primary_media = extracted_media[0]
-            stored_sources = _build_source_string(
-                primary_media.source_url.strip() if primary_media.source_url else None,
-                job.url.strip() if job.url else None,
-                (job.source_override or "").strip() or None,
-            )
             await _complete_job(
                 job,
                 primary["post"]["id"],
@@ -184,7 +177,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 primary["tags_from_source"],
                 primary["tags_from_ai"],
                 related_post_ids=related_ids,
-                stored_sources=stored_sources,
+                stored_sources=primary.get("final_source"),
                 was_merge=primary.get("merged", False),
             )
         elif last_error:
@@ -443,6 +436,7 @@ async def _upload_file(
         "tags_from_source": tag_result["tags_from_source"],
         "tags_from_ai": tag_result["tags_from_ai"],
         "merged": merged,
+        "final_source": final_source,
     }
 
 
