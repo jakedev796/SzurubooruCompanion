@@ -4,8 +4,24 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "ccc/backend/**"
+      - "ccc/frontend/**"
+      - "s6-rc.d/**"
+      - "config.json"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "ccc/backend/**"
+      - "ccc/frontend/**"
+      - "s6-rc.d/**"
+      - "config.json"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
 
 env:
   REGISTRY: ghcr.io
