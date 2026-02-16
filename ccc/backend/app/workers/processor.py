@@ -408,6 +408,7 @@ async def _upload_file(
     # Check for duplicates via reverse search
     existing = await szurubooru.reverse_search(fp)
     post: Optional[dict] = None
+    merged = False
 
     if existing.get("exactPost"):
         logger.info("Job %s: Duplicate found for %s, merging with existing post %d",
@@ -418,6 +419,7 @@ async def _upload_file(
             final_source,
             tag_result.get("wd14_character_tags"),
         )
+        merged = True
     else:
         result = await szurubooru.upload_post(
             file_path=fp, tags=all_tags, safety=safety, source=final_source,
@@ -440,6 +442,7 @@ async def _upload_file(
         "tags": all_tags,
         "tags_from_source": tag_result["tags_from_source"],
         "tags_from_ai": tag_result["tags_from_ai"],
+        "merged": merged,
     }
 
 
