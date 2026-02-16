@@ -53,6 +53,7 @@ class Settings:
     dashboard_password: str = os.getenv("DASHBOARD_PASSWORD", "")
 
     # --- Worker ---
+    worker_concurrency: int = max(1, int(os.getenv("WORKER_CONCURRENCY", "1")))
     job_data_dir: str = os.getenv("JOB_DATA_DIR", "/data/jobs")
     gallery_dl_timeout: int = int(os.getenv("GALLERY_DL_TIMEOUT", "120"))
     # Optional gallery-dl config file; if set, passed as -c to gallery-dl. Else we pass per-extractor options for known sites.

@@ -37,23 +37,25 @@ _running = True
 # ---------------------------------------------------------------------------
 
 
-async def start_worker() -> None:
+async def start_worker(worker_id: int = 0) -> None:
     """Main worker loop – polls for pending jobs."""
     global _running
     _running = True
-    logger.info("Worker started.")
+    tag = f"[W{worker_id}]"
+    logger.info("%s Worker started.", tag)
 
     while _running:
         try:
             job = await _claim_next_job()
             if job:
-                await _process_job(job)
+                logger.info("%s Claimed job %s", tag, job.id)
+                await _process_job(job, tag)
             else:
                 await asyncio.sleep(2)  # nothing to do – wait
         except asyncio.CancelledError:
             break
         except Exception:
-            logger.exception("Worker loop error")
+            logger.exception("%s Worker loop error", tag)
             await asyncio.sleep(5)
 
 
@@ -88,7 +90,7 @@ async def _claim_next_job():
         return job
 
 
-async def _process_job(job: Job) -> None:
+async def _process_job(job: Job, tag: str = "[W0]") -> None:
     """
     Run the full pipeline for a single job.
 
@@ -114,8 +116,8 @@ async def _process_job(job: Job) -> None:
         last_error: Optional[str] = None
 
         for idx, media in enumerate(extracted_media):
-            logger.info("Job %s: Processing media %d/%d - %s",
-                        job.id, idx + 1, len(extracted_media), media.filename)
+            logger.info("%s Job %s: Processing media %d/%d - %s",
+                        tag, job.id, idx + 1, len(extracted_media), media.filename)
             media_dir = os.path.join(job_dir, f"media_{idx}")
             os.makedirs(media_dir, exist_ok=True)
 
@@ -131,8 +133,8 @@ async def _process_job(job: Job) -> None:
                     # None means download or upload failed
                     last_error = f"Failed to process {media.filename}"
             except Exception as exc:
-                logger.exception("Job %s: Failed to process media %d (%s)",
-                                 job.id, idx, media.filename)
+                logger.exception("%s Job %s: Failed to process media %d (%s)",
+                                 tag, job.id, idx, media.filename)
                 last_error = str(exc)
 
         # ---- Phase 3: Create relations ----
@@ -158,7 +160,7 @@ async def _process_job(job: Job) -> None:
             await _fail_job(job, "No posts created.")
 
     except Exception as exc:
-        logger.exception("Job %s failed", job.id)
+        logger.exception("%s Job %s failed", tag, job.id)
         await _fail_job(job, str(exc))
     finally:
         try:
@@ -348,9 +350,14 @@ async def _upload_file(
     safety = tag_result["safety"]
 
     # Build source string using normalized deduplication
+    # FILE jobs have no meaningful source URLs (media.source_url is "file://...")
     primary_source = (job.source_override or "").strip() or None
-    direct_media_url = media.source_url.strip() if media.source_url else None
-    original_page_url = _normalize_site_url(job.url.strip()) if job.url else None
+    if job.job_type == JobType.URL:
+        direct_media_url = media.source_url.strip() if media.source_url else None
+        original_page_url = _normalize_site_url(job.url.strip()) if job.url else None
+    else:
+        direct_media_url = None
+        original_page_url = None
     final_source = source_utils.build_source_string(
         direct_media_url, original_page_url, primary_source
     )

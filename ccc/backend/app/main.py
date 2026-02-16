@@ -64,18 +64,17 @@ async def lifespan(app: FastAPI):
     await init_szuru_session()
     await load_tag_cache()
 
-    logger.info("Starting background worker...")
-    worker_task = asyncio.create_task(start_worker())
+    num_workers = settings.worker_concurrency
+    logger.info("Starting %d background worker(s)...", num_workers)
+    worker_tasks = [asyncio.create_task(start_worker(i)) for i in range(num_workers)]
 
     yield
 
-    logger.info("Shutting down worker...")
+    logger.info("Shutting down workers...")
     await stop_worker()
-    worker_task.cancel()
-    try:
-        await worker_task
-    except asyncio.CancelledError:
-        pass
+    for task in worker_tasks:
+        task.cancel()
+    await asyncio.gather(*worker_tasks, return_exceptions=True)
 
     logger.info("Closing Szurubooru session...")
     await close_szuru_session()
