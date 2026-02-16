@@ -103,6 +103,17 @@ class Job(Base):
     )
 
 
+class TagCache(Base):
+    """Cache of tags verified to exist in Szurubooru with the correct category."""
+
+    __tablename__ = "tag_cache"
+
+    tag_name = Column(String(512), primary_key=True)  # stored lowercased
+    category = Column(String(128), nullable=False)
+    verified_at = Column(DateTime(timezone=True), nullable=False,
+                         default=lambda: datetime.now(timezone.utc))
+
+
 class SchemaMigration(Base):
     """Tracks applied schema migrations for auto-migration on startup."""
 

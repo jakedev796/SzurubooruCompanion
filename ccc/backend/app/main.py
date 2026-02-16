@@ -22,6 +22,11 @@ from app.api.stats import router as stats_router
 from app.api.health import router as health_router
 from app.api.events import router as events_router
 from app.api.config import router as config_router
+from app.services.szurubooru import (
+    init_session as init_szuru_session,
+    close_session as close_szuru_session,
+    load_tag_cache,
+)
 from app.workers.processor import start_worker, stop_worker
 
 settings = get_settings()
@@ -55,6 +60,10 @@ async def lifespan(app: FastAPI):
     await run_migrations()
     logger.info("Database ready.")
 
+    logger.info("Initializing Szurubooru session and tag cache...")
+    await init_szuru_session()
+    await load_tag_cache()
+
     logger.info("Starting background worker...")
     worker_task = asyncio.create_task(start_worker())
 
@@ -67,6 +76,9 @@ async def lifespan(app: FastAPI):
         await worker_task
     except asyncio.CancelledError:
         pass
+
+    logger.info("Closing Szurubooru session...")
+    await close_szuru_session()
     logger.info("Shutdown complete.")
 
 

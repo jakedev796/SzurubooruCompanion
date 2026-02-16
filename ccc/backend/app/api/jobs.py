@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import Job, JobStatus, JobType, get_db
 from app.api.deps import verify_api_key
-from app.services.downloader import normalize_sankaku_url
+from app.sites import normalize_url
 
 router = APIRouter()
 settings = get_settings()
@@ -107,7 +107,7 @@ async def create_job_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a job from a URL."""
-    url = normalize_sankaku_url(body.url)
+    url = normalize_url(body.url)
     job = Job(
         job_type=JobType.URL,
         url=url,
