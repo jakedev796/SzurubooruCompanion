@@ -1,4 +1,7 @@
 #!/command/with-contenv sh
+# Create subdirectories that may not exist in a fresh volume mount
+mkdir -p /data/postgres /data/jobs /data/wd14-models /run/postgresql
+
 # Initialize data directory if empty
 if [ ! -f /data/postgres/PG_VERSION ]; then
     chown postgres:postgres /data/postgres
