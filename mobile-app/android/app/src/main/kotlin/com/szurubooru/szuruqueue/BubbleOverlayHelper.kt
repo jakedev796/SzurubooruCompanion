@@ -7,6 +7,7 @@ import android.graphics.Outline
 import android.graphics.PixelFormat
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.MotionEvent
@@ -19,6 +20,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
+import android.animation.ArgbEvaluator
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
@@ -35,6 +37,42 @@ object BubbleOverlayHelper {
     private const val ELEVATION_DEFAULT = 12f
     private const val ELEVATION_PRESSED = 16f
     private const val INITIAL_Y_DP = 200
+    private const val PREFS_NAME = "FlutterSharedPreferences"
+    private const val PREF_BUBBLE_X = "flutter.bubblePositionX"
+    private const val PREF_BUBBLE_Y = "flutter.bubblePositionY"
+
+    // Callback for result animations
+    private var resultCallback: ((Boolean) -> Unit)? = null
+
+    fun setResultCallback(callback: (Boolean) -> Unit) {
+        resultCallback = callback
+    }
+
+    fun triggerResult(success: Boolean) {
+        resultCallback?.invoke(success)
+    }
+
+    /**
+     * Save bubble position to SharedPreferences.
+     */
+    private fun saveBubblePosition(context: Context, x: Int, y: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().apply {
+            putInt(PREF_BUBBLE_X, x)
+            putInt(PREF_BUBBLE_Y, y)
+            apply()
+        }
+    }
+
+    /**
+     * Load saved bubble position from SharedPreferences, or return defaults.
+     */
+    private fun loadBubblePosition(context: Context, density: Float): Pair<Int, Int> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val defaultY = (INITIAL_Y_DP * density).toInt()
+        val x = prefs.getInt(PREF_BUBBLE_X, 0)
+        val y = prefs.getInt(PREF_BUBBLE_Y, defaultY)
+        return Pair(x, y)
+    }
 
     /**
      * Loads the bubble icon (app launcher icon) in a way that works from Service context.
@@ -61,7 +99,9 @@ object BubbleOverlayHelper {
     ): Pair<View, WindowManager.LayoutParams> {
         val density = context.resources.displayMetrics.density
         val sizePx = (BUBBLE_SIZE_DP * density).toInt().coerceAtLeast(1)
-        val initialY = (INITIAL_Y_DP * density).toInt()
+
+        // Load saved position or use defaults
+        val (savedX, savedY) = loadBubblePosition(context, density)
 
         val container = FrameLayout(context).apply {
             setBackgroundResource(R.drawable.bubble_background)
@@ -105,8 +145,8 @@ object BubbleOverlayHelper {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = initialY
+            x = savedX
+            y = savedY
         }
 
         val displayMetrics = DisplayMetrics()
@@ -114,6 +154,7 @@ object BubbleOverlayHelper {
         windowManager.defaultDisplay.getMetrics(displayMetrics)
 
         container.setOnTouchListener(BubbleTouchListener(
+            context = context,
             params = params,
             windowManager = windowManager,
             displayMetrics = displayMetrics,
@@ -123,6 +164,17 @@ object BubbleOverlayHelper {
                 container.postDelayed(onTap, 150)
             }
         ))
+
+        // Register callback for result animations
+        setResultCallback { success ->
+            container.post {
+                if (success) {
+                    runSuccessAnimation(container)
+                } else {
+                    runFailureAnimation(container)
+                }
+            }
+        }
 
         return Pair(container, params)
     }
@@ -150,6 +202,105 @@ object BubbleOverlayHelper {
         }
     }
 
+    /**
+     * Run success animation (green glow spreading from bottom to top).
+     */
+    fun runSuccessAnimation(view: View) {
+        // Create a glow overlay
+        val glowView = View(view.context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke(0, 0x00000000.toInt())
+            }
+        }
+
+        val parent = view as? FrameLayout ?: return
+        val sizePx = view.width
+
+        parent.addView(glowView, FrameLayout.LayoutParams(sizePx, sizePx).apply {
+            gravity = Gravity.CENTER
+        })
+
+        // Animate stroke width and color
+        val drawable = glowView.background as GradientDrawable
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 800
+            addUpdateListener { animation ->
+                val progress = animation.animatedValue as Float
+
+                // Stroke grows then shrinks
+                val strokeWidth = when {
+                    progress < 0.4f -> (progress / 0.4f * 12).toInt()
+                    else -> ((1f - progress) / 0.6f * 12).toInt()
+                }
+
+                // Green color fades in then out
+                val alpha = when {
+                    progress < 0.3f -> (progress / 0.3f * 255).toInt()
+                    progress > 0.7f -> ((1f - progress) / 0.3f * 255).toInt()
+                    else -> 255
+                }.coerceIn(0, 255)
+
+                val color = (alpha shl 24) or 0x00FF00
+                drawable.setStroke(strokeWidth, color)
+
+                // Remove view when done
+                if (progress >= 1f) {
+                    parent.post { parent.removeView(glowView) }
+                }
+            }
+            start()
+        }
+    }
+
+    /**
+     * Run failure animation (red glow pulse).
+     */
+    fun runFailureAnimation(view: View) {
+        val glowView = View(view.context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke(0, 0x00000000.toInt())
+            }
+        }
+
+        val parent = view as? FrameLayout ?: return
+        val sizePx = view.width
+
+        parent.addView(glowView, FrameLayout.LayoutParams(sizePx, sizePx).apply {
+            gravity = Gravity.CENTER
+        })
+
+        val drawable = glowView.background as GradientDrawable
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 600
+            addUpdateListener { animation ->
+                val progress = animation.animatedValue as Float
+
+                // Pulse twice
+                val pulseProgress = (progress * 2) % 1f
+                val strokeWidth = when {
+                    pulseProgress < 0.5f -> (pulseProgress / 0.5f * 10).toInt()
+                    else -> ((1f - pulseProgress) / 0.5f * 10).toInt()
+                }
+
+                // Red color fades in/out with pulse
+                val alpha = when {
+                    pulseProgress < 0.4f -> (pulseProgress / 0.4f * 255).toInt()
+                    else -> ((1f - pulseProgress) / 0.6f * 255).toInt()
+                }.coerceIn(0, 255)
+
+                val color = (alpha shl 24) or 0xFF0000
+                drawable.setStroke(strokeWidth, color)
+
+                if (progress >= 1f) {
+                    parent.post { parent.removeView(glowView) }
+                }
+            }
+            start()
+        }
+    }
+
     private fun runTapAnimation(v: View) {
         ObjectAnimator.ofFloat(v, "scaleX", 1f, 0.85f, 1.15f, 1f).apply {
             duration = 400
@@ -172,6 +323,7 @@ object BubbleOverlayHelper {
     }
 
     private class BubbleTouchListener(
+        private val context: Context,
         private val params: WindowManager.LayoutParams,
         private val windowManager: WindowManager,
         private val displayMetrics: DisplayMetrics,
@@ -281,6 +433,8 @@ object BubbleOverlayHelper {
                         f >= 1f -> {
                             v.scaleX = 1f
                             v.scaleY = 1f
+                            // Save final position when animation completes
+                            saveBubblePosition(context, params.x, params.y)
                         }
                         f < 0.35f -> {
                             val s = 1f - 0.08f * (f / 0.35f)

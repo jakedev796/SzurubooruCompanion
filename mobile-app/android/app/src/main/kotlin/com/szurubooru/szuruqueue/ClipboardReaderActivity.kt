@@ -50,6 +50,7 @@ class ClipboardReaderActivity : Activity() {
 
         if (!clipboard.hasPrimaryClip()) {
             showToast("Clipboard is empty")
+            BubbleOverlayHelper.triggerResult(false)
             finish()
             return
         }
@@ -57,6 +58,7 @@ class ClipboardReaderActivity : Activity() {
         val clip = clipboard.primaryClip
         if (clip == null || clip.itemCount == 0) {
             showToast("Clipboard is empty")
+            BubbleOverlayHelper.triggerResult(false)
             finish()
             return
         }
@@ -66,6 +68,7 @@ class ClipboardReaderActivity : Activity() {
 
         if (url.isNullOrBlank()) {
             showToast("No URL in clipboard")
+            BubbleOverlayHelper.triggerResult(false)
             finish()
             return
         }
@@ -76,6 +79,7 @@ class ClipboardReaderActivity : Activity() {
 
         if (settings.backendUrl.isNullOrBlank()) {
             showToast("Configure backend URL in SzuruCompanion settings first")
+            BubbleOverlayHelper.triggerResult(false)
             finish()
             return
         }
@@ -95,6 +99,8 @@ class ClipboardReaderActivity : Activity() {
             }
             withContext(Dispatchers.Main) {
                 showToast(if (success) "Share queued" else "Failed to queue share")
+                // Trigger bubble animation
+                BubbleOverlayHelper.triggerResult(success)
                 finish()
             }
         }
