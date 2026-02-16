@@ -86,10 +86,9 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".StatusForegroundService"
+            android:name=".CompanionForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
-
         <service
             android:name=".FloatingBubbleService"
             android:foregroundServiceType="specialUse"

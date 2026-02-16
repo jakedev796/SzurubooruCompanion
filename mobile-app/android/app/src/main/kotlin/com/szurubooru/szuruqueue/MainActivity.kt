@@ -83,10 +83,19 @@ class MainActivity : FlutterActivity() {
                     initialShareData = null
                     result.success(null)
                 }
-                "startForegroundStatusService" -> {
-                    val body = call.argument<String>("body") ?: "Folder sync enabled."
-                    val intent = Intent(this, StatusForegroundService::class.java).apply {
-                        putExtra(StatusForegroundService.EXTRA_BODY, body)
+                "startCompanionForegroundService" -> {
+                    val folderSyncEnabled = call.argument<Boolean>("folderSyncEnabled") ?: false
+                    val bubbleEnabled = call.argument<Boolean>("bubbleEnabled") ?: false
+                    val statusBody = call.argument<String>("statusBody")
+                    if (!folderSyncEnabled && !bubbleEnabled) {
+                        stopService(Intent(this, CompanionForegroundService::class.java))
+                        result.success(null)
+                        return@setMethodCallHandler
+                    }
+                    val body = statusBody ?: buildCompanionNotificationBody(folderSyncEnabled, bubbleEnabled)
+                    val intent = Intent(this, CompanionForegroundService::class.java).apply {
+                        putExtra(CompanionForegroundService.EXTRA_SHOW_BUBBLE, bubbleEnabled)
+                        putExtra(CompanionForegroundService.EXTRA_BODY, body)
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(intent)
@@ -95,8 +104,23 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
-                "stopForegroundStatusService" -> {
-                    stopService(Intent(this, StatusForegroundService::class.java))
+                "updateCompanionNotification" -> {
+                    val statusBody = call.argument<String>("statusBody")
+                    if (statusBody != null) {
+                        val intent = Intent(this, CompanionForegroundService::class.java).apply {
+                            putExtra(CompanionForegroundService.EXTRA_BODY, statusBody)
+                            putExtra(CompanionForegroundService.EXTRA_UPDATE_BODY_ONLY, true)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                    }
+                    result.success(null)
+                }
+                "stopCompanionForegroundService" -> {
+                    stopService(Intent(this, CompanionForegroundService::class.java))
                     result.success(null)
                 }
                 "scheduleAlarmManagerSync" -> {
@@ -227,6 +251,13 @@ class MainActivity : FlutterActivity() {
         }
     }
     
+    private fun buildCompanionNotificationBody(folderSyncEnabled: Boolean, bubbleEnabled: Boolean): String {
+        val parts = mutableListOf<String>()
+        if (folderSyncEnabled) parts.add("Folder sync on")
+        if (bubbleEnabled) parts.add("Bubble on")
+        return if (parts.isEmpty()) "SzuruCompanion active" else parts.joinToString(" • ")
+    }
+
     private fun extractUrl(text: String): String {
         // Handle fxtwitter URLs
         var normalizedText = text

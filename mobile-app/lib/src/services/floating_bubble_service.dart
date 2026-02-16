@@ -2,14 +2,12 @@ import 'package:flutter/services.dart';
 
 const _channel = MethodChannel('com.szurubooru.szuruqueue/share');
 
-/// Start the floating bubble overlay service.
-/// Requires SYSTEM_ALERT_WINDOW permission (check with [canDrawOverlays] first).
+/// Start the floating bubble overlay service (only when folder sync is NOT enabled).
+/// When folder sync is enabled, use CompanionForegroundService instead.
 Future<void> startFloatingBubbleService() async {
   try {
     await _channel.invokeMethod('startFloatingBubbleService');
-  } on PlatformException catch (_) {
-    // Service may not be available on all devices
-  }
+  } on PlatformException catch (_) {}
 }
 
 /// Stop the floating bubble overlay service.

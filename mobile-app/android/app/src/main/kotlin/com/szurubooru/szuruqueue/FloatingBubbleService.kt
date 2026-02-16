@@ -6,22 +6,22 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
-import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
-import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.ImageView
 import androidx.core.app.NotificationCompat
-import kotlin.math.abs
 
 /**
  * Foreground service that renders a small floating bubble on top of other apps.
  * Tapping the bubble launches [ClipboardReaderActivity] to read the clipboard
  * and queue the URL to the CCC backend.
+ * 
+ * Used only when folder sync is NOT enabled (otherwise CompanionForegroundService handles it).
+ * Uses specialUse type which will show Android's overlay permission notification.
+ * This is expected behavior for overlay services.
  */
 class FloatingBubbleService : Service() {
 
@@ -34,8 +34,12 @@ class FloatingBubbleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildNotification())
-        showBubble()
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification())
+            showBubble()
+        } catch (e: Exception) {
+            Log.e(TAG, "onStartCommand failed", e)
+        }
         return START_STICKY
     }
 
@@ -46,37 +50,29 @@ class FloatingBubbleService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // -- Bubble overlay -------------------------------------------------------
+    // -- Bubble overlay (BubbleOverlayHelper) ---------------------------------
 
     private fun showBubble() {
-        if (bubbleView != null) return // already showing
+        if (bubbleView != null) return
 
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-
-        val bubble = ImageView(this).apply {
-            setImageResource(R.mipmap.ic_launcher)
-            // Make the view circular-ish by clipping
-            clipToOutline = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "Overlay permission not granted, skipping bubble")
+            return
         }
 
-        val size = (BUBBLE_SIZE_DP * resources.displayMetrics.density).toInt()
-
-        val params = WindowManager.LayoutParams(
-            size,
-            size,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 200
+        try {
+            windowManager = getSystemService(WINDOW_SERVICE) as? WindowManager ?: return
+            val (bubble, params) = BubbleOverlayHelper.createBubbleView(this, windowManager!!) {
+                startActivity(Intent(this, ClipboardReaderActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }
+            windowManager!!.addView(bubble, params)
+            BubbleOverlayHelper.runEntryAnimation(bubble)
+            bubbleView = bubble
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show bubble overlay", e)
         }
-
-        bubble.setOnTouchListener(BubbleTouchListener(params))
-
-        windowManager?.addView(bubble, params)
-        bubbleView = bubble
     }
 
     private fun removeBubble() {
@@ -88,58 +84,6 @@ class FloatingBubbleService : Service() {
             }
         }
         bubbleView = null
-    }
-
-    /**
-     * Distinguishes drags from taps.  A tap launches [ClipboardReaderActivity].
-     */
-    private inner class BubbleTouchListener(
-        private val params: WindowManager.LayoutParams,
-    ) : View.OnTouchListener {
-        private var initialX = 0
-        private var initialY = 0
-        private var initialTouchX = 0f
-        private var initialTouchY = 0f
-        private var moved = false
-
-        override fun onTouch(v: View, event: MotionEvent): Boolean {
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    initialX = params.x
-                    initialY = params.y
-                    initialTouchX = event.rawX
-                    initialTouchY = event.rawY
-                    moved = false
-                    return true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - initialTouchX
-                    val dy = event.rawY - initialTouchY
-                    if (abs(dx) > CLICK_THRESHOLD || abs(dy) > CLICK_THRESHOLD) {
-                        moved = true
-                    }
-                    params.x = initialX + dx.toInt()
-                    params.y = initialY + dy.toInt()
-                    windowManager?.updateViewLayout(v, params)
-                    return true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (!moved) {
-                        onBubbleTapped()
-                    }
-                    v.performClick()
-                    return true
-                }
-            }
-            return false
-        }
-    }
-
-    private fun onBubbleTapped() {
-        val intent = Intent(this, ClipboardReaderActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
     }
 
     // -- Notification ---------------------------------------------------------
@@ -181,7 +125,5 @@ class FloatingBubbleService : Service() {
         private const val TAG = "FloatingBubble"
         const val NOTIFICATION_ID = 101
         const val CHANNEL_ID = "bubble"
-        private const val BUBBLE_SIZE_DP = 56
-        private const val CLICK_THRESHOLD = 10
     }
 }
