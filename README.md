@@ -22,12 +22,10 @@ A multi-component workflow for uploading media to [Szurubooru](https://github.co
 
 ## TODO
 
-- Finetune browser extension for popular sites
-- Implement tag extract on mobile app level
+- Finetune browser extension / ccc for popular sites
 - Further enhancements to performance
 - **Cookie sync (shelved):** Browser extension could capture cookies for sites (e.g. Twitter) and send them to CCC; CCC stores/updates them in Postgres and reads when needed instead of env. Would remove manual cookie export/paste.
 - Allow right click individual images on TWT/X so it grabs the post and not the entire feed/profile
-- Allow category updates to existing tags that don't match the category for a tag coming in
 
 ## Architecture
 

@@ -235,60 +235,59 @@ async def list_jobs(
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-  
-"""List jobs with optional status, was_merge, and user filter, paginated."""
-valid_statuses = {s.value.lower() for s in JobStatus}
-if status:
-    status_lower = status.strip().lower()
-    if status_lower not in valid_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
-        )
-
-try:
-    query = select(Job).options(
-        load_only(
-            Job.id, Job.status, Job.job_type, Job.url,
-            Job.original_filename, Job.szuru_user,
-            Job.szuru_post_id, Job.related_post_ids,
-            Job.created_at, Job.updated_at,
-        )
-    )
-    count_query = select(func.count(Job.id))
-
+    """List jobs with optional status, was_merge, and user filter, paginated."""
+    valid_statuses = {s.value.lower() for s in JobStatus}
     if status:
         status_lower = status.strip().lower()
-        query = query.where(func.lower(cast(Job.status, String)) == status_lower)
-        count_query = count_query.where(func.lower(cast(Job.status, String)) == status_lower)
-    if was_merge is not None:
-        query = query.where(Job.was_merge == (1 if was_merge else 0))
-        count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
-    if szuru_user:
-        query = query.where(Job.szuru_user == szuru_user)
-        count_query = count_query.where(Job.szuru_user == szuru_user)
+        if status_lower not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
+            )
 
-    query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
+    try:
+        query = select(Job).options(
+            load_only(
+                Job.id, Job.status, Job.job_type, Job.url,
+                Job.original_filename, Job.szuru_user,
+                Job.szuru_post_id, Job.related_post_ids,
+                Job.created_at, Job.updated_at,
+            )
+        )
+        count_query = select(func.count(Job.id))
 
-    result = await db.execute(query)
-    jobs = result.scalars().all()
+        if status:
+            status_lower = status.strip().lower()
+            query = query.where(func.lower(cast(Job.status, String)) == status_lower)
+            count_query = count_query.where(func.lower(cast(Job.status, String)) == status_lower)
+        if was_merge is not None:
+            query = query.where(Job.was_merge == (1 if was_merge else 0))
+            count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
+        if szuru_user:
+            query = query.where(Job.szuru_user == szuru_user)
+            count_query = count_query.where(Job.szuru_user == szuru_user)
 
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
+        query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
 
-    return {
-        "results": [_job_to_summary(j) for j in jobs],
-        "total": total,
-        "offset": offset,
-        "limit": limit,
-    }
-except HTTPException:
-    raise
-except Exception as e:
-    raise HTTPException(
-        status_code=503,
-        detail=f"Jobs list temporarily unavailable: {str(e)[:200]}",
-    ) from e
+        result = await db.execute(query)
+        jobs = result.scalars().all()
+
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+
+        return {
+            "results": [_job_to_summary(j) for j in jobs],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Jobs list temporarily unavailable: {str(e)[:200]}",
+        ) from e
 
 @router.get("/jobs/{job_id}", response_model=JobOut)
 async def get_job(
