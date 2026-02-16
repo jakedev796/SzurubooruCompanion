@@ -16,6 +16,7 @@ import 'src/services/backend_client.dart';
 import 'src/services/background_task.dart';
 import 'src/services/notification_service.dart';
 import 'src/services/settings_model.dart';
+import 'src/services/floating_bubble_service.dart';
 import 'src/services/status_foreground_service.dart';
 import 'src/services/storage_permission.dart';
 
@@ -125,6 +126,7 @@ class _MainScreenState extends State<MainScreen> {
   bool _notifyOnFolderSync = false;
   bool _deleteMediaAfterSync = false;
   bool _showPersistentNotification = true;
+  bool _showFloatingBubble = false;
   int _folderSyncIntervalSeconds = 900;
   String _szuruUser = '';
   int _selectedIndex = 0;
@@ -206,6 +208,7 @@ class _MainScreenState extends State<MainScreen> {
     _notifyOnFolderSync = settings.notifyOnFolderSync;
     _deleteMediaAfterSync = settings.deleteMediaAfterSync;
     _showPersistentNotification = settings.showPersistentNotification;
+    _showFloatingBubble = settings.showFloatingBubble;
     _folderSyncIntervalSeconds = settings.folderSyncIntervalSeconds;
     _szuruUser = settings.szuruUser;
   }
@@ -781,6 +784,19 @@ class _MainScreenState extends State<MainScreen> {
               },
             ),
             const SizedBox(height: 12),
+            SwitchListTile(
+              title: const Text('Floating bubble'),
+              subtitle: const Text(
+                'Show a floating bubble overlay. Tap it to queue whatever URL is in your clipboard.',
+              ),
+              value: _showFloatingBubble,
+              onChanged: (value) {
+                setState(() {
+                  _showFloatingBubble = value;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
             DropdownButtonFormField<int>(
               value: _folderSyncIntervalSeconds,
               decoration: const InputDecoration(
@@ -1089,6 +1105,45 @@ class _MainScreenState extends State<MainScreen> {
       }
     }
 
+    // Handle floating bubble permission before saving
+    if (_showFloatingBubble) {
+      final hasOverlay = await canDrawOverlays();
+      if (!hasOverlay && mounted) {
+        final shouldRequest = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Overlay Permission Required'),
+            content: const Text(
+              'The floating bubble needs "Display over other apps" permission '
+              'to appear on top of other apps.\n\n'
+              'Would you like to grant it now?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Skip'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Grant Permission'),
+              ),
+            ],
+          ),
+        );
+        if (shouldRequest == true) {
+          await requestOverlayPermission();
+          // User comes back from Settings; re-check
+          final granted = await canDrawOverlays();
+          if (!granted) {
+            setState(() { _showFloatingBubble = false; });
+            if (mounted) _showSnackBar('Overlay permission not granted - bubble disabled');
+          }
+        } else {
+          setState(() { _showFloatingBubble = false; });
+        }
+      }
+    }
+
     await settings.saveSettings(
       backendUrl: _backendUrlController.text.trim(),
       apiKey: _apiKeyController.text.trim(),
@@ -1099,6 +1154,7 @@ class _MainScreenState extends State<MainScreen> {
       notifyOnFolderSync: _notifyOnFolderSync,
       deleteMediaAfterSync: _deleteMediaAfterSync,
       showPersistentNotification: _showPersistentNotification,
+      showFloatingBubble: _showFloatingBubble,
       folderSyncIntervalSeconds: _folderSyncIntervalSeconds,
       szuruUser: _szuruUser,
     );
@@ -1106,6 +1162,13 @@ class _MainScreenState extends State<MainScreen> {
     if (!_showPersistentNotification) {
       await stopStatusForegroundService();
       await NotificationService.instance.cancelStatusNotification();
+    }
+
+    // Start or stop the floating bubble service
+    if (_showFloatingBubble) {
+      await startFloatingBubbleService();
+    } else {
+      await stopFloatingBubbleService();
     }
 
     if (hasFoldersEnabled) {

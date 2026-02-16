@@ -147,8 +147,11 @@ export async function fetchJob(id: string): Promise<Job> {
   return parseJson(res) as Promise<Job>;
 }
 
-export async function fetchStats(): Promise<StatsResponse> {
-  const res = await fetch(`${BASE}/stats`, { headers: headers() });
+export async function fetchStats({ szuru_user }: { szuru_user?: string } = {}): Promise<StatsResponse> {
+  const params = new URLSearchParams();
+  if (szuru_user) params.set("szuru_user", szuru_user);
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/stats${qs ? `?${qs}` : ""}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson(res) as Promise<StatsResponse>;
 }

@@ -64,7 +64,7 @@ export default function Dashboard({ szuruUser }: { szuruUser?: string }) {
   useEffect(() => {
     setError(null);
     Promise.all([
-      fetchStats().then(setStats).catch((e: Error) => {
+      fetchStats({ szuru_user: szuruUser || undefined }).then(setStats).catch((e: Error) => {
         if (e.message.includes("401")) navigate("/login", { replace: true });
         else setError(e.message);
       }),

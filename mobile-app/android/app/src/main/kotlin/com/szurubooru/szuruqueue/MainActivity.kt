@@ -131,6 +131,35 @@ class MainActivity : FlutterActivity() {
                         result.success(null) // Not needed on older versions
                     }
                 }
+                "startFloatingBubbleService" -> {
+                    val intent = Intent(this, FloatingBubbleService::class.java)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                    result.success(null)
+                }
+                "stopFloatingBubbleService" -> {
+                    stopService(Intent(this, FloatingBubbleService::class.java))
+                    result.success(null)
+                }
+                "canDrawOverlays" -> {
+                    result.success(Settings.canDrawOverlays(this))
+                }
+                "requestOverlayPermission" -> {
+                    try {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                        startActivity(intent)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error opening overlay permission settings", e)
+                        result.error("PERMISSION_ERROR", e.message, null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }

@@ -23,7 +23,7 @@ async def get_config(
     """
     settings = get_settings()
     result: dict = {
-        "booru_url": settings.szuru_url,
+        "booru_url": settings.szuru_public_url or settings.szuru_url,
         "auth_required": bool(settings.dashboard_user and settings.dashboard_password),
     }
 

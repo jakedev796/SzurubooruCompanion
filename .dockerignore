@@ -1,0 +1,37 @@
+.git
+.github
+.claude
+.vscode
+.idea
+.cursor
+
+# Dev data
+local-dev/
+data/
+
+# Non-CCC components (not needed in fat image)
+mobile-app/
+browser-ext/
+builds/
+docs/
+
+# Node modules (frontend npm install happens in build stage)
+node_modules/
+ccc/frontend/node_modules/
+ccc/frontend/dist/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Env files with secrets
+.env
+ccc/backend/.env
+
+# OS
+.DS_Store
+Thumbs.db
+*.log

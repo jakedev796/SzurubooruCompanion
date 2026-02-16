@@ -385,9 +385,13 @@ class BackendClient {
 
   /// Backend endpoint: GET /api/stats
   /// Response: { total_jobs, by_status: { pending, downloading, tagging, uploading, completed, failed }, daily_uploads }
-  Future<Map<String, int>> fetchStats() async {
+  Future<Map<String, int>> fetchStats({String? szuruUser}) async {
     try {
-      final response = await _dio.get('/api/stats');
+      final queryParams = <String, dynamic>{};
+      if (szuruUser != null && szuruUser.isNotEmpty) {
+        queryParams['szuru_user'] = szuruUser;
+      }
+      final response = await _dio.get('/api/stats', queryParameters: queryParams);
 
       if (response.data is! Map<String, dynamic>) {
         return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'failed': 0};

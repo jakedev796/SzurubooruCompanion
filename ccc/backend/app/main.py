@@ -155,3 +155,31 @@ app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 app.include_router(stats_router, prefix="/api", tags=["stats"])
 app.include_router(events_router, prefix="/api", tags=["events"])
 app.include_router(config_router, prefix="/api", tags=["config"])
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (single-container mode)
+# ---------------------------------------------------------------------------
+import os as _os
+from pathlib import Path as _Path
+
+_static_dir = _os.getenv("STATIC_FILES_DIR", "")
+if _static_dir and _Path(_static_dir).is_dir():
+    from starlette.responses import FileResponse
+
+    _static_path = _Path(_static_dir)
+    _index_path = str(_static_path / "index.html")
+
+    @app.get("/")
+    async def _serve_root():
+        return FileResponse(_index_path)
+
+    @app.get("/{full_path:path}")
+    async def _spa_fallback(full_path: str):
+        """Serve static file if it exists, otherwise index.html for SPA routing."""
+        if ".." in full_path:
+            return FileResponse(_index_path)
+        candidate = _static_path / full_path
+        if candidate.is_file():
+            return FileResponse(str(candidate), media_type=None)
+        return FileResponse(_index_path)

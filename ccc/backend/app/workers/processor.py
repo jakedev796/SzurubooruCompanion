@@ -38,6 +38,10 @@ _running = True
 # ---------------------------------------------------------------------------
 
 
+def _looks_like_url(s: str) -> bool:
+    return s.startswith("http://") or s.startswith("https://")
+
+
 def _extract_metadata_sources(metadata: Dict) -> List[str]:
     """Extract source URLs from gallery-dl metadata (e.g. ``data.sources``, ``source``)."""
     urls: List[str] = []
@@ -47,11 +51,12 @@ def _extract_metadata_sources(metadata: Dict) -> List[str]:
         sources = data.get("sources")
         if isinstance(sources, list):
             for s in sources:
-                if isinstance(s, str) and s.strip():
+                if isinstance(s, str) and s.strip() and _looks_like_url(s.strip()):
                     urls.append(s.strip())
-    # Some extractors put a top-level "source" string
+    # Some extractors put a top-level "source" string (some extractors
+    # use non-URL values like "removed", so filter those out)
     source = metadata.get("source")
-    if isinstance(source, str) and source.strip():
+    if isinstance(source, str) and source.strip() and _looks_like_url(source.strip()):
         urls.append(source.strip())
     return urls
 
