@@ -35,11 +35,22 @@
         width: 100%;
       }
       button:hover { background: #4f46e5; }
+      select {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #2a2d36;
+        border-radius: 4px;
+        background: #1e2028;
+        color: #d4d4d8;
+        font-size: 13px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+      }
       .msg { font-size: 12px; margin-top: 8px; }
       .msg.ok { color: #22c55e; }
       .msg.err { color: #ef4444; }
     </style>
-    <script type="module" crossorigin src="/chunks/popup-BsYk4NFQ.js"></script>
+    <script type="module" crossorigin src="/chunks/popup-jQSbYT4D.js"></script>
   </head>
   <body>
     <h2>Szurubooru Companion</h2>
@@ -49,6 +60,11 @@
 
     <label for="apiKey">API Key (optional)</label>
     <input id="apiKey" type="password" placeholder="Leave blank if not required">
+
+    <label for="szuruUser">Upload as</label>
+    <select id="szuruUser">
+      <option value="">Default user</option>
+    </select>
 
     <button id="save">Save</button>
     <div id="msg" class="msg"></div>

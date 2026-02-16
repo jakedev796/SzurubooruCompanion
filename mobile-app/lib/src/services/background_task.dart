@@ -97,6 +97,7 @@ void callbackDispatcher() {
         final tags = (inputData['tags'] as List?)?.cast<String>() ?? [];
         final safety = inputData['safety'] as String? ?? 'unsafe';
         final skipTagging = inputData['skipTagging'] as bool? ?? false;
+        final szuruUser = inputData['szuruUser'] as String? ?? '';
 
         if (url == null || backendUrl == null) {
           debugPrint(
@@ -112,6 +113,7 @@ void callbackDispatcher() {
             tags: tags,
             safety: safety,
             skipTagging: skipTagging,
+            szuruUser: szuruUser.isNotEmpty ? szuruUser : null,
           );
           await NotificationService.instance.showUploadSuccess(url);
           debugPrint('[BackgroundIsolate] Upload task completed: $url');

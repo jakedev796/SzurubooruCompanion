@@ -43,28 +43,32 @@ async function parseJson(res: Response): Promise<unknown> {
   }
 }
 
-export interface JobsResponse {
-  results: Job[];
-  total: number;
-}
-
-export interface Job {
+export interface JobSummary {
   id: number;
   status: string;
   job_type: string;
   url?: string;
   original_filename?: string;
-  safety?: string;
+  szuru_user?: string;
   szuru_post_id?: number;
   related_post_ids?: number[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Job extends JobSummary {
+  safety?: string;
   tags_from_source?: string[];
   tags_from_ai?: string[];
   tags_applied?: string[];
   error_message?: string;
   retry_count?: number;
   skip_tagging?: boolean;
-  created_at?: string;
-  updated_at?: string;
+}
+
+export interface JobsResponse {
+  results: JobSummary[];
+  total: number;
 }
 
 export interface StatsResponse {
@@ -75,15 +79,18 @@ export interface StatsResponse {
 export interface ConfigResponse {
   auth_required?: boolean;
   booru_url?: string;
+  szuru_users?: string[];
 }
 
 export async function fetchJobs({
   status,
+  szuru_user,
   offset = 0,
   limit = 50,
-}: { status?: string; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
+}: { status?: string; szuru_user?: string; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   if (status) params.set("status", status);
+  if (szuru_user) params.set("szuru_user", szuru_user);
   const res = await fetch(`${BASE}/jobs?${params}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson(res) as Promise<JobsResponse>;

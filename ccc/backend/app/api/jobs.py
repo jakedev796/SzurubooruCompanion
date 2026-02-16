@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.config import get_settings
 from app.database import Job, JobStatus, JobType, get_db
@@ -38,6 +39,7 @@ class JobCreateURL(BaseModel):
     tags: Optional[List[str]] = None
     safety: Optional[str] = "unsafe"
     skip_tagging: Optional[bool] = False
+    szuru_user: Optional[str] = None
 
 
 def _parse_json_tags(raw: Optional[str]) -> Optional[List[str]]:
@@ -59,6 +61,7 @@ class JobOut(BaseModel):
     source_override: Optional[str] = None
     safety: Optional[str] = None
     skip_tagging: bool = False
+    szuru_user: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     error_message: Optional[str] = None
@@ -73,6 +76,38 @@ class JobOut(BaseModel):
         from_attributes = True
 
 
+class JobSummaryOut(BaseModel):
+    """Slim job representation for list views. Excludes tags and other heavy fields."""
+    id: str
+    status: str
+    job_type: str
+    url: Optional[str] = None
+    original_filename: Optional[str] = None
+    szuru_user: Optional[str] = None
+    szuru_post_id: Optional[int] = None
+    related_post_ids: Optional[List[int]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+def _job_to_summary(job: Job) -> JobSummaryOut:
+    return JobSummaryOut(
+        id=str(job.id),
+        status=job.status.value if isinstance(job.status, JobStatus) else job.status,
+        job_type=job.job_type.value if isinstance(job.job_type, JobType) else job.job_type,
+        url=job.url,
+        original_filename=job.original_filename,
+        szuru_user=job.szuru_user,
+        szuru_post_id=job.szuru_post_id,
+        related_post_ids=job.related_post_ids,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
 def _job_to_out(job: Job) -> JobOut:
     return JobOut(
         id=str(job.id),
@@ -83,6 +118,7 @@ def _job_to_out(job: Job) -> JobOut:
         source_override=job.source_override,
         safety=job.safety,
         skip_tagging=bool(job.skip_tagging),
+        szuru_user=job.szuru_user,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         error_message=job.error_message,
@@ -115,6 +151,7 @@ async def create_job_url(
         initial_tags=json.dumps(body.tags) if body.tags else None,
         safety=body.safety or "unsafe",
         skip_tagging=1 if body.skip_tagging else 0,
+        szuru_user=body.szuru_user,
     )
     db.add(job)
     await db.commit()
@@ -129,6 +166,7 @@ async def create_job_file(
     skip_tagging: bool = Form(False),
     tags: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
+    szuru_user: Optional[str] = Form(None),
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
@@ -155,6 +193,7 @@ async def create_job_file(
         initial_tags=json.dumps(parsed_tags) if parsed_tags else None,
         safety=safety,
         skip_tagging=1 if skip_tagging else 0,
+        szuru_user=szuru_user,
     )
     db.add(job)
     await db.commit()
@@ -165,18 +204,30 @@ async def create_job_file(
 @router.get("/jobs", response_model=dict)
 async def list_jobs(
     status: Optional[str] = Query(None),
+    szuru_user: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     _key: str = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs with optional status filter, paginated."""
-    query = select(Job)
+    """List jobs with optional status and user filter, paginated."""
+    query = select(Job).options(
+        load_only(
+            Job.id, Job.status, Job.job_type, Job.url,
+            Job.original_filename, Job.szuru_user,
+            Job.szuru_post_id, Job.related_post_ids,
+            Job.created_at, Job.updated_at,
+        )
+    )
     count_query = select(func.count(Job.id))
 
     if status:
         query = query.where(Job.status == status)
         count_query = count_query.where(Job.status == status)
+
+    if szuru_user:
+        query = query.where(Job.szuru_user == szuru_user)
+        count_query = count_query.where(Job.szuru_user == szuru_user)
 
     query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
 
@@ -187,7 +238,7 @@ async def list_jobs(
     total = total_result.scalar() or 0
 
     return {
-        "results": [_job_to_out(j) for j in jobs],
+        "results": [_job_to_summary(j) for j in jobs],
         "total": total,
         "offset": offset,
         "limit": limit,

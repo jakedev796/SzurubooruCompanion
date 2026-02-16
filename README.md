@@ -91,7 +91,18 @@ Point your reverse proxy at these ports as needed; see [docs/reverse-proxy.md](d
 
 ## Configuration
 
-All backend configuration is done via environment variables (see [ccc/backend/.env.example](ccc/backend/.env.example)):
+All backend configuration is done via environment variables (see [ccc/backend/.env.example](ccc/backend/.env.example)).
+
+### Multi-user support
+
+To upload as different Szurubooru users, provide comma-delimited credentials. The first user is the default:
+
+```env
+SZURU_USERNAME=user1,user2
+SZURU_TOKEN=token1,token2
+```
+
+Clients (browser extension, mobile app, dashboard) will show a user selector when multiple users are configured. Each job records which user it uploads as.
 
 ## Sites
 

@@ -27,6 +27,7 @@ class SettingsModel extends ChangeNotifier {
   bool _deleteMediaAfterSync = false;
   bool _showPersistentNotification = true;
   int _folderSyncIntervalSeconds = 900;
+  String _szuruUser = '';
 
   String get backendUrl => _backendUrl;
   String get apiKey => _apiKey;
@@ -40,6 +41,7 @@ class SettingsModel extends ChangeNotifier {
   bool get deleteMediaAfterSync => _deleteMediaAfterSync;
   bool get showPersistentNotification => _showPersistentNotification;
   int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
+  String get szuruUser => _szuruUser;
 
   /// Load settings from persistent storage
   Future<void> loadSettings() async {
@@ -55,6 +57,7 @@ class SettingsModel extends ChangeNotifier {
     _deleteMediaAfterSync = prefs.getBool('deleteMediaAfterSync') ?? false;
     _showPersistentNotification = prefs.getBool('showPersistentNotification') ?? true;
     _folderSyncIntervalSeconds = prefs.getInt('folderSyncIntervalSeconds') ?? 900;
+    _szuruUser = prefs.getString('szuruUser') ?? '';
     _isConfigured = _backendUrl.isNotEmpty;
     notifyListeners();
   }
@@ -72,6 +75,7 @@ class SettingsModel extends ChangeNotifier {
     bool? deleteMediaAfterSync,
     bool? showPersistentNotification,
     int? folderSyncIntervalSeconds,
+    String? szuruUser,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -124,6 +128,10 @@ class SettingsModel extends ChangeNotifier {
       _folderSyncIntervalSeconds = folderSyncIntervalSeconds.clamp(900, 604800);
       await prefs.setInt('folderSyncIntervalSeconds', _folderSyncIntervalSeconds);
     }
+    if (szuruUser != null) {
+      _szuruUser = szuruUser;
+      await prefs.setString('szuruUser', _szuruUser);
+    }
     _isConfigured = _backendUrl.isNotEmpty;
     notifyListeners();
   }
@@ -144,6 +152,7 @@ class SettingsModel extends ChangeNotifier {
     _deleteMediaAfterSync = false;
     _showPersistentNotification = true;
     _folderSyncIntervalSeconds = 900;
+    _szuruUser = '';
     _isConfigured = false;
     notifyListeners();
   }

@@ -17,6 +17,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import Job, JobStatus, JobType, async_session
 from app.services import downloader, szurubooru, tag_categories, tagger
+from app.services.szurubooru import set_current_user
 from app.services import sources as source_utils
 from app.services import tag_utils
 from app.sites.registry import normalize_url as _normalize_site_url
@@ -30,6 +31,29 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
 
 _running = True
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_metadata_sources(metadata: Dict) -> List[str]:
+    """Extract source URLs from gallery-dl metadata (e.g. ``data.sources``, ``source``)."""
+    urls: List[str] = []
+    # rule34vault and similar: data.sources list
+    data = metadata.get("data")
+    if isinstance(data, dict):
+        sources = data.get("sources")
+        if isinstance(sources, list):
+            for s in sources:
+                if isinstance(s, str) and s.strip():
+                    urls.append(s.strip())
+    # Some extractors put a top-level "source" string
+    source = metadata.get("source")
+    if isinstance(source, str) and source.strip():
+        urls.append(source.strip())
+    return urls
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +122,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
     2. For each media: download, tag, upload
     3. Create relations between posts from multi-file sources
     """
+    set_current_user(job.szuru_user)
     job_dir = os.path.join(settings.job_data_dir, str(job.id))
     os.makedirs(job_dir, exist_ok=True)
 
@@ -238,7 +263,7 @@ async def _process_single_media(
 
     # ---- Upload ----
     await _set_status(job, JobStatus.UPLOADING)
-    return await _upload_file(job, fp, media, tag_result)
+    return await _upload_file(job, fp, media, tag_result, metadata)
 
 
 async def _download_media(
@@ -340,6 +365,7 @@ async def _upload_file(
     fp: Path,
     media: downloader.ExtractedMedia,
     tag_result: dict,
+    metadata: Optional[Dict] = None,
 ) -> Optional[dict]:
     """
     Upload a single file to Szurubooru (or merge with an existing duplicate).
@@ -361,6 +387,15 @@ async def _upload_file(
     final_source = source_utils.build_source_string(
         direct_media_url, original_page_url, primary_source
     )
+
+    # Append source URLs from metadata (e.g. rule34vault data.sources)
+    if metadata and final_source is not None:
+        for url in _extract_metadata_sources(metadata):
+            final_source = source_utils.append_source(final_source, url)
+    elif metadata:
+        meta_sources = _extract_metadata_sources(metadata)
+        if meta_sources:
+            final_source = "\n".join(meta_sources)
 
     # Check for duplicates via reverse search
     existing = await szurubooru.reverse_search(fp)

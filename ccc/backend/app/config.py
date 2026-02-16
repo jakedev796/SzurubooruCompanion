@@ -5,7 +5,7 @@ Loads all settings from environment variables with sensible defaults.
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -96,3 +96,11 @@ class Settings:
 def get_settings() -> Settings:
     """Return a singleton-ish settings instance."""
     return Settings()
+
+
+def get_szuru_users() -> List[Tuple[str, str]]:
+    """Parse comma-delimited SZURU_USERNAME/SZURU_TOKEN into (username, token) pairs."""
+    s = get_settings()
+    usernames = [u.strip() for u in s.szuru_username.split(",") if u.strip()]
+    tokens = [t.strip() for t in s.szuru_token.split(",") if t.strip()]
+    return list(zip(usernames, tokens))

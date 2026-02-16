@@ -10,11 +10,12 @@ import {
   deleteJob,
   resumeJob,
   type Job,
+  type JobSummary,
   type JobsResponse,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ${status}`}>{status}</span>;
@@ -25,7 +26,7 @@ function formatDate(iso: string | undefined): string {
   return new Date(iso).toLocaleString();
 }
 
-export default function JobList() {
+export default function JobList({ szuruUser }: { szuruUser?: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get("status") || "";
   const page = parseInt(searchParams.get("page") || "0", 10);
@@ -44,16 +45,17 @@ export default function JobList() {
   useEffect(() => {
     fetchJobs({
       status: statusFilter || undefined,
+      szuru_user: szuruUser || undefined,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
     })
       .then(setData)
       .catch((e: Error) => setError(e.message));
-  }, [statusFilter, page]);
+  }, [statusFilter, szuruUser, page]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = (payload.id ?? payload.job_id) as number;
-    const updatedJob = { ...payload, id } as Job;
+    const updatedJob = { ...payload, id } as JobSummary;
 
     setData((prevData) => {
       if (!prevData) return prevData;
@@ -142,7 +144,7 @@ export default function JobList() {
     }
   }
 
-  function getQuickActions(job: Job) {
+  function getQuickActions(job: JobSummary) {
     const { id, status } = job;
     const isLoading = (action: string) => loadingActions[`${id}-${action}`];
     switch (status) {
@@ -264,6 +266,7 @@ export default function JobList() {
             <tr>
               <th>Status</th>
               <th>Type</th>
+              <th>User</th>
               <th>Source</th>
               <th>Szuru Post</th>
               <th>Created</th>
@@ -282,6 +285,7 @@ export default function JobList() {
                     <StatusBadge status={j.status} />
                   </td>
                   <td>{j.job_type}</td>
+                  <td>{j.szuru_user || "-"}</td>
                   <td>
                     {j.url ? (
                       <div className="source-cell" title={j.url}>
@@ -357,7 +361,7 @@ export default function JobList() {
             })}
             {data.results.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                <td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)" }}>
                   No jobs found.
                 </td>
               </tr>

@@ -151,23 +151,34 @@ def normalize_category_prefixes(
     return normalized, categories
 
 
+def sanitize_tag(tag: str) -> str:
+    """
+    Sanitize a tag name for Szurubooru compatibility.
+
+    Replaces whitespace with underscores (Szurubooru requires ``^\\S+$``).
+    """
+    return re.sub(r"\s+", "_", tag.strip())
+
+
 def deduplicate_tags(tags: List[str]) -> List[str]:
     """
     Deduplicate tags case-insensitively (first occurrence wins).
 
-    Handles ``tagme``: removed when real tags exist, kept as sole tag when
-    nothing else is present.
+    Sanitizes all tags (spaces → underscores) and handles ``tagme``:
+    removed when real tags exist, kept as sole tag when nothing else
+    is present.
     """
     seen: Set[str] = set()
     unique: List[str] = []
     for t in tags:
-        key = t.strip().lower()
+        sanitized = sanitize_tag(t)
+        key = sanitized.lower()
         if key and key not in seen:
             seen.add(key)
-            unique.append(t.strip())
+            unique.append(sanitized)
 
     if not unique:
         return ["tagme"]
 
-    without_tagme = [t for t in unique if t.strip().lower() != "tagme"]
+    without_tagme = [t for t in unique if t.lower() != "tagme"]
     return without_tagme if without_tagme else ["tagme"]

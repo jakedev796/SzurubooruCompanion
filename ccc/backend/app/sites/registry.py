@@ -28,12 +28,14 @@ def _init_handlers(settings: Settings) -> None:
     from app.sites.gelbooru import GelbooruHandler
     from app.sites.yandere import YandereHandler
     from app.sites.reddit import RedditHandler
+    from app.sites.rule34vault import Rule34VaultHandler
 
     _handlers = [
         SankakuHandler(settings),
         TwitterHandler(settings),
         MisskeyHandler(settings),
         Rule34Handler(settings),
+        Rule34VaultHandler(settings),
         DanbooruHandler(settings),
         GelbooruHandler(settings),
         YandereHandler(settings),

@@ -81,6 +81,7 @@ class Job(Base):
     initial_tags = Column(Text, nullable=True)  # JSON array from client (e.g. browser-ext)
     safety = Column(String(16), nullable=True, default="unsafe")
     skip_tagging = Column(Integer, nullable=False, default=0)
+    szuru_user = Column(String(255), nullable=True)  # Which Szurubooru user to upload as
 
     # Output
     szuru_post_id = Column(Integer, nullable=True)

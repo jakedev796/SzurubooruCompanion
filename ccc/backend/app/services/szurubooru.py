@@ -8,6 +8,7 @@ tag cache (in-memory + PostgreSQL) to minimise redundant API calls.
 
 import asyncio
 import base64
+import contextvars
 import json
 import logging
 import time
@@ -19,11 +20,25 @@ from urllib.parse import quote
 
 import aiohttp
 
-from app.config import get_settings
+from app.config import get_settings, get_szuru_users
 from app.utils.mime import guess_mime_type
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# ---------------------------------------------------------------------------
+# Per-job user context (set by processor, read by _auth_headers)
+# ---------------------------------------------------------------------------
+
+_current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "szuru_user", default=None
+)
+
+
+def set_current_user(username: Optional[str]) -> None:
+    """Set the Szurubooru user for the current async task."""
+    _current_user.set(username)
+
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -31,8 +46,16 @@ settings = get_settings()
 
 
 def _auth_headers() -> Dict[str, str]:
-    """Build the Szurubooru Token auth header."""
-    raw = f"{settings.szuru_username}:{settings.szuru_token}"
+    """Build the Szurubooru Token auth header for the current user context."""
+    username = _current_user.get()
+    users = get_szuru_users()
+    if username:
+        token = next((t for u, t in users if u == username), None)
+        if not token:
+            username, token = users[0]
+    else:
+        username, token = users[0]
+    raw = f"{username}:{token}"
     encoded = base64.b64encode(raw.encode()).decode()
     return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
 
@@ -48,7 +71,7 @@ async def init_session() -> None:
     """Create the persistent aiohttp session.  Call once at startup."""
     global _session
     if _session is None or _session.closed:
-        _session = aiohttp.ClientSession(headers=_auth_headers())
+        _session = aiohttp.ClientSession()
 
 
 async def close_session() -> None:
@@ -80,8 +103,8 @@ async def _request(
 
     url = f"{settings.szuru_url}{endpoint}"
 
-    # Per-request headers (merged with session-level auth headers by aiohttp)
-    headers: Dict[str, str] = {}
+    # Per-request auth headers (session has no baked-in auth for multi-user support)
+    headers: Dict[str, str] = _auth_headers()
     if extra_headers:
         headers.update(extra_headers)
     if json_payload is not None and form_data is None:
