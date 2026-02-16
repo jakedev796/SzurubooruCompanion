@@ -69,6 +69,9 @@ mobile-app/android/captures/
 mobile-app/android/local.properties
 mobile-app/android/.externalNativeBuild/
 
+# Android signing key configuration
+mobile-app/android/key.properties
+
 # Workmanager patch (local dependency)
 mobile-app/workmanager_patch/.dart_tool/
 mobile-app/workmanager_patch/android/.gradle/
