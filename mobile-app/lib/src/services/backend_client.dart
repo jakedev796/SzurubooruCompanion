@@ -173,8 +173,9 @@ class BackendClient {
     final controller = StreamController<SseEvent>();
     
     void connect() {
+      if (_sseStateController.isClosed) return;
       _sseState = SseConnectionState.connecting;
-      _sseStateController.add(_sseState);
+      if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
       
       _sseClient = http.Client();
       final request = http.Request('GET', Uri.parse('$baseUrl/api/events'));
@@ -184,17 +185,17 @@ class BackendClient {
       
       _sseClient!.send(request).then((response) {
         if (response.statusCode != 200) {
-          controller.addError(BackendException(
+          if (!controller.isClosed) controller.addError(BackendException(
             'SSE connection failed: HTTP ${response.statusCode}',
             statusCode: response.statusCode,
           ));
           _sseState = SseConnectionState.disconnected;
-          _sseStateController.add(_sseState);
+          if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
           return;
         }
         
         _sseState = SseConnectionState.connected;
-        _sseStateController.add(_sseState);
+        if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
         
         // Buffer for incomplete SSE events
         final buffer = StringBuffer();
@@ -216,10 +217,9 @@ class BackendClient {
               }
               
               final event = SseEvent.parse(eventStr);
-              controller.add(event);
+              if (!controller.isClosed) controller.add(event);
               
-              // Also emit job updates to the dedicated stream
-              if (event.type == SseEventType.jobUpdate && event.data != null) {
+              if (event.type == SseEventType.jobUpdate && event.data != null && !_jobUpdateController.isClosed) {
                 try {
                   final jobUpdate = JobUpdate.fromSseData(event.data!);
                   _jobUpdateController.add(jobUpdate);
@@ -234,29 +234,26 @@ class BackendClient {
             buffer.write(content);
           },
           onError: (error) {
-            controller.addError(const BackendException('Connection error'));
+            if (!controller.isClosed) controller.addError(const BackendException('Connection error'));
             _sseState = SseConnectionState.disconnected;
-            _sseStateController.add(_sseState);
-            
-            if (autoReconnect && !controller.isClosed) {
+            if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
+            if (autoReconnect && !_sseStateController.isClosed) {
               Future.delayed(const Duration(seconds: 3), connect);
             }
           },
           onDone: () {
             _sseState = SseConnectionState.disconnected;
-            _sseStateController.add(_sseState);
-            
-            if (autoReconnect && !controller.isClosed) {
+            if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
+            if (autoReconnect && !_sseStateController.isClosed) {
               Future.delayed(const Duration(seconds: 3), connect);
             }
           },
         );
       }).catchError((error) {
-        controller.addError(const BackendException('Connection error'));
+        if (!controller.isClosed) controller.addError(const BackendException('Connection error'));
         _sseState = SseConnectionState.disconnected;
-        _sseStateController.add(_sseState);
-        
-        if (autoReconnect && !controller.isClosed) {
+        if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
+        if (autoReconnect && !_sseStateController.isClosed) {
           Future.delayed(const Duration(seconds: 3), connect);
         }
       });
@@ -278,7 +275,7 @@ class BackendClient {
     _sseClient?.close();
     _sseClient = null;
     _sseState = SseConnectionState.disconnected;
-    _sseStateController.add(_sseState);
+    if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
   }
 
   /// Dispose of resources

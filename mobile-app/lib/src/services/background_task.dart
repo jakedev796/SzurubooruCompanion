@@ -5,9 +5,9 @@ import 'package:workmanager/workmanager.dart';
 import 'backend_client.dart';
 import 'folder_scanner.dart';
 import '../models/scheduled_folder.dart';
+import 'companion_foreground_service.dart';
 import 'notification_service.dart';
 import 'settings_model.dart';
-import 'status_foreground_service.dart';
 
 const _channel = MethodChannel('com.szurubooru.szuruqueue/share');
 
@@ -140,8 +140,12 @@ void callbackDispatcher() {
         final next = getNextFolderSyncRunTime(
           settings.folderSyncIntervalSeconds,
         );
-        await NotificationService.instance.updateStatusNotification(
-          connectionText: 'Next sync: ${formatNextFolderSync(next)}',
+        await updateCompanionNotification(
+          statusBody: buildCompanionNotificationBody(
+            connectionText: 'Next sync: ${formatNextFolderSync(next)}',
+            folderSyncOn: true,
+            bubbleOn: settings.showFloatingBubble,
+          ),
         );
       }
 
@@ -312,60 +316,76 @@ Future<void> requestExactAlarmPermission() async {
 /// Schedule folder sync using AlarmManager for reliable exact-time execution.
 /// Uses setExactAndAllowWhileIdle() to fire even in Doze mode.
 Future<void> scheduleFolderScanTask() async {
-  final settings = SettingsModel();
-  await settings.loadSettings();
-  final intervalSeconds = settings.folderSyncIntervalSeconds.clamp(
-    kMinSyncIntervalSeconds,
-    kMaxSyncIntervalSeconds,
-  );
-
-  debugPrint('[BackgroundTask] ========================================');
-  debugPrint('[BackgroundTask] Scheduling folder sync with AlarmManager');
-  debugPrint('[BackgroundTask] Interval: ${intervalSeconds}s');
-
-  // Check for exact alarm permission on Android 12+
-  final canSchedule = await canScheduleExactAlarms();
-  if (!canSchedule) {
-    debugPrint('[BackgroundTask] WARNING: Cannot schedule exact alarms!');
-    debugPrint('[BackgroundTask] Requesting permission...');
-    await requestExactAlarmPermission();
-    return;
-  }
-
-  // Cancel any existing alarm first
-  await cancelFolderScanTask();
-  debugPrint('[BackgroundTask] Cancelled existing alarm');
-
-  // Schedule the alarm via native code
   try {
-    await _channel.invokeMethod('scheduleAlarmManagerSync', {
-      'intervalSeconds': intervalSeconds,
-    });
-    debugPrint('[BackgroundTask] AlarmManager sync scheduled');
-  } catch (e) {
-    debugPrint('[BackgroundTask] Error scheduling alarm: $e');
-    return;
-  }
-
-  // Start persistent notification and foreground service if enabled
-  if (settings.showPersistentNotification) {
-    final granted = await NotificationService.instance
-        .requestNotificationPermission();
-    if (granted != false) {
-      debugPrint('[BackgroundTask] Starting foreground service...');
-      await startStatusForegroundService(body: 'Folder sync on');
-      await NotificationService.instance.showStatusNotification(
-        body: 'Folder sync on',
-      );
-      debugPrint('[BackgroundTask] Foreground service started');
-    } else {
-      debugPrint('[BackgroundTask] WARNING: Notification permission not granted!');
+    final settings = SettingsModel();
+    await settings.loadSettings();
+    final folders = await settings.getScheduledFolders();
+    final hasFoldersEnabled = folders.any((f) => f.enabled);
+    
+    if (!hasFoldersEnabled) {
+      debugPrint('[BackgroundTask] No enabled folders, skipping schedule');
+      return;
     }
-  }
+    
+    final intervalSeconds = settings.folderSyncIntervalSeconds.clamp(
+      kMinSyncIntervalSeconds,
+      kMaxSyncIntervalSeconds,
+    );
 
-  final nextSync = getNextFolderSyncRunTime(intervalSeconds);
-  debugPrint('[BackgroundTask] Next sync scheduled for: ${nextSync.toString()}');
-  debugPrint('[BackgroundTask] ========================================');
+    debugPrint('[BackgroundTask] ========================================');
+    debugPrint('[BackgroundTask] Scheduling folder sync with AlarmManager');
+    debugPrint('[BackgroundTask] Interval: ${intervalSeconds}s');
+
+    // Check for exact alarm permission on Android 12+
+    final canSchedule = await canScheduleExactAlarms();
+    if (!canSchedule) {
+      debugPrint('[BackgroundTask] WARNING: Cannot schedule exact alarms!');
+      debugPrint('[BackgroundTask] Requesting permission...');
+      await requestExactAlarmPermission();
+      return;
+    }
+
+    // Cancel any existing alarm first
+    await cancelFolderScanTask();
+    debugPrint('[BackgroundTask] Cancelled existing alarm');
+
+    // Schedule the alarm via native code
+    try {
+      await _channel.invokeMethod('scheduleAlarmManagerSync', {
+        'intervalSeconds': intervalSeconds,
+      });
+      debugPrint('[BackgroundTask] AlarmManager sync scheduled');
+    } catch (e) {
+      debugPrint('[BackgroundTask] Error scheduling alarm: $e');
+      return;
+    }
+
+    if (settings.showPersistentNotification) {
+      final granted = await NotificationService.instance
+          .requestNotificationPermission();
+      if (granted != false) {
+        debugPrint('[BackgroundTask] Starting foreground service...');
+        await startCompanionForegroundService(
+          folderSyncEnabled: true,
+          bubbleEnabled: settings.showFloatingBubble,
+          statusBody: buildCompanionNotificationBody(
+            folderSyncOn: true,
+            bubbleOn: settings.showFloatingBubble,
+          ),
+        );
+        debugPrint('[BackgroundTask] Foreground service started');
+      } else {
+        debugPrint('[BackgroundTask] WARNING: Notification permission not granted!');
+      }
+    }
+
+    final nextSync = getNextFolderSyncRunTime(intervalSeconds);
+    debugPrint('[BackgroundTask] Next sync scheduled for: ${nextSync.toString()}');
+    debugPrint('[BackgroundTask] ========================================');
+  } catch (e, stackTrace) {
+    debugPrint('[BackgroundTask] Error in scheduleFolderScanTask: $e');
+    debugPrint('[BackgroundTask] Stack trace: $stackTrace');
+  }
 }
 
 /// Cancel the AlarmManager folder sync
@@ -376,8 +396,7 @@ Future<void> cancelFolderScanTask() async {
   } catch (e) {
     debugPrint('[BackgroundTask] Error cancelling alarm: $e');
   }
-  await stopStatusForegroundService();
-  await NotificationService.instance.cancelStatusNotification();
+  await stopCompanionForegroundService();
   debugPrint('[BackgroundTask] AlarmManager sync cancelled');
 }
 
