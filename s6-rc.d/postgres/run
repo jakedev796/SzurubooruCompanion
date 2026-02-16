@@ -1,0 +1,15 @@
+#!/command/with-contenv sh
+# Initialize data directory if empty
+if [ ! -f /data/postgres/PG_VERSION ]; then
+    chown postgres:postgres /data/postgres
+    su -s /bin/sh postgres -c "initdb -D /data/postgres"
+fi
+
+# Ensure ownership (handles pre-existing volumes with wrong perms)
+chown -R postgres:postgres /data/postgres /run/postgresql
+
+exec s6-setuidgid postgres postgres \
+    -D /data/postgres \
+    -c listen_addresses=127.0.0.1 \
+    -c unix_socket_directories=/run/postgresql \
+    -c logging_collector=off

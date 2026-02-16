@@ -1,0 +1,6 @@
+#!/command/with-contenv sh
+cd /app
+exec uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 21425 \
+    --no-access-log
