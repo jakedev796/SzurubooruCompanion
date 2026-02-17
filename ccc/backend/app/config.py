@@ -26,6 +26,9 @@ class Settings:
     # --- Legacy API key (unused; clients use JWT login) ---
     api_key: str = os.getenv("API_KEY", "")
 
+    # --- Encryption key (required for credential encryption/decryption) ---
+    encryption_key: str = os.getenv("ENCRYPTION_KEY", "")
+
     # --- WD14 Tagger (ENV-based, requires restart to change) ---
     wd14_enabled: bool = os.getenv("WD14_ENABLED", "true").lower() == "true"
     wd14_model: str = os.getenv("WD14_MODEL", "SmilingWolf/wd-swinv2-tagger-v3")
