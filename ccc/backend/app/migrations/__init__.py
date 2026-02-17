@@ -9,7 +9,7 @@ from typing import List, Tuple
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import SchemaMigration, async_session, engine
+from app.database import SchemaMigration, User, UserRole, async_session, engine
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,51 @@ MIGRATIONS: List[Tuple[str, str]] = [
         END $$;
         """,
     ),
+    (
+        "007_create_users_table",
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            role VARCHAR(16) NOT NULL DEFAULT 'user',
+            szuru_url VARCHAR(512),
+            szuru_username VARCHAR(255),
+            szuru_token_encrypted TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+        """,
+    ),
+    (
+        "008_create_site_credentials_table",
+        """
+        CREATE TABLE IF NOT EXISTS site_credentials (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL,
+            site_name VARCHAR(64) NOT NULL,
+            credential_key VARCHAR(128) NOT NULL,
+            credential_value_encrypted TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_user_site_cred UNIQUE(user_id, site_name, credential_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_site_creds_user ON site_credentials(user_id);
+        """,
+    ),
+    (
+        "009_create_global_settings_table",
+        """
+        CREATE TABLE IF NOT EXISTS global_settings (
+            key VARCHAR(255) PRIMARY KEY,
+            value TEXT,
+            value_type VARCHAR(32) NOT NULL DEFAULT 'string',
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        """,
+    ),
 ]
 
 async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:
@@ -168,6 +213,54 @@ async def _ensure_enum_values() -> None:
             )
 
 
+async def _bootstrap_admin_user() -> None:
+    """
+    Create admin user from ENV if ADMIN_USER and ADMIN_PASSWORD are set.
+    This is a one-time bootstrap - runs only if the user doesn't exist.
+    After this, all user management is done via the database/dashboard.
+    """
+    import os
+    from app.database import User, UserRole
+
+    admin_user = os.getenv("ADMIN_USER", "").strip()
+    admin_pass = os.getenv("ADMIN_PASSWORD", "").strip()
+
+    if not admin_user or not admin_pass:
+        logger.info("ADMIN_USER/ADMIN_PASSWORD not set - skipping admin user bootstrap")
+        return
+
+    async with async_session() as session:
+        # Check if admin user already exists
+        result = await session.execute(
+            select(User).where(User.username == admin_user)
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            logger.info("Admin user '%s' already exists - skipping bootstrap", admin_user)
+            return
+
+        # Import here to avoid circular dependency (auth service imports database)
+        try:
+            from app.services.auth import hash_password
+        except ImportError:
+            # If auth service doesn't exist yet (during development), use a placeholder
+            # This will be replaced once we create the auth service
+            logger.warning("auth service not available yet - cannot create admin user")
+            return
+
+        # Create admin user
+        admin = User(
+            username=admin_user,
+            password_hash=hash_password(admin_pass),
+            role=UserRole.ADMIN,
+            is_active=1,
+        )
+        session.add(admin)
+        await session.commit()
+        logger.info("Created admin user: %s", admin_user)
+
+
 async def run_migrations() -> None:
     """Apply any pending migrations."""
     # Run regular migrations (inside transaction)
@@ -177,14 +270,22 @@ async def run_migrations() -> None:
             if version in applied:
                 continue
             logger.info("Applying migration: %s", version)
-            await session.execute(text(sql.strip()))
+
+            # Split SQL into individual statements (asyncpg doesn't support multiple commands)
+            statements = [s.strip() for s in sql.strip().split(';') if s.strip()]
+            for stmt in statements:
+                await session.execute(text(stmt))
+
             session.add(SchemaMigration(version=version))
             await session.commit()
             logger.info("Applied migration: %s", version)
-    
+
     # Ensure enum values exist - this is now the primary way we add enum values
     # It's idempotent and handles all edge cases
     await _ensure_enum_values()
+
+    # Bootstrap admin user from ENV (one-time, idempotent)
+    await _bootstrap_admin_user()
 
 
 async def _applied_versions(session: AsyncSession) -> set:

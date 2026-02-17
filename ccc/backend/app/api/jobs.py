@@ -20,8 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from app.config import get_settings
-from app.database import Job, JobStatus, JobType, get_db
-from app.api.deps import verify_api_key
+from app.database import Job, JobStatus, JobType, User, get_db
+from app.api.deps import get_current_user
 from app.sites import normalize_url
 
 router = APIRouter()
@@ -163,7 +163,7 @@ def _job_to_out(job: Job) -> JobOut:
 @router.post("/jobs", response_model=JobOut, status_code=201)
 async def create_job_url(
     body: JobCreateURL,
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a job from a URL."""
@@ -191,7 +191,7 @@ async def create_job_file(
     tags: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
     szuru_user: Optional[str] = Form(None),
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a job from a file upload."""
@@ -232,7 +232,7 @@ async def list_jobs(
     szuru_user: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List jobs with optional status, was_merge, and user filter, paginated."""
@@ -292,7 +292,7 @@ async def list_jobs(
 @router.get("/jobs/{job_id}", response_model=JobOut)
 async def get_job(
     job_id: str,
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single job by ID."""
@@ -311,7 +311,7 @@ async def get_job(
 @router.post("/jobs/{job_id}/start", response_model=JobOut)
 async def start_job(
     job_id: str,
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -341,7 +341,7 @@ async def start_job(
 @router.post("/jobs/{job_id}/pause", response_model=JobOut)
 async def pause_job(
     job_id: str,
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -375,7 +375,7 @@ async def pause_job(
 @router.post("/jobs/{job_id}/stop", response_model=JobOut)
 async def stop_job(
     job_id: str,
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -409,7 +409,7 @@ async def stop_job(
 @router.delete("/jobs/{job_id}")
 async def delete_job(
     job_id: str,
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -439,7 +439,7 @@ async def delete_job(
 @router.post("/jobs/{job_id}/resume", response_model=JobOut)
 async def resume_job(
     job_id: str,
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -10,6 +10,9 @@
   <Overview>
     Szurubooru Companion (CCC) - Upload and auto-tag media to Szurubooru with AI tagging (WD14), gallery-dl, and yt-dlp.
     Includes FastAPI backend, React dashboard, PostgreSQL, and Redis in a single container via s6-overlay.
+
+    NEW: Database-backed multi-user system. All configuration done via dashboard UI at http://[IP]:21425/settings.
+    Only ADMIN_USER, ADMIN_PASSWORD, and ENCRYPTION_KEY are needed - everything else configured after login!
   </Overview>
   <Category>MediaApp:Other</Category>
   <WebUI>http://[IP]:[PORT:21425]/</WebUI>
@@ -19,6 +22,8 @@
   <Description>
     Szurubooru Companion (CCC) - A multi-component workflow for uploading media to Szurubooru with AI tagging.
     Includes: FastAPI backend, React dashboard, PostgreSQL, Redis (all in one container via s6-overlay).
+
+    After first startup, login at /login with ADMIN_USER/ADMIN_PASSWORD, then configure your Szurubooru + site credentials in Settings.
   </Description>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -33,96 +38,23 @@
   <Config Name="Config" Target="/config" Default="/mnt/user/appdata/szurubooru-companion/config" Mode="rw" Description="Configuration files (place config.json here for gallery-dl)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/szurubooru-companion/config</Config>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Szurubooru (required)                                            -->
+  <!-- REQUIRED: Admin User &amp; Encryption                             -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Szurubooru URL" Target="SZURU_URL" Default="http://your-szurubooru:8080" Mode="" Description="Internal URL of your Szurubooru instance (used for API calls)" Type="Variable" Display="always" Required="true" Mask="false">http://your-szurubooru:8080</Config>
-  <Config Name="Szurubooru Public URL" Target="SZURU_PUBLIC_URL" Default="" Mode="" Description="Public URL for browser links to Szurubooru (e.g. https://booru.example.com). Falls back to SZURU_URL if empty." Type="Variable" Display="always" Required="false" Mask="false"/>
-  <Config Name="Szurubooru Username" Target="SZURU_USERNAME" Default="" Mode="" Description="Szurubooru username (comma-separated for multi-user)" Type="Variable" Display="always" Required="true" Mask="false"/>
-  <Config Name="Szurubooru Token" Target="SZURU_TOKEN" Default="" Mode="" Description="Szurubooru API token (comma-separated for multi-user)" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Admin Username" Target="ADMIN_USER" Default="admin" Mode="" Description="Admin username (created on first startup, then stored in database)" Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
+  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Admin password (REQUIRED - set a strong password)" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Encryption Key" Target="ENCRYPTION_KEY" Default="" Mode="" Description="Fernet encryption key for credentials. Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="API Key" Target="API_KEY" Default="" Mode="" Description="API key for mobile app and external access (leave empty to disable)" Type="Variable" Display="always" Required="false" Mask="true"/>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Szurubooru tag categories                                        -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Default Tag Category" Target="SZURU_DEFAULT_TAG_CATEGORY" Default="general" Mode="" Description="Fallback category when tag can't be resolved" Type="Variable" Display="advanced" Required="false" Mask="false">general</Config>
-  <Config Name="Category: General" Target="SZURU_CATEGORY_GENERAL" Default="general" Mode="" Description="Your Szurubooru 'general' category name" Type="Variable" Display="advanced" Required="false" Mask="false">general</Config>
-  <Config Name="Category: Artist" Target="SZURU_CATEGORY_ARTIST" Default="artist" Mode="" Description="Your Szurubooru 'artist' category name" Type="Variable" Display="advanced" Required="false" Mask="false">artist</Config>
-  <Config Name="Category: Character" Target="SZURU_CATEGORY_CHARACTER" Default="character" Mode="" Description="Your Szurubooru 'character' category name" Type="Variable" Display="advanced" Required="false" Mask="false">character</Config>
-  <Config Name="Category: Copyright" Target="SZURU_CATEGORY_COPYRIGHT" Default="copyright" Mode="" Description="Your Szurubooru 'copyright' category name" Type="Variable" Display="advanced" Required="false" Mask="false">copyright</Config>
-  <Config Name="Category: Meta" Target="SZURU_CATEGORY_META" Default="meta" Mode="" Description="Your Szurubooru 'meta' category name" Type="Variable" Display="advanced" Required="false" Mask="false">meta</Config>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- WD14 AI Tagger                                                   -->
+  <!-- WD14 AI Tagger (ENV-based, requires restart to change)           -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <Config Name="WD14 Enabled" Target="WD14_ENABLED" Default="true" Mode="" Description="Enable AI tagging via WD14 (downloads ~2GB model on first run)" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
   <Config Name="WD14 Model" Target="WD14_MODEL" Default="SmilingWolf/wd-swinv2-tagger-v3" Mode="" Description="HuggingFace model name for WD14 tagger" Type="Variable" Display="advanced" Required="false" Mask="false">SmilingWolf/wd-swinv2-tagger-v3</Config>
   <Config Name="WD14 Confidence Threshold" Target="WD14_CONFIDENCE_THRESHOLD" Default="0.35" Mode="" Description="Minimum confidence to include a tag (0.0-1.0)" Type="Variable" Display="advanced" Required="false" Mask="false">0.35</Config>
   <Config Name="WD14 Max Tags" Target="WD14_MAX_TAGS" Default="30" Mode="" Description="Maximum number of AI tags per image" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
-  <Config Name="WD14 Use Process Pool" Target="WD14_USE_PROCESS_POOL" Default="true" Mode="" Description="Run tagger in subprocess to bypass Python GIL (recommended)" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
-  <Config Name="WD14 Num Workers" Target="WD14_NUM_WORKERS" Default="4" Mode="" Description="Thread pool size for tagger (when not using process pool)" Type="Variable" Display="advanced" Required="false" Mask="false">4</Config>
-  <Config Name="OMP Num Threads" Target="OMP_NUM_THREADS" Default="" Mode="" Description="CPU threads inside tagger process (set to container CPU limit)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- CCC Authentication                                               -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="API Key" Target="API_KEY" Default="" Mode="" Description="API key for CCC endpoints (leave empty to disable auth)" Type="Variable" Display="always" Required="false" Mask="true"/>
-  <Config Name="Dashboard User" Target="DASHBOARD_USER" Default="" Mode="" Description="Dashboard login username (optional)" Type="Variable" Display="always" Required="false" Mask="false"/>
-  <Config Name="Dashboard Password" Target="DASHBOARD_PASSWORD" Default="" Mode="" Description="Dashboard login password (optional)" Type="Variable" Display="always" Required="false" Mask="true"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Worker                                                           -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Worker Concurrency" Target="WORKER_CONCURRENCY" Default="1" Mode="" Description="Number of concurrent job workers" Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
-  <Config Name="Gallery-DL Timeout" Target="GALLERY_DL_TIMEOUT" Default="120" Mode="" Description="Download timeout in seconds for gallery-dl" Type="Variable" Display="advanced" Required="false" Mask="false">120</Config>
-  <Config Name="yt-dlp Timeout" Target="YTDLP_TIMEOUT" Default="300" Mode="" Description="Download timeout in seconds for yt-dlp" Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
-  <Config Name="Max Retries" Target="MAX_RETRIES" Default="3" Mode="" Description="Maximum retry attempts for failed jobs" Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
-  <Config Name="Retry Delay" Target="RETRY_DELAY" Default="5.0" Mode="" Description="Delay in seconds between retries" Type="Variable" Display="advanced" Required="false" Mask="false">5.0</Config>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Site Credentials: Twitter/X                                      -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Twitter Username" Target="TWITTER_USERNAME" Default="" Mode="" Description="Twitter/X username" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Twitter Password" Target="TWITTER_PASSWORD" Default="" Mode="" Description="Twitter/X password" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-  <Config Name="Twitter Cookies" Target="TWITTER_COOKIES" Default="" Mode="" Description="Netscape-format cookie export for Twitter/X (recommended over user/pass)" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Site Credentials: Misskey                                        -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Misskey Username" Target="MISSKEY_USERNAME" Default="" Mode="" Description="Misskey username" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Misskey Password" Target="MISSKEY_PASSWORD" Default="" Mode="" Description="Misskey password" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Site Credentials: Sankaku                                        -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Sankaku Username" Target="SANKAKU_USERNAME" Default="" Mode="" Description="Sankaku username" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Sankaku Password" Target="SANKAKU_PASSWORD" Default="" Mode="" Description="Sankaku password" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Site Credentials: Danbooru                                       -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Danbooru API Key" Target="DANBOORU_API_KEY" Default="" Mode="" Description="Danbooru API key" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-  <Config Name="Danbooru User ID" Target="DANBOORU_USER_ID" Default="" Mode="" Description="Danbooru user ID" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Site Credentials: Gelbooru                                       -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Gelbooru API Key" Target="GELBOORU_API_KEY" Default="" Mode="" Description="Gelbooru API key" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-  <Config Name="Gelbooru User ID" Target="GELBOORU_USER_ID" Default="" Mode="" Description="Gelbooru user ID" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Site Credentials: Rule34                                         -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Rule34 API Key" Target="RULE34_API_KEY" Default="" Mode="" Description="Rule34.xxx API key" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-  <Config Name="Rule34 User ID" Target="RULE34_USER_ID" Default="" Mode="" Description="Rule34.xxx user ID" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Site Credentials: Reddit                                         -->
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Reddit Client ID" Target="REDDIT_CLIENT_ID" Default="" Mode="" Description="Reddit OAuth client ID" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Reddit Client Secret" Target="REDDIT_CLIENT_SECRET" Default="" Mode="" Description="Reddit OAuth client secret" Type="Variable" Display="advanced" Required="false" Mask="true"/>
-  <Config Name="Reddit Username" Target="REDDIT_USERNAME" Default="" Mode="" Description="Reddit username" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-
-  <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- Server                                                           -->
+  <!-- Server Settings                                                  -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <Config Name="Log Level" Target="LOG_LEVEL" Default="INFO" Mode="" Description="Logging level (DEBUG, INFO, WARNING, ERROR)" Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
   <Config Name="Debug Mode" Target="DEBUG" Default="false" Mode="" Description="Enable debug mode (not recommended for production)" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
