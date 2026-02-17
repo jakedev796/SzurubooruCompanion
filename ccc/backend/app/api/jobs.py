@@ -71,6 +71,7 @@ class JobOut(BaseModel):
     safety: Optional[str] = None
     skip_tagging: bool = False
     szuru_user: Optional[str] = None
+    dashboard_username: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     was_merge: bool = False
@@ -121,7 +122,7 @@ def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSu
     )
 
 
-def _job_to_out(job: Job) -> JobOut:
+def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
     tags_applied = _parse_json_tags(job.tags_applied)
     post = None
     if job.szuru_post_id is not None:
@@ -142,6 +143,7 @@ def _job_to_out(job: Job) -> JobOut:
         safety=job.safety,
         skip_tagging=bool(job.skip_tagging),
         szuru_user=job.szuru_user,
+        dashboard_username=dashboard_username,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         was_merge=bool(job.was_merge),
@@ -310,7 +312,16 @@ async def get_job(
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
-    return _job_to_out(job)
+
+    # Look up dashboard username for this job's szuru_user
+    dashboard_username = None
+    if job.szuru_user:
+        user_result = await db.execute(
+            select(User.username).where(User.szuru_username == job.szuru_user)
+        )
+        dashboard_username = user_result.scalar_one_or_none()
+
+    return _job_to_out(job, dashboard_username)
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # ---------------------------------------------------------------------------
-# Per-job user context (set by processor, read by _auth_headers)
+# Per-job user context (set by processor, read by _auth_headers and _request)
 # ---------------------------------------------------------------------------
 
 _current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
@@ -36,12 +36,16 @@ _current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 _current_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_token", default=None
 )
+_current_szuru_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "szuru_url", default=None
+)
 
 
-def set_current_user(username: Optional[str], token: Optional[str] = None) -> None:
-    """Set the Szurubooru user credentials for the current async task."""
+def set_current_user(username: Optional[str], token: Optional[str] = None, szuru_url: Optional[str] = None) -> None:
+    """Set the Szurubooru user credentials and URL for the current async task."""
     _current_user.set(username)
     _current_token.set(token)
+    _current_szuru_url.set(szuru_url)
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +122,9 @@ async def _request(
     if _session is None or _session.closed:
         await init_session()
 
-    url = f"{settings.szuru_url}{endpoint}"
+    # Use per-user szuru_url if set, otherwise fall back to global settings
+    szuru_url = _current_szuru_url.get() or settings.szuru_url
+    url = f"{szuru_url}{endpoint}"
 
     # Per-request auth headers (session has no baked-in auth for multi-user support)
     headers: Dict[str, str] = _auth_headers()

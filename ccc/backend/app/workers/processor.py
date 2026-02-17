@@ -151,6 +151,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
         # Load user configuration and category mappings
         user_category_mappings = None
         szuru_token = None
+        szuru_url = None
         if job.szuru_user:
             result = await db.execute(select(User).where(User.szuru_username == job.szuru_user))
             user = result.scalar_one_or_none()
@@ -171,11 +172,13 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                         szuru_token = decrypt(user.szuru_token_encrypted)
                     except Exception as e:
                         logger.error("%s Job %s: Failed to decrypt szuru token for user %s: %s", tag, job.id, job.szuru_user, e)
+                # Get user's szuru_url (internal/API URL)
+                szuru_url = user.szuru_url
             else:
                 logger.warning("%s Job %s: User %s not found in database", tag, job.id, job.szuru_user)
 
-    # Set current user context for Szurubooru API calls (with decrypted credentials)
-    set_current_user(job.szuru_user, szuru_token)
+    # Set current user context for Szurubooru API calls (with decrypted credentials and URL)
+    set_current_user(job.szuru_user, szuru_token, szuru_url)
 
     try:
         if await _abort_if_paused_or_stopped(job):
