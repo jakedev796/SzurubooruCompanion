@@ -37,6 +37,7 @@ class NotificationService {
     );
   }
 
+  /// Simple one-line upload error (e.g. folder scan, background enqueue).
   Future<void> showUploadError(String error) async {
     const androidDetails = AndroidNotificationDetails(
       'szuruqueue',
@@ -50,6 +51,37 @@ class NotificationService {
       id: 1,
       title: 'Upload Failed',
       body: error,
+      notificationDetails: details,
+    );
+  }
+
+  /// Expandable upload-failed notification: title "Upload Failed - {websiteName}",
+  /// expanded body shows jobId and fullDomain on separate lines.
+  /// [notificationId] should be unique per job (e.g. jobId.hashCode) so multiple failures don't overwrite.
+  Future<void> showUploadErrorExpanded({
+    required String websiteName,
+    required String jobId,
+    required String fullDomain,
+    required int notificationId,
+  }) async {
+    final bigText = fullDomain.isEmpty ? jobId : '$jobId\n$fullDomain';
+    final style = BigTextStyleInformation(
+      bigText,
+      contentTitle: 'Upload Failed - $websiteName',
+    );
+    final androidDetails = AndroidNotificationDetails(
+      'szuruqueue',
+      'SzuruCompanion Notifications',
+      channelDescription: 'Notifications for upload queue',
+      importance: Importance.high,
+      priority: Priority.high,
+      styleInformation: style,
+    );
+    final details = NotificationDetails(android: androidDetails);
+    await _notifications.show(
+      id: notificationId,
+      title: 'Upload Failed - $websiteName',
+      body: '', // Expanded content (jobId, fullDomain) shown via BigTextStyle
       notificationDetails: details,
     );
   }

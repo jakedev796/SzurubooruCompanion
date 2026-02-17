@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as path;
 
 import '../models/job.dart';
 
@@ -474,8 +473,8 @@ class BackendClient {
   /// 
   /// Backend endpoint: POST /api/jobs/upload
   /// Uses multipart form data to upload the file.
-  /// Returns the created job ID on success, null on failure.
-  Future<String?> enqueueFromFile({
+  /// Returns (jobId, null) on success, (null, errorMessage) on failure.
+  Future<({String? jobId, String? error})> enqueueFromFile({
     required File file,
     String? source,
     List<String>? tags,
@@ -519,15 +518,25 @@ class BackendClient {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final jobId = data['id']?.toString();
         debugPrint('[BackendClient] Upload successful, jobId: $jobId');
-        return jobId;
+        return (jobId: jobId, error: null);
       } else {
         debugPrint('[BackendClient] Upload failed: ${response.statusCode} - ${response.body}');
-        return null;
+        String message = _friendlyLabelForStatusCode(response.statusCode);
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>?;
+          if (data != null) {
+            final msg = data['error'] ?? data['message'] ?? data['detail'];
+            if (msg != null && msg.toString().isNotEmpty) {
+              message = msg.toString();
+            }
+          }
+        } catch (_) {}
+        return (jobId: null, error: message);
       }
     } catch (e, stackTrace) {
       debugPrint('[BackendClient] Exception during upload: $e');
       debugPrint('[BackendClient] Stack trace: $stackTrace');
-      return null;
+      return (jobId: null, error: e.toString());
     }
   }
 
