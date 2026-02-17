@@ -39,7 +39,9 @@ export default function JobDetail() {
   useEffect(() => {
     fetchConfig()
       .then((config) => setBooruUrl(config.booru_url || ""))
-      .catch(() => {});
+      .catch((e: Error) => {
+        console.error("Failed to fetch config:", e.message);
+      });
   }, []);
 
   useEffect(() => {
@@ -49,19 +51,24 @@ export default function JobDetail() {
       .catch((e: Error) => setError(e.message));
   }, [id]);
 
-  useJobUpdates((updatedJob: Record<string, unknown>) => {
+  useJobUpdates((payload: Record<string, unknown>) => {
     if (!id) return;
-    const payloadId = String(updatedJob.id ?? updatedJob.job_id ?? "");
+    const payloadId = String(payload.id ?? payload.job_id ?? "");
     if (payloadId !== id) return;
 
-    const status = String(updatedJob.status ?? "").toLowerCase();
+    const status = String(payload.status ?? "").toLowerCase();
     const hasTerminalStatus =
       status === "completed" || status === "merged" || status === "failed";
-    const hasPostId = updatedJob.szuru_post_id != null;
-    const hasTags = Array.isArray((updatedJob as any).tags);
+    const hasPostId = payload.szuru_post_id != null;
+    const hasTags = Array.isArray(payload.tags) && payload.tags.length > 0;
 
-    // For terminal states or when we get post ID / tags, refetch full job
-    if (hasTerminalStatus || hasPostId || hasTags) {
+    // Always refetch on status change to ensure we have the latest state
+    // This handles retries going from pending -> failed/completed properly
+    const prevStatus = job?.status?.toLowerCase();
+    const statusChanged = prevStatus != null && prevStatus !== status;
+
+    // For terminal states, status changes, post ID, or tags, refetch full job
+    if (hasTerminalStatus || statusChanged || hasPostId || hasTags) {
       fetchJob(id)
         .then((full) => {
           setJob(full);
@@ -70,24 +77,25 @@ export default function JobDetail() {
           console.error("Failed to refresh job after SSE update:", e.message);
           // Fallback: at least merge status so UI doesn't look stale
           setJob((prev) =>
-            prev ? ({ ...prev, status: updatedJob.status ?? prev.status } as Job) : prev
+            prev ? ({ ...prev, status: String(payload.status ?? prev.status) } as Job) : prev
           );
         });
     } else {
       // For in-progress updates, shallow-merge minimal payload
-      setJob((prev) => (prev ? ({ ...prev, ...updatedJob } as Job) : (updatedJob as Job)));
+      const updatedJob = { ...payload, id } as Job;
+      setJob((prev) => (prev ? ({ ...prev, ...updatedJob } as Job) : updatedJob));
     }
   }, id ?? null);
 
   async function handleAction(
-    action: (jobId: number) => Promise<Job>,
+    action: (jobId: string) => Promise<Job>,
     actionName: string
   ) {
     if (!id) return;
     setActionError(null);
     setActionLoading(actionName);
     try {
-      const updatedJob = await action(Number(id));
+      const updatedJob = await action(id);
       setJob(updatedJob);
     } catch (e) {
       setActionError((e as Error).message);
@@ -102,7 +110,7 @@ export default function JobDetail() {
     setActionError(null);
     setActionLoading("delete");
     try {
-      await deleteJob(Number(id));
+      await deleteJob(id);
       navigate("/jobs");
     } catch (e) {
       setActionError((e as Error).message);
@@ -244,8 +252,6 @@ export default function JobDetail() {
             )}
           </dd>
 
-          <dt>Filename</dt>
-          <dd>{job.original_filename || "-"}</dd>
 
           <dt>Safety</dt>
           <dd>

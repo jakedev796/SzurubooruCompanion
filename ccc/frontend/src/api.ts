@@ -117,7 +117,7 @@ export interface SzuruPostMirror {
 }
 
 export interface JobSummary {
-  id: number;
+  id: string;
   status: string;
   job_type: string;
   url?: string;
@@ -247,7 +247,7 @@ export function getSSEUrl(_jobId: string | null = null): string {
   return `${baseUrl}/events`;
 }
 
-export async function startJob(jobId: number): Promise<Job> {
+export async function startJob(jobId: string): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${jobId}/start`, {
     method: "POST",
     headers: headers(),
@@ -256,7 +256,7 @@ export async function startJob(jobId: number): Promise<Job> {
   return parseJson(res) as Promise<Job>;
 }
 
-export async function pauseJob(jobId: number): Promise<Job> {
+export async function pauseJob(jobId: string): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${jobId}/pause`, {
     method: "POST",
     headers: headers(),
@@ -265,7 +265,7 @@ export async function pauseJob(jobId: number): Promise<Job> {
   return parseJson(res) as Promise<Job>;
 }
 
-export async function stopJob(jobId: number): Promise<Job> {
+export async function stopJob(jobId: string): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${jobId}/stop`, {
     method: "POST",
     headers: headers(),
@@ -274,7 +274,7 @@ export async function stopJob(jobId: number): Promise<Job> {
   return parseJson(res) as Promise<Job>;
 }
 
-export async function deleteJob(jobId: number): Promise<void> {
+export async function deleteJob(jobId: string): Promise<void> {
   const res = await apiFetch(`${BASE}/jobs/${jobId}`, {
     method: "DELETE",
     headers: headers(),
@@ -282,7 +282,7 @@ export async function deleteJob(jobId: number): Promise<void> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
-export async function resumeJob(jobId: number): Promise<Job> {
+export async function resumeJob(jobId: string): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${jobId}/resume`, {
     method: "POST",
     headers: headers(),
@@ -291,7 +291,7 @@ export async function resumeJob(jobId: number): Promise<Job> {
   return parseJson(res) as Promise<Job>;
 }
 
-export async function retryJob(jobId: number): Promise<Job> {
+export async function retryJob(jobId: string): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${jobId}/retry`, {
     method: "POST",
     headers: headers(),

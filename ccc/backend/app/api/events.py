@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, List, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -155,8 +155,9 @@ async def sse_events(request: Request):
     Event format:
     ```
     event: job_update
-    data: {"job_id": 123, "status": "downloading", "progress": 25, "timestamp": "2024-01-15T10:30:00Z"}
+    data: {"id": "<uuid>", "job_id": "<uuid>", "status": "downloading", "progress": 25, "timestamp": "...", ...}
     ```
+    Optional fields: progress (0-100), error, szuru_post_id, related_post_ids, tags, was_merge.
     
     Heartbeats are sent every 30 seconds to keep connections alive.
     """
@@ -178,6 +179,7 @@ async def publish_job_update(
     progress: Optional[int] = None,
     error: Optional[str] = None,
     szuru_post_id: Optional[int] = None,
+    related_post_ids: Optional[List[int]] = None,
     tags: Optional[list] = None,
     was_merge: Optional[bool] = None,
 ) -> None:
@@ -193,6 +195,7 @@ async def publish_job_update(
         progress: Optional progress percentage (0-100)
         error: Optional error message for failed jobs
         szuru_post_id: Optional Szurubooru post ID for completed jobs
+        related_post_ids: Optional list of related Szurubooru post IDs (multi-file jobs)
         tags: Optional list of applied tags for completed jobs
         was_merge: Optional; True if job was merged into an existing post
     """
@@ -204,6 +207,7 @@ async def publish_job_update(
             job_id = str(job_id)
 
         data = {
+            "id": job_id,
             "job_id": job_id,
             "status": status,
             "timestamp": get_timestamp(),
@@ -215,6 +219,8 @@ async def publish_job_update(
             data["error"] = error
         if szuru_post_id is not None:
             data["szuru_post_id"] = szuru_post_id
+        if related_post_ids is not None:
+            data["related_post_ids"] = related_post_ids
         if tags is not None:
             data["tags"] = tags
         if was_merge is not None:

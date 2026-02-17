@@ -60,23 +60,56 @@ export default function JobList() {
   }, [statusFilter, page]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
-    const id = (payload.id ?? payload.job_id) as number;
+    const id = String(payload.id ?? payload.job_id ?? "");
+    if (!id) return;
     const updatedJob = { ...payload, id } as JobSummary;
+    const status = String(payload.status ?? "").toLowerCase();
+    const hasTerminalStatus =
+      status === "completed" || status === "merged" || status === "failed";
 
     setData((prevData) => {
       if (!prevData) return prevData;
-      const index = prevData.results.findIndex((j) => String(j.id) === String(id));
+      const index = prevData.results.findIndex((j) => j.id === id);
       if (index >= 0) {
+        const existing = prevData.results[index];
+        const prevStatus = existing?.status?.toLowerCase();
+        const statusChanged = prevStatus != null && prevStatus !== status;
+
+        // Refetch full job on terminal status or status change to ensure accurate state
+        if (hasTerminalStatus || statusChanged) {
+          fetchJob(id)
+            .then((fullJob) => {
+              setData((current) => {
+                if (!current) return current;
+                const idx = current.results.findIndex((j) => j.id === id);
+                if (idx >= 0) {
+                  const newResults = [...current.results];
+                  newResults[idx] = fullJob as JobSummary;
+                  return { ...current, results: newResults };
+                }
+                return current;
+              });
+            })
+            .catch((e: Error) => {
+              console.error(`Failed to refetch job ${id} after SSE update:`, e.message);
+              // Fallback: at least update with SSE payload
+              const newResults = [...prevData.results];
+              newResults[index] = { ...existing, ...updatedJob };
+              setData({ ...prevData, results: newResults });
+            });
+          return prevData; // Return unchanged while fetching
+        }
+
         const newResults = [...prevData.results];
-        newResults[index] = { ...prevData.results[index], ...updatedJob };
+        newResults[index] = { ...existing, ...updatedJob };
         return { ...prevData, results: newResults };
       }
       // Job not in the current page; try to fetch and insert it if visible to this user
-      fetchJob(String(id))
+      fetchJob(id)
         .then((fullJob) => {
           setData((current) => {
             if (!current) return current;
-            const exists = current.results.some((j) => String(j.id) === String(id));
+            const exists = current.results.some((j) => j.id === id);
             if (exists) return current;
 
             // Respect current status filter if present
@@ -91,8 +124,9 @@ export default function JobList() {
             return { ...current, results, total: current.total + 1 };
           });
         })
-        .catch(() => {
+        .catch((e: Error) => {
           // If the job is not visible (e.g. belongs to another user), ignore the update
+          console.debug(`Ignoring SSE for job ${id} (not visible or error):`, e.message);
         });
       return prevData;
     });
@@ -113,9 +147,9 @@ export default function JobList() {
   }
 
   async function handleJobAction(
-    jobId: number,
+    jobId: string,
     action: string,
-    actionFn: (id: number) => Promise<Job>
+    actionFn: (id: string) => Promise<Job>
   ) {
     setLoadingActions((prev) => ({ ...prev, [`${jobId}-${action}`]: true }));
     try {
@@ -137,7 +171,7 @@ export default function JobList() {
     }
   }
 
-  async function handleDeleteJob(jobId: number) {
+  async function handleDeleteJob(jobId: string) {
     if (!confirm("Are you sure you want to delete this job?")) return;
     setLoadingActions((prev) => ({ ...prev, [`${jobId}-delete`]: true }));
     try {
@@ -147,7 +181,7 @@ export default function JobList() {
         return {
           ...prevData,
           results: prevData.results.filter((j) => j.id !== jobId),
-          total: prevData.total - 1,
+          total: Math.max(0, prevData.total - 1),
         };
       });
     } catch (e) {
@@ -236,6 +270,7 @@ export default function JobList() {
           </>
         );
       case "completed":
+      case "merged":
         return (
           <button
             className="btn btn-danger btn-sm"
@@ -381,26 +416,39 @@ export default function JobList() {
                   <td>
                     {(j.post?.id ?? j.szuru_post_id) ? (
                       <span className="post-links">
-                        {Array.from(
-                          new Set(
-                            [
-                              j.post?.id ?? j.szuru_post_id,
-                              ...((j.post?.relations ?? j.related_post_ids) ?? []),
-                            ].filter((id): id is number => id != null)
-                          )
-                        ).map((id, idx) => (
-                          <span key={id}>
-                            {idx > 0 && " "}
-                            <a
-                              href={`${booruUrl}/post/${id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="post-link"
-                            >
-                              #{id}
-                            </a>
-                          </span>
-                        ))}
+                        {(() => {
+                          const allIds = Array.from(
+                            new Set(
+                              [
+                                j.post?.id ?? j.szuru_post_id,
+                                ...((j.post?.relations ?? j.related_post_ids) ?? []),
+                              ].filter((id): id is number => id != null)
+                            )
+                          );
+                          const maxVisible = 3;
+                          const visible = allIds.slice(0, maxVisible);
+                          const remaining = allIds.length - maxVisible;
+                          return (
+                            <>
+                              {visible.map((id, idx) => (
+                                <span key={id}>
+                                  {idx > 0 && " "}
+                                  <a
+                                    href={`${booruUrl}/post/${id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="post-link"
+                                  >
+                                    #{id}
+                                  </a>
+                                </span>
+                              ))}
+                              {remaining > 0 && (
+                                <span className="related-posts"> +{remaining}</span>
+                              )}
+                            </>
+                          );
+                        })()}
                       </span>
                     ) : (
                       "-"

@@ -120,7 +120,7 @@ async def _claim_next_job():
             await db.commit()
             await db.refresh(job)
             # Publish SSE update
-            await publish_job_update(job_id=job.id, status="downloading")
+            await publish_job_update(job_id=job.id, status="downloading", progress=25)
         return job
 
 
@@ -583,6 +583,14 @@ async def _create_relations(job: Job, created_posts: List[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _progress_for_status(status: JobStatus) -> int:
+    if status == JobStatus.TAGGING:
+        return 50
+    if status == JobStatus.UPLOADING:
+        return 75
+    return 0
+
+
 async def _set_status(job: Job, status: JobStatus) -> None:
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
@@ -590,7 +598,8 @@ async def _set_status(job: Job, status: JobStatus) -> None:
         j.status = status
         j.updated_at = datetime.now(timezone.utc)
         await db.commit()
-    await publish_job_update(job_id=job.id, status=status.value)
+    progress = _progress_for_status(status)
+    await publish_job_update(job_id=job.id, status=status.value, progress=progress if progress else None)
 
 
 async def _check_job_status(job: Job) -> Optional[JobStatus]:
@@ -622,6 +631,7 @@ async def _fail_job(
     """
     Mark a job as failed and, if configured, schedule an automatic retry using the same job ID.
     """
+    expected_retry_count: int
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
         j = result.scalar_one()
@@ -630,6 +640,7 @@ async def _fail_job(
         current_retries = j.retry_count or 0
         current_retries += 1
         j.retry_count = current_retries
+        expected_retry_count = current_retries
 
         should_retry = max_retries > 0 and current_retries <= max_retries
 
@@ -646,16 +657,27 @@ async def _fail_job(
 
     if should_retry and retry_delay > 0:
         async def _delayed_publish() -> None:
+            # Avoid spamming/out-of-order "pending" updates if the job was already claimed
+            # or changed status before the delay elapsed.
             await asyncio.sleep(retry_delay)
-            await publish_job_update(job_id=job.id, status="pending", error=error[:500])
+            async with async_session() as db:
+                result = await db.execute(select(Job).where(Job.id == job.id))
+                j = result.scalar_one_or_none()
+                if not j:
+                    return
+                if j.status != JobStatus.PENDING:
+                    return
+                if (j.retry_count or 0) != expected_retry_count:
+                    return
+            await publish_job_update(job_id=job.id, status="pending", progress=0, error=error[:500])
 
         asyncio.create_task(_delayed_publish())
     elif should_retry:
         # Immediate retry without delay
-        await publish_job_update(job_id=job.id, status="pending", error=error[:500])
+        await publish_job_update(job_id=job.id, status="pending", progress=0, error=error[:500])
     else:
         logger.error("Job %s failed: %s", job.id, error[:200])
-        await publish_job_update(job_id=job.id, status="failed", error=error[:500])
+        await publish_job_update(job_id=job.id, status="failed", progress=0, error=error[:500])
 
 
 async def _complete_job(
@@ -688,7 +710,9 @@ async def _complete_job(
     await publish_job_update(
         job_id=job.id,
         status="merged" if was_merge else "completed",
+        progress=100,
         szuru_post_id=szuru_post_id,
+        related_post_ids=related_post_ids,
         tags=tags,
         was_merge=was_merge,
     )

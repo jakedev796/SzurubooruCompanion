@@ -73,6 +73,7 @@ class JobUpdate {
   final int? progress;
   final String? error;
   final int? szuruPostId;
+  final List<int>? relatedPostIds;
   final List<String>? tags;
   final DateTime timestamp;
 
@@ -82,17 +83,24 @@ class JobUpdate {
     this.progress,
     this.error,
     this.szuruPostId,
+    this.relatedPostIds,
     this.tags,
     required this.timestamp,
   });
 
   factory JobUpdate.fromSseData(Map<String, dynamic> data) {
+    List<int>? relatedIds;
+    final raw = data['related_post_ids'];
+    if (raw is List) {
+      relatedIds = raw.whereType<int>().toList();
+    }
     return JobUpdate(
-      jobId: data['job_id']?.toString() ?? '',
+      jobId: data['job_id']?.toString() ?? data['id']?.toString() ?? '',
       status: data['status'] as String,
       progress: data['progress'] as int?,
       error: data['error'] as String?,
       szuruPostId: data['szuru_post_id'] as int?,
+      relatedPostIds: (relatedIds == null || relatedIds.isEmpty) ? null : relatedIds,
       tags: (data['tags'] as List<dynamic>?)?.cast<String>(),
       timestamp: DateTime.parse(data['timestamp'] as String),
     );

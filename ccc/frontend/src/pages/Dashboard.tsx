@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Play, Pause, Square, Trash2 } from "lucide-react";
+import { Play, Pause, Square, Trash2, RefreshCcw } from "lucide-react";
 import {
   fetchStats,
   fetchJobs,
@@ -11,6 +11,7 @@ import {
   stopJob,
   deleteJob,
   resumeJob,
+  retryJob,
   getJobSources,
   sortTags,
   type Job,
@@ -59,7 +60,9 @@ export default function Dashboard() {
   useEffect(() => {
     fetchConfig()
       .then((c) => setBooruUrl(c.booru_url || ""))
-      .catch(() => {});
+      .catch((e: Error) => {
+        console.error("Failed to fetch config:", e.message);
+      });
   }, []);
 
   useEffect(() => {
@@ -77,40 +80,46 @@ export default function Dashboard() {
         }),
       fetchJobs({ was_merge: true, limit: MERGED_REPORT_LIMIT })
         .then(setMergedJobs)
-        .catch(() => setMergedJobs(null)),
+        .catch((e: Error) => {
+          console.error("Failed to fetch merged jobs:", e.message);
+          setMergedJobs(null);
+        }),
     ]).then(() => {});
   }, [navigate]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
-    const id = (payload.id ?? payload.job_id) as number;
+    const id = String(payload.id ?? payload.job_id ?? "");
+    if (!id) return;
     const updatedJob = { ...payload, id } as JobSummary;
     setRecentJobs((prev) => {
       if (!prev?.results) return prev;
-      const index = prev.results.findIndex((j) => String(j.id) === String(id));
+      const index = prev.results.findIndex((j) => j.id === id);
       if (index >= 0) {
         const newResults = [...prev.results];
         newResults[index] = { ...prev.results[index], ...updatedJob };
         return { ...prev, results: newResults };
       }
-      fetchJob(String(id))
+      fetchJob(id)
         .then((fullJob) => {
           setRecentJobs((p) => {
             if (!p) return p;
-            const idx = p.results.findIndex((j) => String(j.id) === String(id));
+            const idx = p.results.findIndex((j) => j.id === id);
             if (idx >= 0) return p;
             const results = [{ ...fullJob, ...updatedJob }, ...p.results].slice(0, ACTIVITY_LIMIT);
             return { ...p, results, total: p.total + 1 };
           });
         })
-        .catch(() => {});
+        .catch((e: Error) => {
+          console.debug(`Ignoring SSE for job ${id} (not visible or error):`, e.message);
+        });
       return prev;
     });
     if (payload.status === "merged" || (payload.status === "completed" && payload.was_merge)) {
-      fetchJob(String(id))
+      fetchJob(id)
         .then((job) => {
           setMergedJobs((prev) => {
             const list = prev?.results ?? [];
-            if (list.some((j) => String(j.id) === String(id))) return prev;
+            if (list.some((j) => j.id === id)) return prev;
             const next = [job, ...list].slice(0, MERGED_REPORT_LIMIT);
             return { results: next, total: (prev?.total ?? 0) + 1, offset: 0, limit: prev?.limit ?? MERGED_REPORT_LIMIT };
           });
@@ -120,9 +129,9 @@ export default function Dashboard() {
   });
 
   async function handleJobAction(
-    jobId: number,
+    jobId: string,
     action: string,
-    actionFn: (id: number) => Promise<Job>
+    actionFn: (id: string) => Promise<Job>
   ) {
     setLoadingActions((prev) => ({ ...prev, [`${jobId}-${action}`]: true }));
     try {
@@ -144,7 +153,7 @@ export default function Dashboard() {
     }
   }
 
-  async function handleDeleteJob(jobId: number) {
+  async function handleDeleteJob(jobId: string) {
     if (!confirm("Are you sure you want to delete this job?")) return;
     setLoadingActions((prev) => ({ ...prev, [`${jobId}-delete`]: true }));
     try {
@@ -244,7 +253,6 @@ export default function Dashboard() {
         );
       case "completed":
       case "merged":
-      case "failed":
         return (
           <button
             className="btn btn-danger btn-sm"
@@ -254,6 +262,27 @@ export default function Dashboard() {
           >
             {isLoading("delete") ? "..." : <Trash2 size={14} />}
           </button>
+        );
+      case "failed":
+        return (
+          <>
+            <button
+              className="btn btn-warning btn-sm"
+              onClick={() => handleJobAction(id, "retry", retryJob)}
+              disabled={isLoading("retry")}
+              title="Retry job"
+            >
+              {isLoading("retry") ? "..." : <RefreshCcw size={14} />}
+            </button>
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={() => handleDeleteJob(id)}
+              disabled={isLoading("delete")}
+              title="Delete job"
+            >
+              {isLoading("delete") ? "..." : <Trash2 size={14} />}
+            </button>
+          </>
         );
       default:
         return null;
@@ -420,26 +449,39 @@ export default function Dashboard() {
                       <td>
                         {(j.post?.id ?? j.szuru_post_id) ? (
                           <span className="post-links">
-                            {Array.from(
-                              new Set(
-                                [
-                                  j.post?.id ?? j.szuru_post_id,
-                                  ...((j.post?.relations ?? j.related_post_ids) ?? []),
-                                ].filter((id): id is number => id != null)
-                              )
-                            ).map((id, idx) => (
-                              <span key={id}>
-                                {idx > 0 && " "}
-                                <a
-                                  href={`${booruUrl}/post/${id}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="post-link"
-                                >
-                                  #{id}
-                                </a>
-                              </span>
-                            ))}
+                            {(() => {
+                              const allIds = Array.from(
+                                new Set(
+                                  [
+                                    j.post?.id ?? j.szuru_post_id,
+                                    ...((j.post?.relations ?? j.related_post_ids) ?? []),
+                                  ].filter((id): id is number => id != null)
+                                )
+                              );
+                              const maxVisible = 3;
+                              const visible = allIds.slice(0, maxVisible);
+                              const remaining = allIds.length - maxVisible;
+                              return (
+                                <>
+                                  {visible.map((id, idx) => (
+                                    <span key={id}>
+                                      {idx > 0 && " "}
+                                      <a
+                                        href={`${booruUrl}/post/${id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="post-link"
+                                      >
+                                        #{id}
+                                      </a>
+                                    </span>
+                                  ))}
+                                  {remaining > 0 && (
+                                    <span className="related-posts"> +{remaining}</span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </span>
                         ) : (
                           "-"
