@@ -53,6 +53,9 @@ class Settings:
     dashboard_user: str = os.getenv("DASHBOARD_USER", "")
     dashboard_password: str = os.getenv("DASHBOARD_PASSWORD", "")
 
+    # --- Encryption ---
+    encryption_key: str = os.getenv("ENCRYPTION_KEY", "")
+
     # --- Worker ---
     worker_concurrency: int = max(1, int(os.getenv("WORKER_CONCURRENCY", "1")))
     job_data_dir: str = os.getenv("JOB_DATA_DIR", "/data/jobs")

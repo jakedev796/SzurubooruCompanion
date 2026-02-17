@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/job.dart';
+import '../models/auth.dart';
 
 /// SSE event types received from the backend
 enum SseEventType {
@@ -137,7 +139,43 @@ class BackendClient {
               if (apiKey.isNotEmpty) 'X-API-Key': apiKey,
             },
           ),
-        );
+        ) {
+    // Add interceptor for automatic token refresh on 401
+    _dio.interceptors.add(InterceptorsWrapper(
+      onError: (error, handler) async {
+        if (error.response?.statusCode == 401) {
+          final prefs = await SharedPreferences.getInstance();
+          final authJson = prefs.getString('auth_tokens');
+          if (authJson != null) {
+            try {
+              final tokens = AuthTokens.fromJson(jsonDecode(authJson));
+              final newAccessToken = await refreshAccessToken(tokens.refreshToken);
+
+              if (newAccessToken != null) {
+                setAccessToken(newAccessToken);
+                await prefs.setString('auth_tokens', jsonEncode(AuthTokens(
+                  accessToken: newAccessToken,
+                  refreshToken: tokens.refreshToken,
+                ).toJson()));
+
+                // Retry request
+                final options = error.requestOptions;
+                options.headers['Authorization'] = 'Bearer $newAccessToken';
+                final response = await _dio.fetch(options);
+                return handler.resolve(response);
+              }
+            } catch (_) {
+              // If refresh fails, clear auth and reject error
+            }
+
+            await prefs.remove('auth_tokens');
+            setAccessToken(null);
+          }
+        }
+        return handler.reject(error);
+      },
+    ));
+  }
 
   /// Stream of SSE connection state changes
   Stream<SseConnectionState> get sseStateStream => _sseStateController.stream;
@@ -162,6 +200,49 @@ class BackendClient {
   /// Update the base URL for the backend
   void updateBaseUrl(String newBaseUrl) {
     _dio.options.baseUrl = newBaseUrl;
+  }
+
+  /// Login with username/password and return JWT tokens
+  Future<LoginResponse> login(String username, String password) async {
+    final response = await _dio.post('/api/auth/login',
+      data: {'username': username, 'password': password},
+      options: Options(headers: {}),  // Don't send API key or Bearer for login
+    );
+    return LoginResponse.fromJson(response.data);
+  }
+
+  /// Refresh access token using stored refresh token
+  Future<String?> refreshAccessToken(String refreshToken) async {
+    try {
+      final response = await _dio.post('/api/auth/refresh',
+        data: {'refresh_token': refreshToken},
+        options: Options(headers: {}),  // Don't send existing auth headers
+      );
+      return response.data['access_token'];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Set access token for JWT authentication
+  void setAccessToken(String? token) {
+    if (token != null) {
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+      _dio.options.headers.remove('X-API-Key');
+    }
+  }
+
+  /// Fetch client preferences from backend
+  Future<Map<String, dynamic>> fetchPreferences() async {
+    final response = await _dio.get('/api/preferences/mobile-android');
+    return response.data['preferences'];
+  }
+
+  /// Save client preferences to backend
+  Future<void> savePreferences(Map<String, dynamic> prefs) async {
+    await _dio.put('/api/preferences/mobile-android',
+      data: {'preferences': prefs}
+    );
   }
 
   /// Connect to the SSE endpoint and start receiving real-time updates.
@@ -291,7 +372,6 @@ class BackendClient {
   /// Response: { results: [...], total, offset, limit }
   Future<List<Job>> fetchJobs({
     String? status,
-    String? szuruUser,
     int limit = 30,
     int offset = 0,
   }) async {
@@ -303,10 +383,6 @@ class BackendClient {
 
       if (status != null && status != 'all') {
         queryParams['status'] = status;
-      }
-
-      if (szuruUser != null && szuruUser.isNotEmpty) {
-        queryParams['szuru_user'] = szuruUser;
       }
 
       final response = await _dio.get(
@@ -381,13 +457,9 @@ class BackendClient {
 
   /// Backend endpoint: GET /api/stats
   /// Response: { total_jobs, by_status: { pending, downloading, tagging, uploading, completed, failed }, daily_uploads }
-  Future<Map<String, int>> fetchStats({String? szuruUser}) async {
+  Future<Map<String, int>> fetchStats() async {
     try {
-      final queryParams = <String, dynamic>{};
-      if (szuruUser != null && szuruUser.isNotEmpty) {
-        queryParams['szuru_user'] = szuruUser;
-      }
-      final response = await _dio.get('/api/stats', queryParameters: queryParams);
+      final response = await _dio.get('/api/stats');
 
       if (response.data is! Map<String, dynamic>) {
         return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'failed': 0};
@@ -427,7 +499,6 @@ class BackendClient {
     List<String>? tags,
     String? safety,
     bool? skipTagging,
-    String? szuruUser,
   }) async {
     try {
       final payload = <String, dynamic>{
@@ -448,10 +519,6 @@ class BackendClient {
 
       if (skipTagging != null) {
         payload['skip_tagging'] = skipTagging;
-      }
-
-      if (szuruUser != null && szuruUser.isNotEmpty) {
-        payload['szuru_user'] = szuruUser;
       }
 
       final response = await _dio.post('/api/jobs', data: payload);

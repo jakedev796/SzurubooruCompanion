@@ -246,15 +246,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Use explicitly selected user, or default to first user in multi-user setups
-      String? filterUser;
-      final user = settings.szuruUser;
-      if (user.isNotEmpty) {
-        filterUser = user;
-      } else if (szuruUsers.length > 1) {
-        filterUser = szuruUsers.first;
-      }
-      jobs = await backendClient.fetchJobs(szuruUser: filterUser);
+      // Jobs are automatically filtered by authenticated user on backend
+      jobs = await backendClient.fetchJobs();
       errorMessage = null;
     } catch (error) {
       errorMessage = userFriendlyErrorMessage(error);
@@ -267,15 +260,13 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshStats() async {
     if (!settings.isConfigured || !settings.canMakeApiCalls) return;
-    
+
     isLoadingStats = true;
     notifyListeners();
-    
+
     try {
-      final user = settings.szuruUser;
-      stats = await backendClient.fetchStats(
-        szuruUser: user.isNotEmpty ? user : null,
-      );
+      // Stats are automatically filtered by authenticated user on backend
+      stats = await backendClient.fetchStats();
       errorMessage = null;
     } catch (error) {
       errorMessage = userFriendlyErrorMessage(error);
@@ -287,7 +278,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Enqueue a new job from a URL.
-  /// 
+  ///
   /// Returns null on success, or an error message string on failure.
   Future<String?> enqueueFromUrl({
     required String url,
@@ -295,7 +286,6 @@ class AppState extends ChangeNotifier {
     required String safety,
     String? source,
     bool? skipTagging,
-    String? szuruUser,
   }) async {
     if (!settings.isConfigured) {
       return 'Backend configuration is missing';
@@ -307,7 +297,6 @@ class AppState extends ChangeNotifier {
 
     // Add tagme if no tags provided
     final finalTags = tags.isEmpty ? ['tagme'] : tags;
-    final user = szuruUser ?? settings.szuruUser;
 
     try {
       await backendClient.enqueueFromUrl(
@@ -316,9 +305,8 @@ class AppState extends ChangeNotifier {
         safety: safety,
         source: source,
         skipTagging: skipTagging ?? settings.skipTagging,
-        szuruUser: user.isNotEmpty ? user : null,
       );
-      
+
       await refreshJobs();
       return null;
     } catch (error) {

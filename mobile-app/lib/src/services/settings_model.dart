@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/scheduled_folder.dart';
+import '../models/auth.dart';
 
 /// Settings model for the SzuruCompanion app.
 /// 
@@ -32,6 +33,8 @@ class SettingsModel extends ChangeNotifier {
   int _folderSyncIntervalSeconds = 900;
   String _szuruUser = '';
   bool _showFloatingBubble = false;
+  bool _isAuthenticated = false;
+  String _username = '';
 
   String get backendUrl => _backendUrl;
   String get apiKey => _apiKey;
@@ -47,6 +50,8 @@ class SettingsModel extends ChangeNotifier {
   int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
   String get szuruUser => _szuruUser;
   bool get showFloatingBubble => _showFloatingBubble;
+  bool get isAuthenticated => _isAuthenticated;
+  String get username => _username;
 
   /// Load settings from persistent storage
   /// If SharedPreferences is empty, attempts to restore from backup file
@@ -90,7 +95,11 @@ class SettingsModel extends ChangeNotifier {
       _szuruUser = prefs.getString('szuruUser') ?? '';
       _showFloatingBubble = prefs.getBool('showFloatingBubble') ?? false;
     }
-    
+
+    // Load auth state
+    _username = prefs.getString('username') ?? '';
+    _isAuthenticated = prefs.containsKey('auth_tokens');
+
     _isConfigured = _backendUrl.isNotEmpty;
     notifyListeners();
   }
@@ -612,5 +621,48 @@ class SettingsModel extends ChangeNotifier {
     } catch (e) {
       return false;
     }
+  }
+
+  /// Set authentication state and store tokens
+  Future<void> setAuthState(bool authed, String username, AuthTokens? tokens) async {
+    _isAuthenticated = authed;
+    _username = username;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (authed && tokens != null) {
+      await prefs.setString('auth_tokens', jsonEncode(tokens.toJson()));
+      await prefs.setString('username', username);
+    } else {
+      await prefs.remove('auth_tokens');
+      await prefs.remove('username');
+    }
+    notifyListeners();
+  }
+
+  /// Get preferences that should be synced to backend (excludes device-specific settings)
+  Map<String, dynamic> getSyncablePreferences() {
+    return {
+      'defaultTags': _defaultTags,
+      'defaultSafety': _defaultSafety,
+      'skipTagging': _skipTagging,
+      'pollingIntervalSeconds': _pollingIntervalSeconds,
+      'folderSyncIntervalSeconds': _folderSyncIntervalSeconds,
+      'notifyOnFolderSync': _notifyOnFolderSync,
+      'deleteMediaAfterSync': _deleteMediaAfterSync,
+      // Exclude: szuruUser (backend-side only), showFloatingBubble, useBackgroundService (device-specific)
+    };
+  }
+
+  /// Apply synced preferences from backend (merges with local, doesn't override device-specific settings)
+  Future<void> applySyncedPreferences(Map<String, dynamic> prefs) async {
+    await saveSettings(
+      defaultTags: prefs['defaultTags'] as String?,
+      defaultSafety: prefs['defaultSafety'] as String?,
+      skipTagging: prefs['skipTagging'] as bool?,
+      pollingIntervalSeconds: prefs['pollingIntervalSeconds'] as int?,
+      folderSyncIntervalSeconds: prefs['folderSyncIntervalSeconds'] as int?,
+      notifyOnFolderSync: prefs['notifyOnFolderSync'] as bool?,
+      deleteMediaAfterSync: prefs['deleteMediaAfterSync'] as bool?,
+    );
   }
 }

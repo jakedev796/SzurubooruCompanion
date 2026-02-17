@@ -15,8 +15,9 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -61,6 +62,11 @@ class JobStatus(str, PyEnum):
 class JobType(str, PyEnum):
     URL = "url"
     FILE = "file"
+
+
+class UserRole(str, PyEnum):
+    ADMIN = "admin"
+    USER = "user"
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +129,104 @@ class SchemaMigration(Base):
     __tablename__ = "schema_migrations"
 
     version = Column(String(255), primary_key=True)
+
+
+class User(Base):
+    """User account with Szurubooru credentials and role."""
+
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)  # bcrypt hash
+    role = Column(Enum(UserRole), nullable=False, default=UserRole.USER)
+
+    # Szurubooru credentials
+    szuru_url = Column(String(512), nullable=True)  # Internal/API URL
+    szuru_public_url = Column(String(512), nullable=True)  # Public URL for sharing
+    szuru_username = Column(String(255), nullable=True)
+    szuru_token_encrypted = Column(Text, nullable=True)  # Fernet encrypted
+
+    # Account status
+    is_active = Column(Integer, nullable=False, default=1)
+
+    # Timestamps (always UTC)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class SiteCredential(Base):
+    """Per-user site credentials (Twitter, Sankaku, etc.) with encryption."""
+
+    __tablename__ = "site_credentials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    site_name = Column(String(64), nullable=False)  # "twitter", "sankaku", etc.
+    credential_key = Column(String(128), nullable=False)  # "username", "password", "api_key", "cookies"
+    credential_value_encrypted = Column(Text, nullable=False)  # Fernet encrypted
+
+    # Timestamps (always UTC)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Unique constraint: one credential key per site per user
+    __table_args__ = (
+        UniqueConstraint('user_id', 'site_name', 'credential_key', name='uq_user_site_cred'),
+    )
+
+
+class GlobalSetting(Base):
+    """System-wide settings (WD14, worker concurrency, timeouts, etc.)."""
+
+    __tablename__ = "global_settings"
+
+    key = Column(String(255), primary_key=True)
+    value = Column(Text, nullable=True)
+    value_type = Column(String(32), nullable=False, default="string")  # "string", "int", "float", "bool"
+
+    # Timestamp (always UTC)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ClientPreference(Base):
+    """Per-user client preferences (browser extension, mobile app) stored as JSONB."""
+
+    __tablename__ = "client_preferences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    client_type = Column(String(32), nullable=False)  # "extension-chrome", "extension-firefox", "mobile-android"
+    preferences = Column(JSONB, nullable=False, default=dict)
+
+    # Timestamps (always UTC)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Unique constraint: one preference set per user per client type
+    __table_args__ = (
+        UniqueConstraint('user_id', 'client_type', name='uq_user_client'),
+    )
 
 
 # ---------------------------------------------------------------------------

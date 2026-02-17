@@ -8,6 +8,11 @@ pydantic>=2.5.0
 python-multipart>=0.0.6
 redis>=4.5.0
 
+# Authentication and encryption
+bcrypt>=4.0.0
+pyjwt>=2.8.0
+cryptography>=41.0.0
+
 # WD14 in-process tagging
 torch>=2.0.0
 torchvision>=0.15.0

@@ -22,6 +22,10 @@ from app.api.stats import router as stats_router
 from app.api.health import router as health_router
 from app.api.events import router as events_router
 from app.api.config import router as config_router
+from app.api.auth import router as auth_router
+from app.api.users import router as users_router
+from app.api.settings import router as settings_router
+from app.api.preferences import router as preferences_router
 from app.services.szurubooru import (
     init_session as init_szuru_session,
     close_session as close_szuru_session,
@@ -151,6 +155,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 # Routers
 app.include_router(health_router, prefix="/api", tags=["health"])
+app.include_router(auth_router, prefix="/api", tags=["auth"])
+app.include_router(users_router, prefix="/api", tags=["users"])
+app.include_router(settings_router, prefix="/api", tags=["settings"])
+app.include_router(preferences_router, prefix="/api", tags=["preferences"])
 app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 app.include_router(stats_router, prefix="/api", tags=["stats"])
 app.include_router(events_router, prefix="/api", tags=["events"])

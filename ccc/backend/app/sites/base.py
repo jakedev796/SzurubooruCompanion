@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from app.config import Settings
 
@@ -36,8 +36,18 @@ class SiteHandler:
     credentials: List[CredentialSpec] = []
     gallery_dl_tag_options: List[Tuple[str, str]] = []
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, user_config: Optional[Dict[str, Dict[str, str]]] = None):
+        """
+        Initialize site handler.
+
+        Args:
+            settings: Global settings from ENV
+            user_config: Per-user credentials from database
+                        Format: {site_name: {credential_key: value}}
+                        Example: {"twitter": {"username": "user", "password": "pass"}}
+        """
         self.settings = settings
+        self.user_config = user_config or {}
 
     # -- URL matching --
 
@@ -75,6 +85,7 @@ class SiteHandler:
         """
         Extra -o flags for gallery-dl.
         Built from `credentials` and `gallery_dl_tag_options` declarations.
+        Prioritizes user_config over ENV settings.
         """
         opts: List[str] = []
         ext = self.gallery_dl_extractor
@@ -85,7 +96,14 @@ class SiteHandler:
             opts.extend(["-o", f"extractor.{ext}.{opt_key}={opt_value}"])
 
         for spec in self.credentials:
-            value = getattr(self.settings, spec.settings_attr, None)
+            # Try user config first (from database)
+            site_creds = self.user_config.get(self.name, {})
+            value = site_creds.get(spec.gallery_dl_key)
+
+            # Fallback to ENV settings if not in user config
+            if not value:
+                value = getattr(self.settings, spec.settings_attr, None)
+
             if value and (cleaned := (value or "").strip()):
                 opts.extend(["-o", f"extractor.{ext}.{spec.gallery_dl_key}={cleaned}"])
 

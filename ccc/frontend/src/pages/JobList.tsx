@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { Play, Pause, Square, Trash2 } from "lucide-react";
 import {
   fetchJobs,
   fetchJob,
@@ -162,7 +163,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
               disabled={isLoading("start")}
               title="Start job"
             >
-              {isLoading("start") ? "..." : "\u25B6"}
+              {isLoading("start") ? "..." : <Play size={14} />}
             </button>
             <button
               className="btn btn-danger btn-sm"
@@ -170,7 +171,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
               disabled={isLoading("delete")}
               title="Delete job"
             >
-              {isLoading("delete") ? "..." : "\u2715"}
+              {isLoading("delete") ? "..." : <Trash2 size={14} />}
             </button>
           </>
         );
@@ -185,7 +186,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
               disabled={isLoading("pause")}
               title="Pause job"
             >
-              {isLoading("pause") ? "..." : "\u23F8"}
+              {isLoading("pause") ? "..." : <Pause size={14} />}
             </button>
             <button
               className="btn btn-danger btn-sm"
@@ -193,7 +194,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
               disabled={isLoading("stop")}
               title="Stop job"
             >
-              {isLoading("stop") ? "..." : "\u23F9"}
+              {isLoading("stop") ? "..." : <Square size={14} />}
             </button>
             <button
               className="btn btn-danger btn-sm"
@@ -201,7 +202,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
               disabled={isLoading("delete")}
               title="Delete job"
             >
-              {isLoading("delete") ? "..." : "\u2715"}
+              {isLoading("delete") ? "..." : <Trash2 size={14} />}
             </button>
           </>
         );
@@ -215,7 +216,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
               disabled={isLoading("resume")}
               title="Resume job"
             >
-              {isLoading("resume") ? "..." : "\u25B6"}
+              {isLoading("resume") ? "..." : <Play size={14} />}
             </button>
             <button
               className="btn btn-danger btn-sm"
@@ -223,7 +224,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
               disabled={isLoading("delete")}
               title="Delete job"
             >
-              {isLoading("delete") ? "..." : "\u2715"}
+              {isLoading("delete") ? "..." : <Trash2 size={14} />}
             </button>
           </>
         );
@@ -236,7 +237,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
             disabled={isLoading("delete")}
             title="Delete job"
           >
-            {isLoading("delete") ? "..." : "\u2715"}
+            {isLoading("delete") ? "..." : <Trash2 size={14} />}
           </button>
         );
       default:

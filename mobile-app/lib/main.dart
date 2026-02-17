@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:battery_optimization_helper/battery_optimization_helper.dart';
@@ -11,8 +12,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'src/models/auth.dart';
 import 'src/models/job.dart';
 import 'src/screens/folder_list_screen.dart';
+import 'src/screens/setup_screen.dart';
+import 'src/screens/login_screen.dart';
 import 'src/services/app_state.dart';
 import 'src/theme/app_theme.dart';
 import 'src/services/backend_client.dart';
@@ -175,13 +179,28 @@ class SzuruCompanionApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsModel>();
+
+    // Determine initial route based on auth state
+    String initialRoute = '/';
+    if (settings.backendUrl.isEmpty) {
+      initialRoute = '/setup';
+    } else if (!settings.isAuthenticated) {
+      initialRoute = '/login';
+    }
+
     return MaterialApp(
       title: 'SzuruCompanion',
       debugShowCheckedModeBanner: false,
       theme: appDarkTheme,
       darkTheme: appDarkTheme,
       themeMode: ThemeMode.dark,
-      home: const MainScreen(),
+      initialRoute: initialRoute,
+      routes: {
+        '/': (context) => const MainScreen(),
+        '/setup': (context) => const SetupScreen(),
+        '/login': (context) => const LoginScreen(),
+      },
     );
   }
 }
@@ -196,10 +215,8 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final GlobalKey<FormState> _settingsFormKey = GlobalKey<FormState>();
   final TextEditingController _backendUrlController = TextEditingController();
-  final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _defaultTagsController = TextEditingController();
   final FocusNode _backendUrlFocusNode = FocusNode();
-  final FocusNode _apiKeyFocusNode = FocusNode();
   final FocusNode _defaultTagsFocusNode = FocusNode();
   String _selectedSafety = 'unsafe';
   bool _useBackgroundService = true;
@@ -209,7 +226,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _showPersistentNotification = true;
   bool _showFloatingBubble = false;
   int _folderSyncIntervalSeconds = 900;
-  String _szuruUser = '';
   int _selectedIndex = 0;
   bool _isProcessingShare = false;
   bool _isSyncingFolders = false;
@@ -225,7 +241,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _backendUrlFocusNode.addListener(_handleBackendUrlFocusChange);
-    _apiKeyFocusNode.addListener(_handleApiKeyFocusChange);
     _defaultTagsFocusNode.addListener(_handleDefaultTagsFocusChange);
     final settings = context.read<SettingsModel>();
     _selectedIndex = settings.isConfigured ? 0 : 2;
@@ -375,13 +390,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
     _backendUrlFocusNode.removeListener(_handleBackendUrlFocusChange);
-    _apiKeyFocusNode.removeListener(_handleApiKeyFocusChange);
     _defaultTagsFocusNode.removeListener(_handleDefaultTagsFocusChange);
     _backendUrlFocusNode.dispose();
-    _apiKeyFocusNode.dispose();
     _defaultTagsFocusNode.dispose();
     _backendUrlController.dispose();
-    _apiKeyController.dispose();
     _defaultTagsController.dispose();
     super.dispose();
   }
@@ -391,7 +403,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final settings = context.read<SettingsModel>();
       _backendUrlController.text = settings.backendUrl;
-      _apiKeyController.text = settings.apiKey;
       _defaultTagsController.text = settings.defaultTags;
       _selectedSafety = settings.defaultSafety;
       _useBackgroundService = settings.useBackgroundService;
@@ -401,7 +412,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _showPersistentNotification = settings.showPersistentNotification;
       _showFloatingBubble = settings.showFloatingBubble;
       _folderSyncIntervalSeconds = settings.folderSyncIntervalSeconds;
-      _szuruUser = settings.szuruUser;
     } catch (e) {
       debugPrint('[Main] Error syncing settings fields: $e');
     }
@@ -413,12 +423,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (_showFloatingBubble) {
         _applyBubbleAndNotificationFromState();
       }
-    }
-  }
-
-  void _handleApiKeyFocusChange() {
-    if (!_apiKeyFocusNode.hasFocus) {
-      _autoSaveSettings(validate: true);
     }
   }
 
@@ -474,11 +478,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           inputData: {
             'url': url,
             'backendUrl': settings.backendUrl,
-            'apiKey': settings.apiKey,
             'tags': tags,
             'safety': _selectedSafety,
             'skipTagging': _skipTagging,
-            'szuruUser': settings.szuruUser,
           },
         );
         await NotificationService.instance.showUploadSuccess(url);
@@ -904,53 +906,65 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                   },
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _apiKeyController,
-                  focusNode: _apiKeyFocusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'API Key (optional)',
-                    hintText: 'Leave empty if backend does not require authentication',
-                    border: OutlineInputBorder(),
+                // Authentication status and logout
+                if (settings.isAuthenticated) ...[
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.account_circle),
+                    title: Text('Logged in as ${settings.username}'),
+                    subtitle: const Text('Tap to logout'),
+                    trailing: const Icon(Icons.logout),
+                    onTap: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Logout'),
+                          content: const Text(
+                            'Are you sure you want to logout? Your settings will be synced before logging out.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Logout'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirmed == true && mounted) {
+                        // Final sync before logout
+                        try {
+                          final client = BackendClient(baseUrl: settings.backendUrl);
+                          final prefs = await SharedPreferences.getInstance();
+                          final authJson = prefs.getString('auth_tokens');
+                          if (authJson != null) {
+                            final tokens = AuthTokens.fromJson(jsonDecode(authJson));
+                            client.setAccessToken(tokens.accessToken);
+                            await client.savePreferences(settings.getSyncablePreferences());
+                          }
+                        } catch (e) {
+                          debugPrint('Failed to sync preferences on logout: $e');
+                        }
+
+                        if (mounted) {
+                          await settings.setAuthState(false, '', null);
+                          if (mounted) {
+                            Navigator.of(context).pushReplacementNamed('/login');
+                          }
+                        }
+                      }
+                    },
                   ),
-                ),
-                const SizedBox(height: 12),
-                Consumer<AppState>(
-                  builder: (context, appState, _) {
-                    if (appState.szuruUsers.length <= 1) {
-                      return const SizedBox.shrink();
-                    }
-                    final validUser = appState.szuruUsers.contains(_szuruUser)
-                        ? _szuruUser
-                        : '';
-                    return DropdownButtonFormField<String>(
-                      value: validUser,
-                      decoration: const InputDecoration(
-                        labelText: 'Upload as',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: [
-                        const DropdownMenuItem(
-                          value: '',
-                          child: Text('Default user'),
-                        ),
-                        ...appState.szuruUsers.map(
-                          (u) => DropdownMenuItem(value: u, child: Text(u)),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _szuruUser = value ?? '';
-                        });
-                        _autoSaveSettings(validate: false);
-                      },
-                    );
-                  },
-                ),
+                ],
                 const SizedBox(height: 12),
               ],
             ),
             ),
-            
+
             // Share Settings Section
             Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -1763,7 +1777,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     await settings.saveSettings(
       backendUrl: _backendUrlController.text.trim(),
-      apiKey: _apiKeyController.text.trim(),
       useBackgroundService: _useBackgroundService,
       defaultTags: _defaultTagsController.text,
       defaultSafety: _selectedSafety,
@@ -1773,7 +1786,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       showPersistentNotification: _showPersistentNotification,
       showFloatingBubble: _showFloatingBubble,
       folderSyncIntervalSeconds: _folderSyncIntervalSeconds,
-      szuruUser: _szuruUser,
     );
     if (!mounted) return;
 

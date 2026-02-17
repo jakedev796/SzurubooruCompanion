@@ -11,15 +11,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import String, func, select, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import Job, JobStatus, get_db
-from app.api.deps import verify_api_key
+from app.database import Job, JobStatus, User, get_db
+from app.api.deps import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/stats")
 async def get_stats(
-    _key: str = Depends(verify_api_key),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     szuru_user: Optional[str] = Query(None),
 ):
@@ -53,6 +53,10 @@ async def get_stats(
             key = str(raw).lower()
             if key in status_counts:
                 status_counts[key] = cnt
+
+    # Combine completed and merged into a single completed count for display
+    # Keep merged separate for internal tracking but add it to completed for stats
+    status_counts["completed"] = status_counts.get("completed", 0) + status_counts.get("merged", 0)
 
     # Uploads per day for the last 30 days. Group by UTC date so labels match
     # stored timestamps regardless of DB session timezone. text() has no .label(),

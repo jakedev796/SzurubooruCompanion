@@ -1,26 +1,25 @@
 import { useState, FormEvent } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { fetchStats, setDashboardAuth } from "../api";
+import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
 
 export default function Login() {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
-  const [error, setError] = useState("");
+  const { login } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/";
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError("");
-    const basic = btoa(unescape(encodeURIComponent(user + ":" + pass)));
-    setDashboardAuth(basic);
-    fetchStats()
-      .then(() => navigate(from, { replace: true }))
-      .catch((err: Error) => {
-        setDashboardAuth(null);
-        setError(err.message || "Login failed.");
-      });
+    try {
+      await login(user, pass);
+      navigate(from, { replace: true });
+    } catch (err: any) {
+      showToast(err.message || "Login failed", "error");
+    }
   }
 
   return (
@@ -65,9 +64,6 @@ export default function Login() {
               style={{ width: "100%", padding: 8 }}
             />
           </div>
-          {error && (
-            <p style={{ color: "var(--red)", marginBottom: "0.75rem" }}>{error}</p>
-          )}
           <button type="submit">Log in</button>
         </form>
       </div>

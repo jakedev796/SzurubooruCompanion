@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 import 'backend_client.dart';
 import 'folder_scanner.dart';
+import '../models/auth.dart';
 import '../models/scheduled_folder.dart';
 import 'companion_foreground_service.dart';
 import 'notification_service.dart';
@@ -93,11 +96,9 @@ void callbackDispatcher() {
       if (task == kUploadTask && inputData != null) {
         final url = inputData['url'] as String?;
         final backendUrl = inputData['backendUrl'] as String?;
-        final apiKey = inputData['apiKey'] as String? ?? '';
         final tags = (inputData['tags'] as List?)?.cast<String>() ?? [];
         final safety = inputData['safety'] as String? ?? 'unsafe';
         final skipTagging = inputData['skipTagging'] as bool? ?? false;
-        final szuruUser = inputData['szuruUser'] as String? ?? '';
 
         if (url == null || backendUrl == null) {
           debugPrint(
@@ -107,13 +108,26 @@ void callbackDispatcher() {
         }
 
         try {
-          final client = BackendClient(baseUrl: backendUrl, apiKey: apiKey);
+          // Load JWT tokens from SharedPreferences
+          final prefs = await SharedPreferences.getInstance();
+          final authJson = prefs.getString('auth_tokens');
+
+          final client = BackendClient(baseUrl: backendUrl);
+
+          if (authJson != null) {
+            try {
+              final tokens = AuthTokens.fromJson(jsonDecode(authJson));
+              client.setAccessToken(tokens.accessToken);
+            } catch (e) {
+              debugPrint('[BackgroundIsolate] Failed to load auth tokens: $e');
+            }
+          }
+
           await client.enqueueFromUrl(
             url: url,
             tags: tags,
             safety: safety,
             skipTagging: skipTagging,
-            szuruUser: szuruUser.isNotEmpty ? szuruUser : null,
           );
           await NotificationService.instance.showUploadSuccess(url);
           debugPrint('[BackgroundIsolate] Upload task completed: $url');
@@ -179,7 +193,6 @@ Future<FolderScanOutcome> processScheduledFolders() async {
     await settings.loadSettings();
 
     final serverUrl = settings.backendUrl;
-    final apiKey = settings.apiKey;
 
     if (serverUrl.isEmpty) {
       debugPrint(
@@ -215,7 +228,20 @@ Future<FolderScanOutcome> processScheduledFolders() async {
     // This allows WorkManager to fire whenever it wants (accounting for battery optimization,
     // Doze mode, etc.) while still preventing duplicate work.
 
-    final backendClient = BackendClient(baseUrl: serverUrl, apiKey: apiKey);
+    // Load JWT tokens and create client
+    final prefs = await SharedPreferences.getInstance();
+    final authJson = prefs.getString('auth_tokens');
+
+    final backendClient = BackendClient(baseUrl: serverUrl);
+
+    if (authJson != null) {
+      try {
+        final tokens = AuthTokens.fromJson(jsonDecode(authJson));
+        backendClient.setAccessToken(tokens.accessToken);
+      } catch (e) {
+        debugPrint('[FolderSync] Failed to load auth tokens: $e');
+      }
+    }
 
     final folders = await settings.getScheduledFolders();
     debugPrint('[FolderSync] Total folders configured: ${folders.length}');
@@ -455,14 +481,26 @@ Future<List<ScanResult>> _runFolderScan({
     await settings.loadSettings();
 
     final serverUrl = settings.backendUrl;
-    final apiKey = settings.apiKey;
 
     if (serverUrl.isEmpty) {
       debugPrint('Server URL not configured');
       return [];
     }
 
-    final backendClient = BackendClient(baseUrl: serverUrl, apiKey: apiKey);
+    // Load JWT tokens and create client
+    final prefs = await SharedPreferences.getInstance();
+    final authJson = prefs.getString('auth_tokens');
+
+    final backendClient = BackendClient(baseUrl: serverUrl);
+
+    if (authJson != null) {
+      try {
+        final tokens = AuthTokens.fromJson(jsonDecode(authJson));
+        backendClient.setAccessToken(tokens.accessToken);
+      } catch (e) {
+        debugPrint('Failed to load auth tokens: $e');
+      }
+    }
 
     final folders = await settings.getScheduledFolders();
     final intervalSeconds = settings.folderSyncIntervalSeconds.clamp(

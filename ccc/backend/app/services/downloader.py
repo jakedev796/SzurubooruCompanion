@@ -90,7 +90,7 @@ async def _run_subprocess(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_direct_media_urls(url: str) -> List[str]:
+async def _resolve_direct_media_urls(url: str, user_config: Optional[Dict] = None) -> List[str]:
     """
     Use gallery-dl --resolve-urls to get direct media URLs.
 
@@ -98,7 +98,7 @@ async def _resolve_direct_media_urls(url: str) -> List[str]:
     We only want the non-indented lines (the orig URLs).
     """
     try:
-        opts, cleanup_paths = _gallery_dl_options(url)
+        opts, cleanup_paths = _gallery_dl_options(url, user_config)
         cmd = ["gallery-dl", "--resolve-urls", *opts, url]
         logger.debug("Running gallery-dl --resolve-urls for %s", url)
 
@@ -134,17 +134,23 @@ async def _resolve_direct_media_urls(url: str) -> List[str]:
         return []
 
 
-async def download_url(url: str, dest_dir: str, source_url: Optional[str] = None) -> DownloadResult:
+async def download_url(url: str, dest_dir: str, source_url: Optional[str] = None, user_config: Optional[Dict] = None) -> DownloadResult:
     """
     Download media from *url* into *dest_dir*.
     1. Try gallery-dl (with JSON metadata output).
     2. If gallery-dl fails / unsupported, try yt-dlp.
     3. Return paths + any parsed metadata.
+
+    Args:
+        url: URL to download
+        dest_dir: Destination directory
+        source_url: Optional source URL override
+        user_config: Per-user credentials from database ({site_name: {key: value}})
     """
     url = normalize_url(url)
     os.makedirs(dest_dir, exist_ok=True)
 
-    result = await _try_gallery_dl(url, dest_dir)
+    result = await _try_gallery_dl(url, dest_dir, user_config)
     if result.files:
         if source_url:
             result.source_url = source_url
@@ -213,7 +219,7 @@ async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[
     return result
 
 
-async def extract_media_urls(url: str) -> List[ExtractedMedia]:
+async def extract_media_urls(url: str, user_config: Optional[Dict] = None) -> List[ExtractedMedia]:
     """
     Phase 1: Extract direct media URLs without downloading.
 
@@ -221,10 +227,10 @@ async def extract_media_urls(url: str) -> List[ExtractedMedia]:
     For other sites: Uses --dump-json to get metadata.
     """
     url = normalize_url(url)
-    handler = get_handler(url)
+    handler = get_handler(url, user_config)
     if handler and handler.uses_resolve_urls:
-        return await _extract_resolve_urls_media(url)
-    return await _extract_generic_media(url)
+        return await _extract_resolve_urls_media(url, user_config)
+    return await _extract_generic_media(url, user_config)
 
 
 def _fallback_media(url: str) -> ExtractedMedia:
@@ -236,9 +242,9 @@ def _fallback_media(url: str) -> ExtractedMedia:
     )
 
 
-async def _extract_resolve_urls_media(url: str) -> List[ExtractedMedia]:
+async def _extract_resolve_urls_media(url: str, user_config: Optional[Dict] = None) -> List[ExtractedMedia]:
     """Extract media info using --resolve-urls (for sites like Twitter/Misskey)."""
-    direct_urls = await _resolve_direct_media_urls(url)
+    direct_urls = await _resolve_direct_media_urls(url, user_config)
 
     if not direct_urls:
         logger.warning("No direct media URLs resolved for %s, using original URL", url)
@@ -265,12 +271,12 @@ async def _extract_resolve_urls_media(url: str) -> List[ExtractedMedia]:
     return results
 
 
-async def _extract_generic_media(url: str) -> List[ExtractedMedia]:
+async def _extract_generic_media(url: str, user_config: Optional[Dict] = None) -> List[ExtractedMedia]:
     """Extract media info for generic URLs using --dump-json."""
     results: List[ExtractedMedia] = []
 
     try:
-        opts, cleanup_paths = _gallery_dl_options(url)
+        opts, cleanup_paths = _gallery_dl_options(url, user_config)
         cmd = ["gallery-dl", "--dump-json", "--no-download", *opts, url]
 
         returncode, stdout, stderr = await _run_subprocess(
@@ -360,17 +366,21 @@ def _extract_filename_from_url(url: str) -> str:
 # gallery-dl
 # ---------------------------------------------------------------------------
 
-def _gallery_dl_options(url: str) -> Tuple[List[str], List[Path]]:
+def _gallery_dl_options(url: str, user_config: Optional[Dict] = None) -> Tuple[List[str], List[Path]]:
     """
     Build optional gallery-dl args and any temp files to clean up after the subprocess.
     Delegates to the site handler for credentials, tag options, and cookie handling.
+
+    Args:
+        url: The URL to download
+        user_config: Per-user credentials from database ({site_name: {key: value}})
     """
     opts: List[str] = []
     cleanup_paths: List[Path] = []
     if settings.gallery_dl_config_file:
         opts.extend(["-c", settings.gallery_dl_config_file])
 
-    handler = get_handler(url)
+    handler = get_handler(url, user_config)
     if handler:
         opts.extend(handler.gallery_dl_options())
         cleanup_paths.extend(handler.gallery_dl_cleanup_paths())
@@ -378,10 +388,10 @@ def _gallery_dl_options(url: str) -> Tuple[List[str], List[Path]]:
     return (opts, cleanup_paths)
 
 
-async def _try_gallery_dl(url: str, dest_dir: str) -> DownloadResult:
+async def _try_gallery_dl(url: str, dest_dir: str, user_config: Optional[Dict] = None) -> DownloadResult:
     result = DownloadResult(source_url=url, used_tool="gallery-dl")
     try:
-        opts, cleanup_paths = _gallery_dl_options(url)
+        opts, cleanup_paths = _gallery_dl_options(url, user_config)
         cmd = ["gallery-dl", "--dest", dest_dir, "--write-metadata", "--no-mtime", *opts, url]
 
         returncode, _stdout, stderr = await _run_subprocess(

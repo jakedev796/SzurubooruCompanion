@@ -15,16 +15,20 @@ from typing import Dict, List, Optional
 from sqlalchemy import select
 
 from app.config import get_settings
-from app.database import Job, JobStatus, JobType, async_session
+from app.database import Job, JobStatus, JobType, User, async_session
 from app.services import downloader, szurubooru, tag_categories, tagger
 from app.services.szurubooru import set_current_user
 from app.services import sources as source_utils
 from app.services import tag_utils
+from app.services.config import load_user_config, load_global_config
 from app.sites.registry import normalize_url as _normalize_site_url
 from app.api.events import publish_job_update
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Global configuration loaded from database (updated per-job)
+_global_config = None
 
 # Mime-extension mapping for images (used to decide if WD14 tagging applies).
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff"}
@@ -123,20 +127,47 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
     """
     Run the full pipeline for a single job.
 
-    1. Extract direct media URLs from the source
-    2. For each media: download, tag, upload
-    3. Create relations between posts from multi-file sources
+    1. Load user-specific configuration from database
+    2. Extract direct media URLs from the source
+    3. For each media: download, tag, upload
+    4. Create relations between posts from multi-file sources
     """
     set_current_user(job.szuru_user)
     job_dir = os.path.join(settings.job_data_dir, str(job.id))
     os.makedirs(job_dir, exist_ok=True)
+
+    # Load configurations from database
+    global _global_config
+    user_config_obj = None
+    user_config_dict = None
+
+    async with async_session() as db:
+        # Load global configuration
+        _global_config = await load_global_config(db)
+        logger.debug("%s Job %s: Loaded global config (WD14: %s, worker: %d, gallery-dl timeout: %ds)",
+                    tag, job.id, _global_config.wd14_enabled, _global_config.worker_concurrency,
+                    _global_config.gallery_dl_timeout)
+
+        # Load user configuration
+        if job.szuru_user:
+            result = await db.execute(select(User).where(User.username == job.szuru_user))
+            user = result.scalar_one_or_none()
+            if user:
+                user_config_obj = await load_user_config(db, str(user.id))
+                if user_config_obj:
+                    user_config_dict = user_config_obj.site_credentials
+                    logger.info("%s Job %s: Loaded config for user %s", tag, job.id, job.szuru_user)
+                else:
+                    logger.warning("%s Job %s: No config found for user %s", tag, job.id, job.szuru_user)
+            else:
+                logger.warning("%s Job %s: User %s not found in database", tag, job.id, job.szuru_user)
 
     try:
         if await _abort_if_paused_or_stopped(job):
             return
 
         # ---- Phase 1: Extract media URLs ----
-        extracted_media = await _extract_media(job, job_dir)
+        extracted_media = await _extract_media(job, job_dir, user_config_dict)
         if extracted_media is None:
             return  # already failed
 
@@ -155,7 +186,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 if await _abort_if_paused_or_stopped(job):
                     return
 
-                post_info = await _process_single_media(job, media, media_dir)
+                post_info = await _process_single_media(job, media, media_dir, user_config_dict)
                 if post_info:
                     created_posts.append(post_info)
                     all_sources.append(media.source_url)
@@ -207,7 +238,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
 
 
 async def _extract_media(
-    job: Job, job_dir: str
+    job: Job, job_dir: str, user_config: Optional[Dict] = None
 ) -> Optional[List[downloader.ExtractedMedia]]:
     """
     Phase 1: Determine the list of media items to process.
@@ -219,7 +250,7 @@ async def _extract_media(
     """
     if job.job_type == JobType.URL:
         logger.info("Job %s: Phase 1 - Extracting media URLs from %s", job.id, job.url)
-        extracted = await downloader.extract_media_urls(job.url)
+        extracted = await downloader.extract_media_urls(job.url, user_config)
         logger.info("Job %s: Found %d media file(s)", job.id, len(extracted))
         return extracted
 
@@ -242,6 +273,7 @@ async def _process_single_media(
     job: Job,
     media: downloader.ExtractedMedia,
     media_dir: str,
+    user_config: Optional[Dict] = None,
 ) -> Optional[dict]:
     """
     Download, tag, and upload a single media item.
@@ -250,7 +282,7 @@ async def _process_single_media(
     on success, or None on failure.
     """
     # ---- Download ----
-    files, metadata = await _download_media(job, media, media_dir)
+    files, metadata = await _download_media(job, media, media_dir, user_config)
     if not files:
         logger.warning("Job %s: No files downloaded for %s", job.id, media.filename)
         return None
@@ -276,6 +308,7 @@ async def _download_media(
     job: Job,
     media: downloader.ExtractedMedia,
     media_dir: str,
+    user_config: Optional[Dict] = None,
 ) -> tuple:
     """Download a single media item. Returns ``(files, metadata)``."""
     if job.job_type != JobType.URL:
@@ -289,7 +322,7 @@ async def _download_media(
             media.source_url, media_dir, filename=media.filename
         )
     else:
-        dl = await downloader.download_url(media.url, media_dir, source_url=media.source_url)
+        dl = await downloader.download_url(media.url, media_dir, source_url=media.source_url, user_config=user_config)
 
     merged_meta = {**(media.metadata or {}), **dl.metadata}
     return dl.files, merged_meta

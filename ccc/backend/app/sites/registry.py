@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional, Type
 
 from app.config import Settings, get_settings
 from app.sites.base import SiteHandler
 
 logger = logging.getLogger(__name__)
 
-_handlers: List[SiteHandler] = []
+# List of handler classes (not instances)
+_HANDLER_CLASSES: List[Type[SiteHandler]] = []
 _initialized = False
 
 
-def _init_handlers(settings: Settings) -> None:
-    """Import and instantiate all site handlers. Called once."""
-    global _handlers, _initialized
+def _init_handler_classes() -> None:
+    """Import all site handler classes. Called once."""
+    global _HANDLER_CLASSES, _initialized
     if _initialized:
         return
 
@@ -30,27 +31,36 @@ def _init_handlers(settings: Settings) -> None:
     from app.sites.reddit import RedditHandler
     from app.sites.rule34vault import Rule34VaultHandler
 
-    _handlers = [
-        SankakuHandler(settings),
-        TwitterHandler(settings),
-        MisskeyHandler(settings),
-        Rule34Handler(settings),
-        Rule34VaultHandler(settings),
-        DanbooruHandler(settings),
-        GelbooruHandler(settings),
-        YandereHandler(settings),
-        RedditHandler(settings),
+    _HANDLER_CLASSES = [
+        SankakuHandler,
+        TwitterHandler,
+        MisskeyHandler,
+        Rule34Handler,
+        Rule34VaultHandler,
+        DanbooruHandler,
+        GelbooruHandler,
+        YandereHandler,
+        RedditHandler,
     ]
     _initialized = True
-    logger.info("Registered %d site handlers", len(_handlers))
+    logger.debug("Registered %d site handler classes", len(_HANDLER_CLASSES))
 
 
-def get_handler(url: str) -> Optional[SiteHandler]:
-    """Return the first handler that matches the URL, or None for generic/yt-dlp fallback."""
+def get_handler(url: str, user_config: Optional[Dict[str, Dict[str, str]]] = None) -> Optional[SiteHandler]:
+    """
+    Return the first handler that matches the URL, or None for generic/yt-dlp fallback.
+
+    Args:
+        url: The URL to match
+        user_config: Per-user credentials from database
+                    Format: {site_name: {credential_key: value}}
+    """
     settings = get_settings()
-    _init_handlers(settings)
+    _init_handler_classes()
 
-    for handler in _handlers:
+    for handler_cls in _HANDLER_CLASSES:
+        # Create instance with settings and user_config
+        handler = handler_cls(settings, user_config)
         if handler.matches_url(url):
             return handler
     return None
