@@ -20,7 +20,7 @@ from urllib.parse import quote
 
 import aiohttp
 
-from app.config import get_settings, get_szuru_users
+from app.config import get_settings
 from app.utils.mime import guess_mime_type
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,9 @@ settings = get_settings()
 _current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_user", default=None
 )
+_current_szuru_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "szuru_token", default=None
+)
 _current_szuru_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_url", default=None
 )
@@ -41,6 +44,7 @@ _current_szuru_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextV
 def set_current_user(username: Optional[str], token: Optional[str] = None, szuru_url: Optional[str] = None) -> None:
     """Set the Szurubooru user context for the current async task."""
     _current_user.set(username)
+    _current_szuru_token.set(token)
     _current_szuru_url.set(szuru_url)
 
 
@@ -52,13 +56,11 @@ def set_current_user(username: Optional[str], token: Optional[str] = None, szuru
 def _auth_headers() -> Dict[str, str]:
     """Build the Szurubooru Token auth header for the current user context."""
     username = _current_user.get()
-    users = get_szuru_users()
-    if username:
-        token = next((t for u, t in users if u == username), None)
-        if not token:
-            username, token = users[0]
-    else:
-        username, token = users[0]
+    token = _current_szuru_token.get()
+    
+    if not username or not token:
+        raise ValueError("Szurubooru username and token must be set in current context")
+    
     raw = f"{username}:{token}"
     encoded = base64.b64encode(raw.encode()).decode()
     return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
