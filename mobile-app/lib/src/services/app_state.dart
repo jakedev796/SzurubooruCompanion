@@ -90,6 +90,7 @@ class AppState extends ChangeNotifier {
     
     // Listen to job updates
     _jobUpdateSubscription = backendClient.jobUpdateStream.listen((update) {
+      // Fire-and-forget async handler so we can await network calls inside
       _handleJobUpdate(update);
     });
     
@@ -126,7 +127,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Handle a job update from SSE
-  void _handleJobUpdate(JobUpdate update) {
+  Future<void> _handleJobUpdate(JobUpdate update) async {
     // Find and update the job in the list
     final index = jobs.indexWhere((j) => j.id == update.jobId);
     
@@ -134,7 +135,15 @@ class AppState extends ChangeNotifier {
       // Update existing job
       final existingJob = jobs[index];
       final wasFailed = existingJob.status.toLowerCase() == 'failed';
-      final updatedJob = Job(
+
+      // For terminal statuses or when we get post id/tags, refresh full job from backend
+      final statusLower = update.status.toLowerCase();
+      final isTerminal =
+          statusLower == 'completed' || statusLower == 'merged' || statusLower == 'failed';
+      final hasPostId = update.szuruPostId != null;
+      final hasTags = update.tags != null && update.tags!.isNotEmpty;
+
+      Job updatedJob = Job(
         id: existingJob.id,
         status: update.status,
         jobType: existingJob.jobType,
@@ -152,7 +161,18 @@ class AppState extends ChangeNotifier {
         createdAt: existingJob.createdAt,
         updatedAt: update.timestamp,
       );
-      
+
+      if (isTerminal || hasPostId || hasTags) {
+        try {
+          final full = await backendClient.fetchJob(update.jobId);
+          if (full != null) {
+            updatedJob = full;
+          }
+        } catch (e) {
+          debugPrint('[AppState] Failed to refresh job ${update.jobId} after SSE update: $e');
+        }
+      }
+
       jobs[index] = updatedJob;
       if (!wasFailed && updatedJob.status.toLowerCase() == 'failed') {
         String websiteName;
@@ -179,8 +199,19 @@ class AppState extends ChangeNotifier {
         );
       }
     } else {
-      // Job not in list - refresh to get full details
-      refreshJobs();
+      // Job not in current list - it might be:
+      // - A new job for the current user created from another device / background flow
+      // - A job belonging to another user (which the backend will hide)
+      try {
+        final full = await backendClient.fetchJob(update.jobId);
+        if (full != null) {
+          // Only append if backend confirms it is visible to this user
+          jobs.insert(0, full);
+        }
+      } catch (e) {
+        // If the job is not visible (e.g. belongs to another user), ignore the update
+        debugPrint('[AppState] Ignoring SSE for unknown job ${update.jobId}: $e');
+      }
     }
     
     // Update stats
@@ -242,7 +273,59 @@ class AppState extends ChangeNotifier {
 
     try {
       // Jobs are automatically filtered by authenticated user on backend
-      jobs = await backendClient.fetchJobs();
+      final fetched = await backendClient.fetchJobs();
+
+      // Preserve any existing safety/post information if the refreshed
+      // payload does not include it (e.g. for older jobs).
+      final existingById = {for (final j in jobs) j.id: j};
+      jobs = fetched.map((job) {
+        final existing = existingById[job.id];
+        if (existing == null) return job;
+
+        final hasSafety = (job.safety != null && job.safety!.isNotEmpty) ||
+            (job.post?.safety != null && job.post!.safety!.isNotEmpty);
+        if (hasSafety) return job;
+
+        // Carry over previously-known safety/post mirror if the new summary lacks it
+        return Job(
+          id: job.id,
+          status: job.status,
+          jobType: job.jobType,
+          url: job.url,
+          originalFilename: job.originalFilename,
+          sourceOverride: job.sourceOverride,
+          safety: existing.safety,
+          skipTagging: job.skipTagging,
+          szuruPostId: job.szuruPostId,
+          relatedPostIds: job.relatedPostIds,
+          errorMessage: job.errorMessage,
+          tagsApplied: job.tagsApplied,
+          tagsFromSource: job.tagsFromSource,
+          tagsFromAi: job.tagsFromAi,
+          szuruUser: job.szuruUser,
+          dashboardUsername: job.dashboardUsername,
+          retryCount: job.retryCount,
+          createdAt: job.createdAt,
+          updatedAt: job.updatedAt,
+          post: existing.post ?? job.post,
+        );
+      }).toList();
+
+      // For any completed/merged/failed jobs that still lack safety info
+      // after the list refresh, hydrate them in the background from the
+      // full job endpoint so safety colors show even when summaries do
+      // not yet include safety.
+      for (final job in jobs) {
+        final status = job.status.toLowerCase();
+        final isTerminal =
+            status == 'completed' || status == 'merged' || status == 'failed';
+        final hasSafety = (job.safety != null && job.safety!.isNotEmpty) ||
+            (job.post?.safety != null && job.post!.safety!.isNotEmpty);
+        if (isTerminal && !hasSafety) {
+          // Fire-and-forget; we don't await so refreshJobs can complete quickly
+          unawaited(_hydrateJobSafety(job.id));
+        }
+      }
       errorMessage = null;
     } catch (error) {
       errorMessage = userFriendlyErrorMessage(error);
@@ -250,6 +333,25 @@ class AppState extends ChangeNotifier {
       isLoadingJobs = false;
       lastUpdated = DateTime.now();
       notifyListeners();
+    }
+  }
+
+  /// Hydrate a single job's safety/post mirror from the full job endpoint.
+  /// This is used for older jobs where the list/summary payload may not
+  /// yet include safety, but the detailed job does.
+  Future<void> _hydrateJobSafety(String jobId) async {
+    try {
+      final full = await backendClient.fetchJob(jobId);
+      if (full == null) return;
+
+      final index = jobs.indexWhere((j) => j.id == jobId);
+      if (index == -1) return;
+
+      jobs[index] = full;
+      lastUpdated = DateTime.now();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AppState] Failed to hydrate safety for job $jobId: $e');
     }
   }
 
@@ -362,6 +464,21 @@ class AppState extends ChangeNotifier {
 
     try {
       await backendClient.startJob(jobId);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return userFriendlyErrorMessage(error);
+    }
+  }
+
+  /// Retry a failed job using the same job ID.
+  Future<String?> retryJob(String jobId) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+
+    try {
+      await backendClient.retryJob(jobId);
       await refreshAll();
       return null;
     } catch (error) {

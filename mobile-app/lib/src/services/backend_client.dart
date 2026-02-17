@@ -690,6 +690,26 @@ class BackendClient {
     }
   }
 
+  /// Retry a failed job.
+  ///
+  /// Backend endpoint: POST /api/jobs/{job_id}/retry
+  Future<Job> retryJob(String jobId) async {
+    try {
+      final response = await _dio.post('/api/jobs/$jobId/retry');
+
+      if (response.data is! Map<String, dynamic>) {
+        throw const BackendException('Invalid response from server');
+      }
+
+      return Job.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
   /// Delete a job.
   /// 
   /// Backend endpoint: DELETE /api/jobs/{job_id}

@@ -15,6 +15,7 @@ class AppColors {
   static const Color red = Color(0xFFF87171);
   static const Color yellow = Color(0xFFFACC15);
   static const Color orange = Color(0xFFFB923C);
+  static const Color purple = Color(0xFFC4B5FD);
 }
 
 /// Status colors for job badges and indicators.
@@ -24,17 +25,20 @@ class AppStatusColors {
   static Color forStatus(String status) {
     switch (status.toLowerCase()) {
       case 'pending':
-        return AppColors.orange;
+        return AppColors.yellow;
       case 'downloading':
       case 'tagging':
       case 'uploading':
         return AppColors.accent;
       case 'completed':
         return AppColors.green;
+      case 'merged':
+        return AppColors.purple;
       case 'failed':
-      case 'paused':
       case 'stopped':
         return AppColors.red;
+      case 'paused':
+        return AppColors.yellow;
       default:
         return AppColors.textMuted;
     }

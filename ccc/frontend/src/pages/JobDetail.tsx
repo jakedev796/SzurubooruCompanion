@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { RefreshCcw } from "lucide-react";
 import {
   fetchJob,
   fetchConfig,
@@ -8,6 +9,7 @@ import {
   stopJob,
   deleteJob,
   resumeJob,
+  retryJob,
   getJobSources,
   sortTags,
   type Job,
@@ -48,8 +50,32 @@ export default function JobDetail() {
   }, [id]);
 
   useJobUpdates((updatedJob: Record<string, unknown>) => {
-    if (String(updatedJob.id) === id || String(updatedJob.job_id) === id) {
-      setJob((prev) => (prev ? { ...prev, ...updatedJob } : (updatedJob as unknown as Job)));
+    if (!id) return;
+    const payloadId = String(updatedJob.id ?? updatedJob.job_id ?? "");
+    if (payloadId !== id) return;
+
+    const status = String(updatedJob.status ?? "").toLowerCase();
+    const hasTerminalStatus =
+      status === "completed" || status === "merged" || status === "failed";
+    const hasPostId = updatedJob.szuru_post_id != null;
+    const hasTags = Array.isArray((updatedJob as any).tags);
+
+    // For terminal states or when we get post ID / tags, refetch full job
+    if (hasTerminalStatus || hasPostId || hasTags) {
+      fetchJob(id)
+        .then((full) => {
+          setJob(full);
+        })
+        .catch((e: Error) => {
+          console.error("Failed to refresh job after SSE update:", e.message);
+          // Fallback: at least merge status so UI doesn't look stale
+          setJob((prev) =>
+            prev ? ({ ...prev, status: updatedJob.status ?? prev.status } as Job) : prev
+          );
+        });
+    } else {
+      // For in-progress updates, shallow-merge minimal payload
+      setJob((prev) => (prev ? ({ ...prev, ...updatedJob } as Job) : (updatedJob as Job)));
     }
   }, id ?? null);
 
@@ -83,6 +109,11 @@ export default function JobDetail() {
     } finally {
       setActionLoading(null);
     }
+  }
+
+  async function handleRetry() {
+    if (!id) return;
+    await handleAction(retryJob, "retry");
   }
 
   function getAvailableActions(status: string): ActionDef[] {
@@ -125,7 +156,7 @@ export default function JobDetail() {
   const sources = getJobSources(job);
   const postId = job.post?.id ?? job.szuru_post_id;
   const postRelations = job.post?.relations ?? job.related_post_ids ?? [];
-  const postSafety = job.post?.safety ?? job.safety;
+  const postSafety = (job.post?.safety ?? job.safety)?.toLowerCase();
   const postTags = job.post?.tags ?? job.tags_applied;
 
   return (
@@ -157,19 +188,32 @@ export default function JobDetail() {
             flexWrap: "wrap",
           }}
         >
-          {getAvailableActions(job.status).map((btn, idx) => (
-            <button
-              key={idx}
-              className={`btn ${btn.style}`}
-              onClick={btn.action}
-              disabled={actionLoading !== null}
-              style={{ opacity: actionLoading ? 0.7 : 1 }}
-            >
-              {actionLoading === btn.label.toLowerCase()
-                ? `${btn.label}ing...`
-                : btn.label}
-            </button>
-          ))}
+          {getAvailableActions(job.status)
+            .concat(
+              job.status === "failed"
+                ? [{ label: "Retry", action: handleRetry, style: "btn-warning", iconOnly: true }]
+                : []
+            )
+            .map((btn, idx) => (
+              <button
+                key={idx}
+                className={`btn ${btn.style}`}
+                onClick={btn.action}
+                disabled={actionLoading !== null}
+                style={{ opacity: actionLoading ? 0.7 : 1, display: "flex", alignItems: "center", gap: "0.5rem" }}
+                title={(btn as { iconOnly?: boolean }).iconOnly ? "Retry job" : undefined}
+              >
+                {(btn as { iconOnly?: boolean }).iconOnly ? (
+                  actionLoading === "retry" ? "..." : <RefreshCcw size={16} />
+                ) : (
+                  <>
+                    {actionLoading === btn.label.toLowerCase()
+                      ? `${btn.label}ing...`
+                      : btn.label}
+                  </>
+                )}
+              </button>
+            ))}
         </div>
 
         <dl className="detail-grid">
@@ -204,7 +248,27 @@ export default function JobDetail() {
           <dd>{job.original_filename || "-"}</dd>
 
           <dt>Safety</dt>
-          <dd>{postSafety || "-"}</dd>
+          <dd>
+            {postSafety ? (
+              <span
+                style={{
+                  color:
+                    postSafety === "safe"
+                      ? "#88D488"
+                      : postSafety === "sketchy"
+                      ? "#F3D75F"
+                      : postSafety === "unsafe"
+                      ? "#F3985F"
+                      : "var(--text)",
+                  fontWeight: 500,
+                }}
+              >
+                {postSafety}
+              </span>
+            ) : (
+              "-"
+            )}
+          </dd>
 
           <dt>Upload User</dt>
           <dd>{job.dashboard_username || "-"}</dd>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Play, Pause, Square, Trash2 } from "lucide-react";
+import { Play, Pause, Square, Trash2, RefreshCcw } from "lucide-react";
 import {
   fetchJobs,
   fetchJob,
@@ -10,6 +10,7 @@ import {
   stopJob,
   deleteJob,
   resumeJob,
+  retryJob,
   getJobSources,
   type Job,
   type JobSummary,
@@ -70,22 +71,29 @@ export default function JobList() {
         newResults[index] = { ...prevData.results[index], ...updatedJob };
         return { ...prevData, results: newResults };
       }
-      if (!statusFilter || updatedJob.status === statusFilter) {
-        fetchJob(String(id))
-          .then((fullJob) => {
-            setData((prev) => {
-              if (!prev) return prev;
-              const idx = prev.results.findIndex((j) => String(j.id) === String(id));
-              if (idx >= 0) return prev;
-              return {
-                ...prev,
-                results: [{ ...fullJob, ...updatedJob }, ...prev.results],
-                total: prev.total + 1,
-              };
-            });
-          })
-          .catch(() => {});
-      }
+      // Job not in the current page; try to fetch and insert it if visible to this user
+      fetchJob(String(id))
+        .then((fullJob) => {
+          setData((current) => {
+            if (!current) return current;
+            const exists = current.results.some((j) => String(j.id) === String(id));
+            if (exists) return current;
+
+            // Respect current status filter if present
+            if (statusFilter && fullJob.status !== statusFilter) {
+              return current;
+            }
+
+            const results = [{ ...(fullJob as JobSummary), ...updatedJob }, ...current.results].slice(
+              0,
+              PAGE_SIZE
+            );
+            return { ...current, results, total: current.total + 1 };
+          });
+        })
+        .catch(() => {
+          // If the job is not visible (e.g. belongs to another user), ignore the update
+        });
       return prevData;
     });
   });
@@ -228,7 +236,6 @@ export default function JobList() {
           </>
         );
       case "completed":
-      case "failed":
         return (
           <button
             className="btn btn-danger btn-sm"
@@ -238,6 +245,27 @@ export default function JobList() {
           >
             {isLoading("delete") ? "..." : <Trash2 size={14} />}
           </button>
+        );
+      case "failed":
+        return (
+          <>
+            <button
+              className="btn btn-warning btn-sm"
+              onClick={() => handleJobAction(id, "retry", retryJob)}
+              disabled={isLoading("retry")}
+              title="Retry job"
+            >
+              {isLoading("retry") ? "..." : <RefreshCcw size={14} />}
+            </button>
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={() => handleDeleteJob(id)}
+              disabled={isLoading("delete")}
+              title="Delete job"
+            >
+              {isLoading("delete") ? "..." : <Trash2 size={14} />}
+            </button>
+          </>
         );
       default:
         return null;
@@ -353,23 +381,26 @@ export default function JobList() {
                   <td>
                     {(j.post?.id ?? j.szuru_post_id) ? (
                       <span className="post-links">
-                        <a
-                          href={`${booruUrl}/post/${j.post?.id ?? j.szuru_post_id!}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="post-link"
-                        >
-                          #{j.post?.id ?? j.szuru_post_id}
-                        </a>
-                        {(j.post?.relations ?? j.related_post_ids)?.length ? (
-                          <span
-                            className="related-posts"
-                            title={`Related: ${(j.post?.relations ?? j.related_post_ids)!.map((id) => `#${id}`).join(", ")}`}
-                          >
-                            {" "}
-                            +{(j.post?.relations ?? j.related_post_ids)!.length}
+                        {Array.from(
+                          new Set(
+                            [
+                              j.post?.id ?? j.szuru_post_id,
+                              ...((j.post?.relations ?? j.related_post_ids) ?? []),
+                            ].filter((id): id is number => id != null)
+                          )
+                        ).map((id, idx) => (
+                          <span key={id}>
+                            {idx > 0 && " "}
+                            <a
+                              href={`${booruUrl}/post/${id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="post-link"
+                            >
+                              #{id}
+                            </a>
                           </span>
-                        ) : null}
+                        ))}
                       </span>
                     ) : (
                       "-"

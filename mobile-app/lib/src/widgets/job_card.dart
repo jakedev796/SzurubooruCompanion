@@ -25,7 +25,8 @@ class JobCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tags = job.allTags;
-    final showPostLink = job.status == 'completed' &&
+    final status = job.status.toLowerCase();
+    final showPostLink = (status == 'completed' || status == 'merged') &&
         job.szuruPostId != null &&
         booruUrl != null &&
         booruUrl!.isNotEmpty;
@@ -82,20 +83,48 @@ class JobCard extends StatelessWidget {
               if (job.safetyDisplay.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text('Safety: ${job.safetyDisplay}'),
+                  child: Text(
+                    'Safety: ${job.safetyDisplay}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: () {
+                        final s = (job.post?.safety ?? job.safety)?.toLowerCase();
+                        if (s == 'safe') return const Color(0xFF88D488);
+                        if (s == 'sketchy') return const Color(0xFFF3D75F);
+                        if (s == 'unsafe') return const Color(0xFFF3985F);
+                        return AppColors.text;
+                      }(),
+                    ),
+                  ),
                 ),
               if (showPostLink)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: InkWell(
-                    onTap: () => JobCard.openPostLink(context, booruUrl!, job.szuruPostId!),
-                    child: Text(
-                      'View post #${job.szuruPostId}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Theme.of(context).colorScheme.primary,
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      Text(
+                        'View post${(job.relatedPostIds != null && job.relatedPostIds!.isNotEmpty) ? 's' : ''}:',
+                        style: const TextStyle(fontSize: 13),
                       ),
-                    ),
+                      ...{
+                        if (job.szuruPostId != null) job.szuruPostId!,
+                        ...(job.relatedPostIds ?? []),
+                      }.map(
+                        (id) => InkWell(
+                          onTap: () => JobCard.openPostLink(context, booruUrl!, id),
+                          child: Text(
+                            '#$id',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               const SizedBox(height: 8),
