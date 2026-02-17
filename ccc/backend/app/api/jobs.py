@@ -39,7 +39,6 @@ class JobCreateURL(BaseModel):
     tags: Optional[List[str]] = None
     safety: Optional[str] = "unsafe"
     skip_tagging: Optional[bool] = False
-    szuru_user: Optional[str] = None
 
 
 def _parse_json_tags(raw: Optional[str]) -> Optional[List[str]]:
@@ -175,7 +174,7 @@ async def create_job_url(
         initial_tags=json.dumps(body.tags) if body.tags else None,
         safety=body.safety or "unsafe",
         skip_tagging=1 if body.skip_tagging else 0,
-        szuru_user=body.szuru_user,
+        szuru_user=current_user.szuru_username,
     )
     db.add(job)
     await db.commit()
@@ -190,7 +189,6 @@ async def create_job_file(
     skip_tagging: bool = Form(False),
     tags: Optional[str] = Form(None),
     source: Optional[str] = Form(None),
-    szuru_user: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -217,7 +215,7 @@ async def create_job_file(
         initial_tags=json.dumps(parsed_tags) if parsed_tags else None,
         safety=safety,
         skip_tagging=1 if skip_tagging else 0,
-        szuru_user=szuru_user,
+        szuru_user=current_user.szuru_username,
     )
     db.add(job)
     await db.commit()

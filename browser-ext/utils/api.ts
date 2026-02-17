@@ -4,11 +4,16 @@
 
 export interface CccConfig {
   baseUrl: string;
-  apiKey: string;
-  szuruUser: string;  // Selected Szurubooru user (empty = default)
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
 }
 
 const STORAGE_KEY = "ccc_config";
+const STORAGE_KEY_AUTH = "ccc_auth";
+const CLIENT_TYPE = "extension-chrome";  // TODO: Detect Firefox and use "extension-firefox"
 
 /** Load persisted CCC config from extension storage. */
 export async function loadConfig(): Promise<CccConfig> {
@@ -16,8 +21,6 @@ export async function loadConfig(): Promise<CccConfig> {
   return (
     result[STORAGE_KEY] ?? {
       baseUrl: "http://localhost:21425",
-      apiKey: "",
-      szuruUser: "",
     }
   );
 }
@@ -25,6 +28,130 @@ export async function loadConfig(): Promise<CccConfig> {
 /** Persist CCC config to extension storage. */
 export async function saveConfig(cfg: CccConfig): Promise<void> {
   await browser.storage.local.set({ [STORAGE_KEY]: cfg });
+}
+
+/** Login with username/password and store JWT tokens. */
+export async function login(username: string, password: string): Promise<AuthTokens> {
+  const cfg = await loadConfig();
+  const res = await fetch(`${cfg.baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Login failed: ${res.status} ${text}`);
+  }
+
+  const data = await res.json();
+  const tokens = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+  };
+
+  await browser.storage.local.set({ [STORAGE_KEY_AUTH]: tokens });
+  return tokens;
+}
+
+/** Refresh access token using stored refresh token. */
+export async function refreshAccessToken(): Promise<AuthTokens | null> {
+  const result = await browser.storage.local.get(STORAGE_KEY_AUTH);
+  const tokens = result[STORAGE_KEY_AUTH];
+  if (!tokens) return null;
+
+  const cfg = await loadConfig();
+  const res = await fetch(`${cfg.baseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: tokens.refreshToken }),
+  });
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const newTokens = {
+    accessToken: data.access_token,
+    refreshToken: tokens.refreshToken,
+  };
+
+  await browser.storage.local.set({ [STORAGE_KEY_AUTH]: newTokens });
+  return newTokens;
+}
+
+/** Check if user is authenticated (has tokens stored). */
+export async function isAuthenticated(): Promise<boolean> {
+  const result = await browser.storage.local.get(STORAGE_KEY_AUTH);
+  return !!result[STORAGE_KEY_AUTH];
+}
+
+/** Get auth headers (JWT or API key fallback). */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  const result = await browser.storage.local.get(STORAGE_KEY_AUTH);
+  const tokens = result[STORAGE_KEY_AUTH];
+
+  if (tokens) {
+    headers["Authorization"] = `Bearer ${tokens.accessToken}`;
+  }
+
+  return headers;
+}
+
+/** Fetch client preferences from backend. */
+export async function fetchPreferences(): Promise<any> {
+  const cfg = await loadConfig();
+  let headers = await getAuthHeaders();
+
+  let res = await fetch(`${cfg.baseUrl}/api/preferences/${CLIENT_TYPE}`, { headers });
+
+  // Auto-refresh on 401
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      headers = await getAuthHeaders();
+      res = await fetch(`${cfg.baseUrl}/api/preferences/${CLIENT_TYPE}`, { headers });
+    } else {
+      throw new Error("Authentication expired. Please log in again.");
+    }
+  }
+
+  if (!res.ok) throw new Error(`Failed to fetch preferences: ${res.status}`);
+  const data = await res.json();
+  return data.preferences;
+}
+
+/** Save client preferences to backend. */
+export async function savePreferences(prefs: any): Promise<void> {
+  const cfg = await loadConfig();
+  let headers = await getAuthHeaders();
+
+  let res = await fetch(`${cfg.baseUrl}/api/preferences/${CLIENT_TYPE}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ preferences: prefs }),
+  });
+
+  // Auto-refresh on 401
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      headers = await getAuthHeaders();
+      res = await fetch(`${cfg.baseUrl}/api/preferences/${CLIENT_TYPE}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ preferences: prefs }),
+      });
+    } else {
+      throw new Error("Authentication expired. Please log in again.");
+    }
+  }
+
+  if (!res.ok) throw new Error(`Failed to save preferences: ${res.status}`);
 }
 
 export interface SubmitJobOptions {
@@ -40,11 +167,7 @@ export async function submitJob(
   opts?: SubmitJobOptions
 ): Promise<{ id: string; status: string }> {
   const cfg = await loadConfig();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-  if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+  let headers = await getAuthHeaders();
 
   const body: {
     url: string;
@@ -52,20 +175,33 @@ export async function submitJob(
     tags?: string[];
     safety?: string;
     skip_tagging?: boolean;
-    szuru_user?: string;
   } = { url };
 
   if (opts?.source) body.source = opts.source;
   if (opts?.tags?.length) body.tags = opts.tags;
   if (opts?.safety) body.safety = opts.safety;
   if (opts?.skipTagging) body.skip_tagging = opts.skipTagging;
-  if (cfg.szuruUser) body.szuru_user = cfg.szuruUser;
 
-  const res = await fetch(`${cfg.baseUrl}/api/jobs`, {
+  let res = await fetch(`${cfg.baseUrl}/api/jobs`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
   });
+
+  // Auto-refresh on 401
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      headers = await getAuthHeaders();
+      res = await fetch(`${cfg.baseUrl}/api/jobs`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+    } else {
+      throw new Error("Authentication expired. Please log in again.");
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -78,10 +214,22 @@ export async function submitJob(
 /** Fetch available Szurubooru users from the backend config endpoint. */
 export async function fetchSzuruUsers(): Promise<string[]> {
   const cfg = await loadConfig();
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+  let headers = await getAuthHeaders();
+
   try {
-    const res = await fetch(`${cfg.baseUrl}/api/config`, { headers });
+    let res = await fetch(`${cfg.baseUrl}/api/config`, { headers });
+
+    // Auto-refresh on 401
+    if (res.status === 401) {
+      const refreshed = await refreshAccessToken();
+      if (refreshed) {
+        headers = await getAuthHeaders();
+        res = await fetch(`${cfg.baseUrl}/api/config`, { headers });
+      } else {
+        return [];
+      }
+    }
+
     if (!res.ok) return [];
     const data = await res.json();
     return data.szuru_users ?? [];
@@ -113,10 +261,20 @@ export interface Job {
 /** GET a single job by ID. */
 export async function fetchJob(id: string): Promise<Job> {
   const cfg = await loadConfig();
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (cfg.apiKey) headers["X-API-Key"] = cfg.apiKey;
+  let headers = await getAuthHeaders();
 
-  const res = await fetch(`${cfg.baseUrl}/api/jobs/${id}`, { headers });
+  let res = await fetch(`${cfg.baseUrl}/api/jobs/${id}`, { headers });
+
+  // Auto-refresh on 401
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      headers = await getAuthHeaders();
+      res = await fetch(`${cfg.baseUrl}/api/jobs/${id}`, { headers });
+    } else {
+      throw new Error("Authentication expired. Please log in again.");
+    }
+  }
 
   if (!res.ok) {
     const text = await res.text();

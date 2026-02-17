@@ -39,6 +39,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     szuru_url: Optional[str]
+    szuru_public_url: Optional[str]
     szuru_username: Optional[str]
     created_at: str
     updated_at: str
@@ -46,6 +47,7 @@ class UserResponse(BaseModel):
 
 class UserConfigRequest(BaseModel):
     szuru_url: Optional[str] = None
+    szuru_public_url: Optional[str] = None
     szuru_username: Optional[str] = None
     szuru_token: Optional[str] = None
     site_credentials: Optional[dict] = None  # {site_name: {key: value}}
@@ -71,6 +73,7 @@ async def list_users(
             role=u.role.value,
             is_active=bool(u.is_active),
             szuru_url=u.szuru_url,
+            szuru_public_url=u.szuru_public_url,
             szuru_username=u.szuru_username,
             created_at=u.created_at.isoformat(),
             updated_at=u.updated_at.isoformat(),
@@ -111,6 +114,7 @@ async def create_user(
         role=user.role.value,
         is_active=bool(user.is_active),
         szuru_url=user.szuru_url,
+        szuru_public_url=user.szuru_public_url,
         szuru_username=user.szuru_username,
         created_at=user.created_at.isoformat(),
         updated_at=user.updated_at.isoformat(),
@@ -135,6 +139,7 @@ async def get_user(
         role=user.role.value,
         is_active=bool(user.is_active),
         szuru_url=user.szuru_url,
+        szuru_public_url=user.szuru_public_url,
         szuru_username=user.szuru_username,
         created_at=user.created_at.isoformat(),
         updated_at=user.updated_at.isoformat(),
@@ -172,6 +177,7 @@ async def update_user(
         role=user.role.value,
         is_active=bool(user.is_active),
         szuru_url=user.szuru_url,
+        szuru_public_url=user.szuru_public_url,
         szuru_username=user.szuru_username,
         created_at=user.created_at.isoformat(),
         updated_at=user.updated_at.isoformat(),
@@ -342,6 +348,7 @@ async def get_my_config(
 
     return {
         "szuru_url": current_user.szuru_url,
+        "szuru_public_url": current_user.szuru_public_url,
         "szuru_username": current_user.szuru_username,
         "szuru_token": szuru_token_decrypted,
         "site_credentials": site_credentials,
@@ -361,6 +368,8 @@ async def update_my_config(
     # Update Szurubooru settings
     if body.szuru_url is not None:
         current_user.szuru_url = body.szuru_url
+    if body.szuru_public_url is not None:
+        current_user.szuru_public_url = body.szuru_public_url
     if body.szuru_username is not None:
         current_user.szuru_username = body.szuru_username
     if body.szuru_token is not None:

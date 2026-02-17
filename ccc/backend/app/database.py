@@ -17,7 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -142,7 +142,8 @@ class User(Base):
     role = Column(Enum(UserRole), nullable=False, default=UserRole.USER)
 
     # Szurubooru credentials
-    szuru_url = Column(String(512), nullable=True)
+    szuru_url = Column(String(512), nullable=True)  # Internal/API URL
+    szuru_public_url = Column(String(512), nullable=True)  # Public URL for sharing
     szuru_username = Column(String(255), nullable=True)
     szuru_token_encrypted = Column(Text, nullable=True)  # Fernet encrypted
 
@@ -200,6 +201,31 @@ class GlobalSetting(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ClientPreference(Base):
+    """Per-user client preferences (browser extension, mobile app) stored as JSONB."""
+
+    __tablename__ = "client_preferences"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    client_type = Column(String(32), nullable=False)  # "extension-chrome", "extension-firefox", "mobile-android"
+    preferences = Column(JSONB, nullable=False, default=dict)
+
+    # Timestamps (always UTC)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Unique constraint: one preference set per user per client type
+    __table_args__ = (
+        UniqueConstraint('user_id', 'client_type', name='uq_user_client'),
     )
 
 

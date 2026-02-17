@@ -38,7 +38,7 @@
   <Config Name="Config" Target="/config" Default="/mnt/user/appdata/szurubooru-companion/config" Mode="rw" Description="Configuration files (place config.json here for gallery-dl)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/szurubooru-companion/config</Config>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- REQUIRED: Admin User &amp; Encryption                             -->
+  <!-- REQUIRED: Admin User and Encryption Key                            -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <Config Name="Admin Username" Target="ADMIN_USER" Default="admin" Mode="" Description="Admin username (created on first startup, then stored in database)" Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
   <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Admin password (REQUIRED - set a strong password)" Type="Variable" Display="always" Required="true" Mask="true"/>

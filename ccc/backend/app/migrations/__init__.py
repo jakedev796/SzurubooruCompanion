@@ -146,6 +146,35 @@ MIGRATIONS: List[Tuple[str, str]] = [
         );
         """,
     ),
+    (
+        "010_create_client_preferences",
+        """
+        CREATE TABLE IF NOT EXISTS client_preferences (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            client_type VARCHAR(32) NOT NULL,
+            preferences JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_user_client UNIQUE(user_id, client_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_client_prefs_user ON client_preferences(user_id);
+        """,
+    ),
+    (
+        "011_add_szuru_public_url",
+        """
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'szuru_public_url'
+          ) THEN
+            ALTER TABLE users ADD COLUMN szuru_public_url VARCHAR(512);
+          END IF;
+        END $$;
+        """,
+    ),
 ]
 
 async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:

@@ -2,13 +2,13 @@
 Authentication endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import User, get_db
-from app.services.auth import verify_password, create_jwt_token
+from app.services.auth import verify_password, create_jwt_token, create_refresh_token, verify_refresh_token
 from app.api.deps import get_current_user
 
 router = APIRouter()
@@ -21,6 +21,7 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     user: dict
 
@@ -48,16 +49,47 @@ async def login(
             detail="Invalid username or password",
         )
 
-    token = create_jwt_token(str(user.id), user.username, user.role.value)
+    access_token = create_jwt_token(str(user.id), user.username, user.role.value)
+    refresh_token = create_refresh_token(str(user.id), user.username)
 
     return LoginResponse(
-        access_token=token,
+        access_token=access_token,
+        refresh_token=refresh_token,
         user={
             "id": str(user.id),
             "username": user.username,
             "role": user.role.value,
         },
     )
+
+
+@router.post("/auth/refresh")
+async def refresh_token(
+    refresh_token: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exchange refresh token for new access token."""
+    payload = verify_refresh_token(refresh_token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    # Verify user still exists and is active
+    user_id = payload.get("user_id")
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.is_active == 1)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    new_access_token = create_jwt_token(str(user.id), user.username, user.role.value)
+    return {"access_token": new_access_token, "token_type": "bearer"}
 
 
 @router.get("/auth/me", response_model=UserMeResponse)

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <style>
+      body {
+        width: 320px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #14161a;
+        color: #d4d4d8;
+        padding: 16px;
+        margin: 0;
+      }
+      h2 { font-size: 14px; margin: 0 0 4px; }
+      .subtitle { font-size: 11px; color: #71717a; margin-bottom: 16px; }
+      label { display: block; font-size: 12px; color: #71717a; margin-bottom: 4px; }
+      input {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid #2a2d36;
+        border-radius: 4px;
+        background: #1e2028;
+        color: #d4d4d8;
+        font-size: 13px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+      }
+      button {
+        background: #6366f1;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 7px 14px;
+        font-size: 13px;
+        cursor: pointer;
+        width: 100%;
+      }
+      button:hover { background: #4f46e5; }
+      button:disabled { background: #3f3f46; cursor: not-allowed; }
+      .msg { font-size: 12px; margin-top: 8px; }
+      .msg.ok { color: #22c55e; }
+      .msg.err { color: #ef4444; }
+    </style>
+    <script type="module" crossorigin src="/chunks/setup-C2i1NwOm.js"></script>
+    <link rel="modulepreload" crossorigin href="/chunks/api-T-0tD3QQ.js">
+  </head>
+  <body>
+    <h2>Szurubooru Companion</h2>
+    <div class="subtitle">Step 1 of 2: Backend Setup</div>
+
+    <label for="baseUrl">CCC Backend URL</label>
+    <input id="baseUrl" type="text" placeholder="http://localhost:21425">
+
+    <button id="testConnection">Test Connection</button>
+    <div id="msg" class="msg"></div>
+
+  </body>
+</html>

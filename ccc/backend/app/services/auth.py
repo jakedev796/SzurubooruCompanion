@@ -13,7 +13,8 @@ settings = get_settings()
 # JWT settings
 JWT_SECRET = settings.api_key or "changeme-dev-secret-key"
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
+JWT_ACCESS_EXPIRATION_HOURS = 24
+JWT_REFRESH_EXPIRATION_HOURS = 87600  # 10 years (365 * 24 * 10)
 
 
 def hash_password(password: str) -> str:
@@ -30,12 +31,13 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_jwt_token(user_id: str, username: str, role: str) -> str:
-    """Create JWT token for user with 24h expiration."""
+    """Create JWT access token for user with 24h expiration."""
     payload = {
         "user_id": user_id,
         "username": username,
         "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS),
+        "token_type": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_ACCESS_EXPIRATION_HOURS),
         "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -51,4 +53,27 @@ def verify_jwt_token(token: str) -> Optional[dict]:
     except jwt.ExpiredSignatureError:
         return None
     except jwt.InvalidTokenError:
+        return None
+
+
+def create_refresh_token(user_id: str, username: str) -> str:
+    """Create permanent refresh token (10 years)."""
+    payload = {
+        "user_id": user_id,
+        "username": username,
+        "token_type": "refresh",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_REFRESH_EXPIRATION_HOURS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def verify_refresh_token(token: str) -> Optional[dict]:
+    """Validate refresh token and check token_type field."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("token_type") != "refresh":
+            return None
+        return payload
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None

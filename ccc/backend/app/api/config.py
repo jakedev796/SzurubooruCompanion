@@ -3,36 +3,25 @@ Config API endpoint.
 Exposes frontend-needed configuration like the Booru URL.
 """
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Depends
 
-from app.api.deps import verify_api_key
-from app.config import get_settings, get_szuru_users
+from app.api.deps import get_current_user
+from app.database import User
 
 router = APIRouter()
 
 
 @router.get("/config")
 async def get_config(
-    request: Request,
-    x_api_key: str = Header(default="", alias="X-API-Key"),
+    current_user: User = Depends(get_current_user),
 ):
-    """Return frontend configuration.
+    """Return frontend configuration for the authenticated user.
 
-    Public fields (booru_url, auth_required) are always returned.
-    szuru_users is only included for authenticated requests.
+    Returns the user's public Szurubooru URL (or internal URL if public not set).
     """
-    settings = get_settings()
-    result: dict = {
-        "booru_url": settings.szuru_public_url or settings.szuru_url,
-        "auth_required": bool(settings.dashboard_user and settings.dashboard_password),
+    # Use public URL if set, otherwise fall back to internal URL
+    booru_url = current_user.szuru_public_url or current_user.szuru_url
+
+    return {
+        "booru_url": booru_url,
     }
-
-    # Only expose the user list to authenticated callers.
-    try:
-        await verify_api_key(request, x_api_key)
-        users = get_szuru_users()
-        result["szuru_users"] = [u for u, _t in users]
-    except Exception:
-        pass
-
-    return result
