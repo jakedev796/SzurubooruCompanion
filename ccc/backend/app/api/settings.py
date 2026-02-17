@@ -136,28 +136,18 @@ async def get_category_mappings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get global category mappings."""
-    result = await db.execute(
-        select(GlobalSetting).where(GlobalSetting.key == "szuru_category_mappings")
-    )
-    setting = result.scalar_one_or_none()
-
-    if setting and setting.value:
-        try:
-            return {"mappings": json.loads(setting.value)}
-        except json.JSONDecodeError:
-            return {"mappings": {}}
-    return {"mappings": {}}
+    """Get user's category mappings (per-user, not global)."""
+    return {"mappings": current_user.szuru_category_mappings or {}}
 
 
 @router.put("/settings/category-mappings")
 async def update_category_mappings(
     body: dict,
-    _admin=Depends(require_admin),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Update global category mappings (admin only).
+    Update user's category mappings (per-user, any authenticated user can update their own).
     Body should be: {"mappings": {"general": "general", "artist": "author", ...}}
     """
     mappings = body.get("mappings", {})
@@ -168,24 +158,8 @@ async def update_category_mappings(
         if key not in valid_keys:
             return {"error": f"Invalid category key: {key}. Must be one of: {valid_keys}"}
 
-    # Store as JSON
-    json_value = json.dumps(mappings)
-
-    result = await db.execute(
-        select(GlobalSetting).where(GlobalSetting.key == "szuru_category_mappings")
-    )
-    setting = result.scalar_one_or_none()
-
-    if setting:
-        setting.value = json_value
-        setting.value_type = "json"
-    else:
-        new_setting = GlobalSetting(
-            key="szuru_category_mappings",
-            value=json_value,
-            value_type="json"
-        )
-        db.add(new_setting)
-
+    # Store in user's settings
+    current_user.szuru_category_mappings = mappings
     await db.commit()
+
     return {"message": "Category mappings updated", "mappings": mappings}

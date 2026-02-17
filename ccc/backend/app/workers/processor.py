@@ -148,7 +148,8 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                     tag, job.id, _global_config.wd14_enabled, _global_config.worker_concurrency,
                     _global_config.gallery_dl_timeout)
 
-        # Load user configuration
+        # Load user configuration and category mappings
+        user_category_mappings = None
         if job.szuru_user:
             result = await db.execute(select(User).where(User.username == job.szuru_user))
             user = result.scalar_one_or_none()
@@ -159,6 +160,10 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                     logger.info("%s Job %s: Loaded config for user %s", tag, job.id, job.szuru_user)
                 else:
                     logger.warning("%s Job %s: No config found for user %s", tag, job.id, job.szuru_user)
+                # Load category mappings from user's settings
+                user_category_mappings = user.szuru_category_mappings or {}
+                if user_category_mappings:
+                    logger.debug("%s Job %s: Using per-user category mappings: %s", tag, job.id, user_category_mappings)
             else:
                 logger.warning("%s Job %s: User %s not found in database", tag, job.id, job.szuru_user)
 
@@ -372,9 +377,9 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict) -> dict:
     )
     all_tags = tag_utils.deduplicate_tags(all_tags)
 
-    # Resolve tag categories
+    # Resolve tag categories (using per-user mappings if available)
     tag_to_category = tag_categories.resolve_categories(
-        all_tags, metadata=metadata, job_url=job.url
+        all_tags, metadata=metadata, job_url=job.url, user_category_mappings=user_category_mappings
     )
     for t in wd14_character_tags:
         tag_to_category[t] = "character"

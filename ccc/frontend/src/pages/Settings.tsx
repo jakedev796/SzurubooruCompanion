@@ -283,10 +283,10 @@ function ProfileTab() {
         {/* Category Mappings */}
         <div className="card" style={{ marginTop: "1rem", background: "var(--bg)" }}>
           <h4 style={{ fontSize: "0.9rem", marginBottom: "0.75rem", color: "var(--text-muted)" }}>
-            Category Mappings (Global)
+            Category Mappings
           </h4>
           <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-            Map internal category types to your Szurubooru instance's categories. These mappings are shared by all users.
+            Map internal category types to your Szurubooru instance's categories. These mappings are specific to your account.
           </p>
           <div className="settings-form">
             {["general", "artist", "character", "copyright", "meta"].map((internalCat) => (
@@ -296,7 +296,6 @@ function ProfileTab() {
                   <select
                     value={categoryMappings[internalCat] || ""}
                     onChange={(e) => setCategoryMappings({ ...categoryMappings, [internalCat]: e.target.value })}
-                    disabled={!isAdmin}
                   >
                     <option value="">-- Select Category --</option>
                     {categories.map((cat) => (
@@ -311,28 +310,20 @@ function ProfileTab() {
                     value={categoryMappings[internalCat] || ""}
                     onChange={(e) => setCategoryMappings({ ...categoryMappings, [internalCat]: e.target.value })}
                     placeholder={`e.g., ${internalCat}`}
-                    disabled={!isAdmin}
                   />
                 )}
               </div>
             ))}
-            {isAdmin && (
-              <div className="form-actions">
-                <button
-                  type="button"
-                  onClick={handleSaveMappings}
-                  disabled={savingMappings}
-                  className="btn btn-primary"
-                >
-                  {savingMappings ? "Saving..." : "Save Mappings"}
-                </button>
-              </div>
-            )}
-            {!isAdmin && (
-              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                Only administrators can modify category mappings.
-              </p>
-            )}
+            <div className="form-actions">
+              <button
+                type="button"
+                onClick={handleSaveMappings}
+                disabled={savingMappings}
+                className="btn btn-primary"
+              >
+                {savingMappings ? "Saving..." : "Save Mappings"}
+              </button>
+            </div>
           </div>
         </div>
 
