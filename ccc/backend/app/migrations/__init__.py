@@ -164,15 +164,7 @@ MIGRATIONS: List[Tuple[str, str]] = [
     (
         "011_add_szuru_public_url",
         """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'szuru_public_url'
-          ) THEN
-            ALTER TABLE users ADD COLUMN szuru_public_url VARCHAR(512)
-          END IF
-        END $$;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS szuru_public_url VARCHAR(512);
         """,
     ),
 ]
