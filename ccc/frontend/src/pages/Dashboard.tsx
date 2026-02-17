@@ -47,7 +47,7 @@ function formatDate(iso: string | undefined): string {
 
 const MERGED_REPORT_LIMIT = 50;
 
-export default function Dashboard({ szuruUser }: { szuruUser?: string }) {
+export default function Dashboard() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [recentJobs, setRecentJobs] = useState<JobsResponse | null>(null);
   const [mergedJobs, setMergedJobs] = useState<JobsResponse | null>(null);
@@ -65,11 +65,11 @@ export default function Dashboard({ szuruUser }: { szuruUser?: string }) {
   useEffect(() => {
     setError(null);
     Promise.all([
-      fetchStats({ szuru_user: szuruUser || undefined }).then(setStats).catch((e: Error) => {
+      fetchStats().then(setStats).catch((e: Error) => {
         if (e.message.includes("401")) navigate("/login", { replace: true });
         else setError(e.message);
       }),
-      fetchJobs({ szuru_user: szuruUser || undefined, offset: 0, limit: ACTIVITY_LIMIT })
+      fetchJobs({ offset: 0, limit: ACTIVITY_LIMIT })
         .then(setRecentJobs)
         .catch((e: Error) => {
           if (e.message.includes("401")) navigate("/login", { replace: true });
@@ -79,7 +79,7 @@ export default function Dashboard({ szuruUser }: { szuruUser?: string }) {
         .then(setMergedJobs)
         .catch(() => setMergedJobs(null)),
     ]).then(() => {});
-  }, [navigate, szuruUser]);
+  }, [navigate]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = (payload.id ?? payload.job_id) as number;

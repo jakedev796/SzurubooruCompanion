@@ -146,10 +146,10 @@ function ProfileTab() {
       return;
     }
 
-    // Use stored token if available, otherwise use form token
-    const token = config?.szuru_token || form.szuru_token || "";
+    // Always test with current form values, not saved config
+    const token = form.szuru_token || config?.szuru_token || "";
     if (!token) {
-      showToast("Please save your token first or enter it in the form", "error");
+      showToast("Please enter or save your token first", "error");
       return;
     }
 

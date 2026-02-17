@@ -32,7 +32,6 @@ object BackendHelper {
         val defaultTags: String,
         val defaultSafety: String,
         val skipTagging: Boolean,
-        val szuruUser: String,
     )
 
     /** Read CCC settings from Flutter's SharedPreferences. */
@@ -44,7 +43,6 @@ object BackendHelper {
             defaultTags = prefs.getString("flutter.defaultTags", "") ?: "",
             defaultSafety = prefs.getString("flutter.defaultSafety", DEFAULT_SAFETY) ?: DEFAULT_SAFETY,
             skipTagging = prefs.getBoolean("flutter.skipTagging", false),
-            szuruUser = prefs.getString("flutter.szuruUser", "") ?: "",
         )
     }
 
@@ -77,7 +75,6 @@ object BackendHelper {
         tags: List<String>,
         safety: String,
         skipTagging: Boolean,
-        szuruUser: String,
         mimeType: String? = null,
     ): JSONObject {
         return JSONObject().apply {
@@ -86,7 +83,6 @@ object BackendHelper {
             if (tags.isNotEmpty()) put("tags", JSONArray(tags))
             put("safety", safety)
             put("skip_tagging", skipTagging)
-            if (szuruUser.isNotEmpty()) put("szuru_user", szuruUser)
             if (mimeType != null) put("content_type", mimeType)
         }
     }

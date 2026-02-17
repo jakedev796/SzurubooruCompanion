@@ -90,7 +90,6 @@ class ClipboardReaderActivity : Activity() {
             tags = tags,
             safety = settings.defaultSafety,
             skipTagging = settings.skipTagging,
-            szuruUser = settings.szuruUser,
         )
 
         scope.launch {

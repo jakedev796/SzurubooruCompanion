@@ -82,7 +82,6 @@ class ShareReceiverActivity : Activity() {
                     tags = tags,
                     safety = settings.defaultSafety,
                     skipTagging = settings.skipTagging,
-                    szuruUser = settings.szuruUser,
                     mimeType = urlData.mimeType,
                 )
                 val success = withContext(Dispatchers.IO) {

@@ -36,7 +36,6 @@ class AppState extends ChangeNotifier {
   bool isLoadingStats = false;
   List<Job> jobs = [];
   String? booruUrl;
-  List<String> szuruUsers = [];
   Map<String, int> stats = {
     'pending': 0,
     'downloading': 0,
@@ -213,7 +212,6 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshAll() async {
-    // Fetch config first so szuruUsers is available for job filtering
     await _fetchConfig();
     await Future.wait([
       refreshJobs(),
@@ -228,10 +226,6 @@ class AppState extends ChangeNotifier {
       booruUrl = config['booru_url'] as String?;
       if (booruUrl != null && booruUrl!.endsWith('/')) {
         booruUrl = booruUrl!.substring(0, booruUrl!.length - 1);
-      }
-      final users = config['szuru_users'];
-      if (users is List) {
-        szuruUsers = users.cast<String>();
       }
       notifyListeners();
     } catch (_) {

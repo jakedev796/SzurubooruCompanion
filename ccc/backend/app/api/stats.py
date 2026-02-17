@@ -21,13 +21,13 @@ router = APIRouter()
 async def get_stats(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    szuru_user: Optional[str] = Query(None),
 ):
-    """Return aggregate job statistics, optionally filtered by szuru_user."""
+    """Return aggregate job statistics for the current authenticated user."""
 
     def _apply_user_filter(q):
-        if szuru_user:
-            return q.where(Job.szuru_user == szuru_user)
+        # Auto-filter by current user's szuru_username (JWT auth)
+        if current_user.szuru_username:
+            return q.where(Job.szuru_user == current_user.szuru_username)
         return q
 
     total_q = _apply_user_filter(select(func.count(Job.id)).select_from(Job))

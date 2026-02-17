@@ -409,9 +409,6 @@ class SettingsModel extends ChangeNotifier {
       if (settingsMap.containsKey('folderSyncIntervalSeconds')) {
         await prefs.setInt('folderSyncIntervalSeconds', settingsMap['folderSyncIntervalSeconds'] as int? ?? 900);
       }
-      if (settingsMap.containsKey('szuruUser')) {
-        await prefs.setString('szuruUser', settingsMap['szuruUser'] as String? ?? '');
-      }
       if (settingsMap.containsKey('showFloatingBubble')) {
         await prefs.setBool('showFloatingBubble', settingsMap['showFloatingBubble'] as bool? ?? false);
       }
@@ -638,7 +635,7 @@ class SettingsModel extends ChangeNotifier {
       'folderSyncIntervalSeconds': _folderSyncIntervalSeconds,
       'notifyOnFolderSync': _notifyOnFolderSync,
       'deleteMediaAfterSync': _deleteMediaAfterSync,
-      // Exclude: szuruUser (backend-side only), showFloatingBubble, useBackgroundService (device-specific)
+      // Exclude: showFloatingBubble, useBackgroundService (device-specific)
     };
   }
 

@@ -28,7 +28,7 @@ function formatDate(iso: string | undefined): string {
   return new Date(iso).toLocaleString();
 }
 
-export default function JobList({ szuruUser }: { szuruUser?: string }) {
+export default function JobList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get("status") || "";
   const page = parseInt(searchParams.get("page") || "0", 10);
@@ -48,7 +48,6 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
     setError(null);
     fetchJobs({
       status: statusFilter || undefined,
-      szuru_user: szuruUser || undefined,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
     })
@@ -57,7 +56,7 @@ export default function JobList({ szuruUser }: { szuruUser?: string }) {
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
-  }, [statusFilter, szuruUser, page]);
+  }, [statusFilter, page]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = (payload.id ?? payload.job_id) as number;
