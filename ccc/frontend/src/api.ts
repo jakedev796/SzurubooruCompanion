@@ -123,6 +123,7 @@ export interface JobSummary {
   url?: string;
   original_filename?: string;
   szuru_user?: string;
+  dashboard_username?: string;
   szuru_post_id?: number;
   related_post_ids?: number[];
   created_at?: string;
@@ -433,6 +434,7 @@ export async function changeMyPassword(oldPassword: string, newPassword: string)
 
 export interface UserConfig {
   szuru_url?: string;
+  szuru_public_url?: string;
   szuru_username?: string;
   szuru_token?: string;
   site_credentials?: Record<string, Record<string, string>>;

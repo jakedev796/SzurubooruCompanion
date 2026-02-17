@@ -146,6 +146,7 @@ class User(Base):
     szuru_public_url = Column(String(512), nullable=True)  # Public URL for sharing
     szuru_username = Column(String(255), nullable=True)
     szuru_token_encrypted = Column(Text, nullable=True)  # Fernet encrypted
+    szuru_category_mappings = Column(JSONB, nullable=False, default=dict)  # Per-user category mappings
 
     # Account status
     is_active = Column(Integer, nullable=False, default=1)

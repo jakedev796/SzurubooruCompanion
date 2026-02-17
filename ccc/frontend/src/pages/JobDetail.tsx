@@ -207,7 +207,7 @@ export default function JobDetail() {
           <dd>{postSafety || "-"}</dd>
 
           <dt>Upload User</dt>
-          <dd>{job.szuru_user || "-"}</dd>
+          <dd>{job.dashboard_username || "-"}</dd>
 
           <dt>Szuru Post ID</dt>
           <dd>

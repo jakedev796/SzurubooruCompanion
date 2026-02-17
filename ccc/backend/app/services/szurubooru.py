@@ -27,17 +27,25 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # ---------------------------------------------------------------------------
-# Per-job user context (set by processor, read by _auth_headers)
+# Per-job user context (set by processor, read by _auth_headers and _request)
 # ---------------------------------------------------------------------------
 
 _current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_user", default=None
 )
+_current_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "szuru_token", default=None
+)
+_current_szuru_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "szuru_url", default=None
+)
 
 
-def set_current_user(username: Optional[str]) -> None:
-    """Set the Szurubooru user for the current async task."""
+def set_current_user(username: Optional[str], token: Optional[str] = None, szuru_url: Optional[str] = None) -> None:
+    """Set the Szurubooru user credentials and URL for the current async task."""
     _current_user.set(username)
+    _current_token.set(token)
+    _current_szuru_url.set(szuru_url)
 
 
 # ---------------------------------------------------------------------------
@@ -48,13 +56,26 @@ def set_current_user(username: Optional[str]) -> None:
 def _auth_headers() -> Dict[str, str]:
     """Build the Szurubooru Token auth header for the current user context."""
     username = _current_user.get()
+    token = _current_token.get()
+
+    # If context has both username and token (per-user auth), use them directly
+    if username and token:
+        raw = f"{username}:{token}"
+        encoded = base64.b64encode(raw.encode()).decode()
+        return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
+
+    # Fallback to global environment credentials (backward compatibility)
     users = get_szuru_users()
+    if not users:
+        raise RuntimeError("No Szurubooru credentials available. Set per-user credentials or SZURU_USERNAME/SZURU_TOKEN environment variables.")
+
     if username:
         token = next((t for u, t in users if u == username), None)
         if not token:
             username, token = users[0]
     else:
         username, token = users[0]
+
     raw = f"{username}:{token}"
     encoded = base64.b64encode(raw.encode()).decode()
     return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
@@ -101,7 +122,9 @@ async def _request(
     if _session is None or _session.closed:
         await init_session()
 
-    url = f"{settings.szuru_url}{endpoint}"
+    # Use per-user szuru_url if set, otherwise fall back to global settings
+    szuru_url = _current_szuru_url.get() or settings.szuru_url
+    url = f"{szuru_url}{endpoint}"
 
     # Per-request auth headers (session has no baked-in auth for multi-user support)
     headers: Dict[str, str] = _auth_headers()

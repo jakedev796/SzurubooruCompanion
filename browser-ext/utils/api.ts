@@ -211,33 +211,6 @@ export async function submitJob(
   return res.json();
 }
 
-/** Fetch available Szurubooru users from the backend config endpoint. */
-export async function fetchSzuruUsers(): Promise<string[]> {
-  const cfg = await loadConfig();
-  let headers = await getAuthHeaders();
-
-  try {
-    let res = await fetch(`${cfg.baseUrl}/api/config`, { headers });
-
-    // Auto-refresh on 401
-    if (res.status === 401) {
-      const refreshed = await refreshAccessToken();
-      if (refreshed) {
-        headers = await getAuthHeaders();
-        res = await fetch(`${cfg.baseUrl}/api/config`, { headers });
-      } else {
-        return [];
-      }
-    }
-
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.szuru_users ?? [];
-  } catch {
-    return [];
-  }
-}
-
 export interface Job {
   id: string;
   status: string;

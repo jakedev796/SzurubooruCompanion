@@ -26,11 +26,10 @@ adb install builds/SzuruCompanion.apk
 
 After installing:
 1. Open the app
-2. Navigate to the **Settings** tab
+2. You will be prompted for **Setup** (backend URL) and then **Login** (username/password). The app uses JWT authentication with the CCC backend; no API key is used.
 3. Enter your CCC backend URL (e.g., `https://ccc.example.com` or `http://192.168.1.100:21425`)
-4. Enter your API key (if configured in the backend)
-5. If the backend has multiple Szurubooru users, select your preferred user
-6. Configure optional features (floating bubble, folder sync)
+4. Log in with your dashboard username and password
+5. Configure optional features (floating bubble, folder sync) in the **Settings** tab
 
 ---
 
@@ -156,6 +155,5 @@ The app requires the following Android permissions:
 - Check sync interval and last sync time in Settings
 
 **Job status not updating:**
-- Ensure the backend URL is accessible
-- Check API key if required
+- Ensure the backend URL is accessible and you are logged in (JWT)
 - Pull down to refresh the jobs list

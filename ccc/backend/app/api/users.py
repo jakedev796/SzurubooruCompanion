@@ -41,6 +41,7 @@ class UserResponse(BaseModel):
     szuru_url: Optional[str]
     szuru_public_url: Optional[str]
     szuru_username: Optional[str]
+    szuru_category_mappings: Optional[dict]
     created_at: str
     updated_at: str
 
@@ -50,6 +51,7 @@ class UserConfigRequest(BaseModel):
     szuru_public_url: Optional[str] = None
     szuru_username: Optional[str] = None
     szuru_token: Optional[str] = None
+    szuru_category_mappings: Optional[dict] = None
     site_credentials: Optional[dict] = None  # {site_name: {key: value}}
 
 
@@ -75,6 +77,7 @@ async def list_users(
             szuru_url=u.szuru_url,
             szuru_public_url=u.szuru_public_url,
             szuru_username=u.szuru_username,
+            szuru_category_mappings=u.szuru_category_mappings or {},
             created_at=u.created_at.isoformat(),
             updated_at=u.updated_at.isoformat(),
         )
@@ -116,6 +119,7 @@ async def create_user(
         szuru_url=user.szuru_url,
         szuru_public_url=user.szuru_public_url,
         szuru_username=user.szuru_username,
+        szuru_category_mappings=user.szuru_category_mappings or {},
         created_at=user.created_at.isoformat(),
         updated_at=user.updated_at.isoformat(),
     )
@@ -141,6 +145,7 @@ async def get_user(
         szuru_url=user.szuru_url,
         szuru_public_url=user.szuru_public_url,
         szuru_username=user.szuru_username,
+        szuru_category_mappings=user.szuru_category_mappings or {},
         created_at=user.created_at.isoformat(),
         updated_at=user.updated_at.isoformat(),
     )
@@ -179,6 +184,7 @@ async def update_user(
         szuru_url=user.szuru_url,
         szuru_public_url=user.szuru_public_url,
         szuru_username=user.szuru_username,
+        szuru_category_mappings=user.szuru_category_mappings or {},
         created_at=user.created_at.isoformat(),
         updated_at=user.updated_at.isoformat(),
     )
@@ -351,6 +357,7 @@ async def get_my_config(
         "szuru_public_url": current_user.szuru_public_url,
         "szuru_username": current_user.szuru_username,
         "szuru_token": szuru_token_decrypted,
+        "szuru_category_mappings": current_user.szuru_category_mappings or {},
         "site_credentials": site_credentials,
     }
 
@@ -374,6 +381,8 @@ async def update_my_config(
         current_user.szuru_username = body.szuru_username
     if body.szuru_token is not None:
         current_user.szuru_token_encrypted = encrypt(body.szuru_token) if body.szuru_token else None
+    if body.szuru_category_mappings is not None:
+        current_user.szuru_category_mappings = body.szuru_category_mappings
 
     await db.commit()
 

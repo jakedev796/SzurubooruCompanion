@@ -90,12 +90,11 @@ class ClipboardReaderActivity : Activity() {
             tags = tags,
             safety = settings.defaultSafety,
             skipTagging = settings.skipTagging,
-            szuruUser = settings.szuruUser,
         )
 
         scope.launch {
             val success = withContext(Dispatchers.IO) {
-                BackendHelper.sendJobToBackend(settings.backendUrl, settings.apiKey, payload)
+                BackendHelper.sendJobToBackend(settings.backendUrl, settings.accessToken, payload)
             }
             withContext(Dispatchers.Main) {
                 showToast(if (success) "Share queued" else "Failed to queue share")

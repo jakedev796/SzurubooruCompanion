@@ -16,7 +16,7 @@ A Flutter-based mobile companion for [Szurubooru](https://github.com/rr-/szurubo
 1. Install [Flutter](https://docs.flutter.dev/get-started/install)
 2. Run `flutter pub get` in this directory
 3. Run `flutter run` to launch on a connected device or emulator
-4. Configure the backend URL and API key in the app's Settings tab
+4. Configure the backend URL in Setup, then log in with your dashboard username and password (JWT; no API key)
 
 ## Building
 

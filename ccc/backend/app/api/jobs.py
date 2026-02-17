@@ -71,6 +71,7 @@ class JobOut(BaseModel):
     safety: Optional[str] = None
     skip_tagging: bool = False
     szuru_user: Optional[str] = None
+    dashboard_username: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     was_merge: bool = False
@@ -95,6 +96,7 @@ class JobSummaryOut(BaseModel):
     url: Optional[str] = None
     original_filename: Optional[str] = None
     szuru_user: Optional[str] = None
+    dashboard_username: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     created_at: datetime
@@ -104,7 +106,7 @@ class JobSummaryOut(BaseModel):
         from_attributes = True
 
 
-def _job_to_summary(job: Job) -> JobSummaryOut:
+def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSummaryOut:
     return JobSummaryOut(
         id=str(job.id),
         status=job.status.value if isinstance(job.status, JobStatus) else job.status,
@@ -112,6 +114,7 @@ def _job_to_summary(job: Job) -> JobSummaryOut:
         url=job.url,
         original_filename=job.original_filename,
         szuru_user=job.szuru_user,
+        dashboard_username=dashboard_username,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         created_at=job.created_at,
@@ -119,7 +122,7 @@ def _job_to_summary(job: Job) -> JobSummaryOut:
     )
 
 
-def _job_to_out(job: Job) -> JobOut:
+def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
     tags_applied = _parse_json_tags(job.tags_applied)
     post = None
     if job.szuru_post_id is not None:
@@ -140,6 +143,7 @@ def _job_to_out(job: Job) -> JobOut:
         safety=job.safety,
         skip_tagging=bool(job.skip_tagging),
         szuru_user=job.szuru_user,
+        dashboard_username=dashboard_username,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         was_merge=bool(job.was_merge),
@@ -227,13 +231,12 @@ async def create_job_file(
 async def list_jobs(
     status: Optional[str] = Query(None),
     was_merge: Optional[bool] = Query(None),
-    szuru_user: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs with optional status, was_merge, and user filter, paginated."""
+    """List jobs for current user with optional status and was_merge filter, paginated."""
     valid_statuses = {s.value.lower() for s in JobStatus}
     if status:
         status_lower = status.strip().lower()
@@ -261,9 +264,11 @@ async def list_jobs(
         if was_merge is not None:
             query = query.where(Job.was_merge == (1 if was_merge else 0))
             count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
-        if szuru_user:
-            query = query.where(Job.szuru_user == szuru_user)
-            count_query = count_query.where(Job.szuru_user == szuru_user)
+
+        # Auto-filter by current user's szuru_username (JWT auth)
+        if current_user.szuru_username:
+            query = query.where(Job.szuru_user == current_user.szuru_username)
+            count_query = count_query.where(Job.szuru_user == current_user.szuru_username)
 
         query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
 
@@ -273,8 +278,17 @@ async def list_jobs(
         total_result = await db.execute(count_query)
         total = total_result.scalar() or 0
 
+        # Batch lookup dashboard usernames for all jobs
+        szuru_users = {j.szuru_user for j in jobs if j.szuru_user}
+        username_map = {}
+        if szuru_users:
+            user_result = await db.execute(
+                select(User.szuru_username, User.username).where(User.szuru_username.in_(szuru_users))
+            )
+            username_map = {row[0]: row[1] for row in user_result.all()}
+
         return {
-            "results": [_job_to_summary(j) for j in jobs],
+            "results": [_job_to_summary(j, username_map.get(j.szuru_user)) for j in jobs],
             "total": total,
             "offset": offset,
             "limit": limit,
@@ -298,7 +312,16 @@ async def get_job(
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
-    return _job_to_out(job)
+
+    # Look up dashboard username for this job's szuru_user
+    dashboard_username = None
+    if job.szuru_user:
+        user_result = await db.execute(
+            select(User.username).where(User.szuru_username == job.szuru_user)
+        )
+        dashboard_username = user_result.scalar_one_or_none()
+
+    return _job_to_out(job, dashboard_username)
 
 
 # ---------------------------------------------------------------------------

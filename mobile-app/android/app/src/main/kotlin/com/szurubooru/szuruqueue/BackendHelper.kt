@@ -28,23 +28,31 @@ object BackendHelper {
 
     data class Settings(
         val backendUrl: String?,
-        val apiKey: String?,
+        val accessToken: String?,
         val defaultTags: String,
         val defaultSafety: String,
         val skipTagging: Boolean,
-        val szuruUser: String,
     )
 
     /** Read CCC settings from Flutter's SharedPreferences. */
     fun readSettings(context: Context): Settings {
         val prefs = context.getSharedPreferences(FLUTTER_PREFS_NAME, Context.MODE_PRIVATE)
+        val authTokensJson = prefs.getString("flutter.auth_tokens", null)
+        var accessToken: String? = null
+        if (!authTokensJson.isNullOrBlank()) {
+            try {
+                val json = org.json.JSONObject(authTokensJson)
+                accessToken = json.optString("access_token", null).takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to parse auth_tokens", e)
+            }
+        }
         return Settings(
             backendUrl = prefs.getString("flutter.backendUrl", null),
-            apiKey = prefs.getString("flutter.apiKey", null),
+            accessToken = accessToken,
             defaultTags = prefs.getString("flutter.defaultTags", "") ?: "",
             defaultSafety = prefs.getString("flutter.defaultSafety", DEFAULT_SAFETY) ?: DEFAULT_SAFETY,
             skipTagging = prefs.getBoolean("flutter.skipTagging", false),
-            szuruUser = prefs.getString("flutter.szuruUser", "") ?: "",
         )
     }
 
@@ -77,7 +85,6 @@ object BackendHelper {
         tags: List<String>,
         safety: String,
         skipTagging: Boolean,
-        szuruUser: String,
         mimeType: String? = null,
     ): JSONObject {
         return JSONObject().apply {
@@ -86,13 +93,12 @@ object BackendHelper {
             if (tags.isNotEmpty()) put("tags", JSONArray(tags))
             put("safety", safety)
             put("skip_tagging", skipTagging)
-            if (szuruUser.isNotEmpty()) put("szuru_user", szuruUser)
             if (mimeType != null) put("content_type", mimeType)
         }
     }
 
     /** POST a job payload to the CCC backend. Returns true on success. */
-    fun sendJobToBackend(baseUrl: String, apiKey: String?, payload: JSONObject): Boolean {
+    fun sendJobToBackend(baseUrl: String, accessToken: String?, payload: JSONObject): Boolean {
         return try {
             val endpoint = "${baseUrl.trimEnd('/')}/api/jobs"
             Log.d(TAG, "Sending job to: $endpoint")
@@ -106,8 +112,8 @@ object BackendHelper {
                 .post(requestBody)
                 .header("Content-Type", "application/json")
 
-            if (!apiKey.isNullOrBlank()) {
-                requestBuilder.header("X-API-Key", apiKey)
+            if (!accessToken.isNullOrBlank()) {
+                requestBuilder.header("Authorization", "Bearer $accessToken")
             }
 
             val response = httpClient.newCall(requestBuilder.build()).execute()

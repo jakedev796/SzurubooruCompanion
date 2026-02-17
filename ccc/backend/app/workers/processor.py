@@ -21,6 +21,7 @@ from app.services.szurubooru import set_current_user
 from app.services import sources as source_utils
 from app.services import tag_utils
 from app.services.config import load_user_config, load_global_config
+from app.services.encryption import decrypt
 from app.sites.registry import normalize_url as _normalize_site_url
 from app.api.events import publish_job_update
 
@@ -132,7 +133,6 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
     3. For each media: download, tag, upload
     4. Create relations between posts from multi-file sources
     """
-    set_current_user(job.szuru_user)
     job_dir = os.path.join(settings.job_data_dir, str(job.id))
     os.makedirs(job_dir, exist_ok=True)
 
@@ -148,9 +148,12 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                     tag, job.id, _global_config.wd14_enabled, _global_config.worker_concurrency,
                     _global_config.gallery_dl_timeout)
 
-        # Load user configuration
+        # Load user configuration and category mappings
+        user_category_mappings = None
+        szuru_token = None
+        szuru_url = None
         if job.szuru_user:
-            result = await db.execute(select(User).where(User.username == job.szuru_user))
+            result = await db.execute(select(User).where(User.szuru_username == job.szuru_user))
             user = result.scalar_one_or_none()
             if user:
                 user_config_obj = await load_user_config(db, str(user.id))
@@ -159,8 +162,23 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                     logger.info("%s Job %s: Loaded config for user %s", tag, job.id, job.szuru_user)
                 else:
                     logger.warning("%s Job %s: No config found for user %s", tag, job.id, job.szuru_user)
+                # Load category mappings from user's settings
+                user_category_mappings = user.szuru_category_mappings or {}
+                if user_category_mappings:
+                    logger.debug("%s Job %s: Using per-user category mappings: %s", tag, job.id, user_category_mappings)
+                # Decrypt szuru token for API authentication
+                if user.szuru_token_encrypted:
+                    try:
+                        szuru_token = decrypt(user.szuru_token_encrypted)
+                    except Exception as e:
+                        logger.error("%s Job %s: Failed to decrypt szuru token for user %s: %s", tag, job.id, job.szuru_user, e)
+                # Get user's szuru_url (internal/API URL)
+                szuru_url = user.szuru_url
             else:
                 logger.warning("%s Job %s: User %s not found in database", tag, job.id, job.szuru_user)
+
+    # Set current user context for Szurubooru API calls (with decrypted credentials and URL)
+    set_current_user(job.szuru_user, szuru_token, szuru_url)
 
     try:
         if await _abort_if_paused_or_stopped(job):
@@ -186,7 +204,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 if await _abort_if_paused_or_stopped(job):
                     return
 
-                post_info = await _process_single_media(job, media, media_dir, user_config_dict)
+                post_info = await _process_single_media(job, media, media_dir, user_config_dict, user_category_mappings)
                 if post_info:
                     created_posts.append(post_info)
                     all_sources.append(media.source_url)
@@ -274,6 +292,7 @@ async def _process_single_media(
     media: downloader.ExtractedMedia,
     media_dir: str,
     user_config: Optional[Dict] = None,
+    user_category_mappings: Optional[Dict] = None,
 ) -> Optional[dict]:
     """
     Download, tag, and upload a single media item.
@@ -294,7 +313,7 @@ async def _process_single_media(
 
     # ---- Tag ----
     await _set_status(job, JobStatus.TAGGING)
-    tag_result = await _tag_file(job, fp, metadata)
+    tag_result = await _tag_file(job, fp, metadata, user_category_mappings)
 
     if await _abort_if_paused_or_stopped(job):
         return None
@@ -328,7 +347,7 @@ async def _download_media(
     return dl.files, merged_meta
 
 
-async def _tag_file(job: Job, fp: Path, metadata: Dict) -> dict:
+async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: Optional[Dict] = None) -> dict:
     """
     Collect tags from all sources (initial, metadata, WD14) and return a dict with:
 
@@ -372,9 +391,9 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict) -> dict:
     )
     all_tags = tag_utils.deduplicate_tags(all_tags)
 
-    # Resolve tag categories
+    # Resolve tag categories (using per-user mappings if available)
     tag_to_category = tag_categories.resolve_categories(
-        all_tags, metadata=metadata, job_url=job.url
+        all_tags, metadata=metadata, job_url=job.url, user_category_mappings=user_category_mappings
     )
     for t in wd14_character_tags:
         tag_to_category[t] = "character"

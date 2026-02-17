@@ -92,7 +92,7 @@ function ProfileTab() {
   const { isAdmin } = useAuth();
   const { showToast } = useToast();
   const [config, setConfig] = useState<UserConfig | null>(null);
-  const [form, setForm] = useState({ szuru_url: "", szuru_username: "", szuru_token: "" });
+  const [form, setForm] = useState({ szuru_url: "", szuru_public_url: "", szuru_username: "", szuru_token: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<Array<{ name: string; color: string; order: number }> | null>(null);
@@ -109,6 +109,7 @@ function ProfileTab() {
         setConfig(c);
         setForm({
           szuru_url: c.szuru_url || "",
+          szuru_public_url: c.szuru_public_url || "",
           szuru_username: c.szuru_username || "",
           szuru_token: "",
         });
@@ -123,6 +124,7 @@ function ProfileTab() {
     try {
       await updateMyConfig({
         szuru_url: form.szuru_url || undefined,
+        szuru_public_url: form.szuru_public_url || undefined,
         szuru_username: form.szuru_username || undefined,
         szuru_token: form.szuru_token || undefined,
       });
@@ -144,10 +146,10 @@ function ProfileTab() {
       return;
     }
 
-    // Use stored token if available, otherwise use form token
-    const token = config?.szuru_token || form.szuru_token || "";
+    // Always test with current form values, not saved config
+    const token = form.szuru_token || config?.szuru_token || "";
     if (!token) {
-      showToast("Please save your token first or enter it in the form", "error");
+      showToast("Please enter or save your token first", "error");
       return;
     }
 
@@ -217,13 +219,28 @@ function ProfileTab() {
       <h3>Szurubooru Configuration</h3>
       <div className="settings-form">
         <div className="form-group">
-          <label>Szurubooru URL</label>
+          <label>Szurubooru URL (Internal/API)</label>
           <input
             type="text"
             value={form.szuru_url}
             onChange={(e) => setForm({ ...form, szuru_url: e.target.value })}
-            placeholder="http://localhost:8080"
+            placeholder="http://192.168.1.100:8080"
           />
+          <small style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Internal URL used for API calls (can be local IP)
+          </small>
+        </div>
+        <div className="form-group">
+          <label>Szurubooru Public URL (Optional)</label>
+          <input
+            type="text"
+            value={form.szuru_public_url}
+            onChange={(e) => setForm({ ...form, szuru_public_url: e.target.value })}
+            placeholder="https://booru.example.com"
+          />
+          <small style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Public URL for sharing links (e.g., in mobile app). Leave empty to use internal URL.
+          </small>
         </div>
         <div className="form-group">
           <label>Szurubooru Username</label>
@@ -283,10 +300,10 @@ function ProfileTab() {
         {/* Category Mappings */}
         <div className="card" style={{ marginTop: "1rem", background: "var(--bg)" }}>
           <h4 style={{ fontSize: "0.9rem", marginBottom: "0.75rem", color: "var(--text-muted)" }}>
-            Category Mappings (Global)
+            Category Mappings
           </h4>
           <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-            Map internal category types to your Szurubooru instance's categories. These mappings are shared by all users.
+            Map internal category types to your Szurubooru instance's categories. These mappings are specific to your account.
           </p>
           <div className="settings-form">
             {["general", "artist", "character", "copyright", "meta"].map((internalCat) => (
@@ -296,7 +313,6 @@ function ProfileTab() {
                   <select
                     value={categoryMappings[internalCat] || ""}
                     onChange={(e) => setCategoryMappings({ ...categoryMappings, [internalCat]: e.target.value })}
-                    disabled={!isAdmin}
                   >
                     <option value="">-- Select Category --</option>
                     {categories.map((cat) => (
@@ -311,28 +327,20 @@ function ProfileTab() {
                     value={categoryMappings[internalCat] || ""}
                     onChange={(e) => setCategoryMappings({ ...categoryMappings, [internalCat]: e.target.value })}
                     placeholder={`e.g., ${internalCat}`}
-                    disabled={!isAdmin}
                   />
                 )}
               </div>
             ))}
-            {isAdmin && (
-              <div className="form-actions">
-                <button
-                  type="button"
-                  onClick={handleSaveMappings}
-                  disabled={savingMappings}
-                  className="btn btn-primary"
-                >
-                  {savingMappings ? "Saving..." : "Save Mappings"}
-                </button>
-              </div>
-            )}
-            {!isAdmin && (
-              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontStyle: "italic" }}>
-                Only administrators can modify category mappings.
-              </p>
-            )}
+            <div className="form-actions">
+              <button
+                type="button"
+                onClick={handleSaveMappings}
+                disabled={savingMappings}
+                className="btn btn-primary"
+              >
+                {savingMappings ? "Saving..." : "Save Mappings"}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -444,10 +452,10 @@ function SiteCredentialsTab() {
   const sites = [
     { name: "twitter", fields: ["username", "password", "cookies"] },
     { name: "sankaku", fields: ["username", "password"] },
-    { name: "danbooru", fields: ["api_key", "user_id"] },
-    { name: "gelbooru", fields: ["api_key", "user_id"] },
-    { name: "rule34", fields: ["api_key", "user_id"] },
-    { name: "reddit", fields: ["client_id", "client_secret", "username"] },
+    { name: "danbooru", fields: ["api-key", "user-id"] },
+    { name: "gelbooru", fields: ["api-key", "user-id"] },
+    { name: "rule34", fields: ["api-key", "user-id"] },
+    { name: "reddit", fields: ["client-id", "client-secret", "username"] },
     { name: "misskey", fields: ["username", "password"] },
   ];
 
@@ -562,12 +570,13 @@ function GlobalSettingsTab() {
 
   useEffect(() => {
     if (!settings || !initialSettings) return;
-    // Check if WD14 settings changed
+    // Check if WD14 or worker settings changed (both require restart)
     const changed =
       settings.wd14_enabled !== initialSettings.wd14_enabled ||
       settings.wd14_model !== initialSettings.wd14_model ||
       settings.wd14_confidence_threshold !== initialSettings.wd14_confidence_threshold ||
-      settings.wd14_max_tags !== initialSettings.wd14_max_tags;
+      settings.wd14_max_tags !== initialSettings.wd14_max_tags ||
+      settings.worker_concurrency !== initialSettings.worker_concurrency;
     setWd14Changed(changed);
   }, [settings, initialSettings]);
 
@@ -592,14 +601,14 @@ function GlobalSettingsTab() {
     <div className="card">
       <h3>Global Settings</h3>
       <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-        Configure system-wide settings for the worker and AI tagging. Worker settings take effect immediately, but WD14 settings require a container restart.
+        Configure system-wide settings for the worker and AI tagging. Note: WD14 and worker concurrency settings require a container restart to take effect.
       </p>
 
       {wd14Changed && (
         <div className="status-message" style={{ background: "rgba(251, 146, 60, 0.12)", color: "var(--orange)", border: "1px solid rgba(251, 146, 60, 0.35)", marginBottom: "1.5rem", display: "flex", alignItems: "center" }}>
           <AlertTriangle size={16} style={{ marginRight: "0.5rem", flexShrink: 0 }} />
           <div>
-            <strong>WD14 settings changed!</strong> Container restart required for changes to take effect.
+            <strong>Restart required!</strong> WD14 or worker settings changed. Container restart required for changes to take effect.
             <br />
             <small>Run: <code style={{ background: "var(--bg)", padding: "0.15rem 0.35rem", borderRadius: "4px" }}>docker-compose restart ccc-backend</code></small>
           </div>

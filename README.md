@@ -129,12 +129,9 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 
    # Encryption key for credentials (required - generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
    ENCRYPTION_KEY=your-generated-encryption-key
-
-   # API key for browser extension and mobile app
-   API_KEY=your-secret-api-key
    ```
 
-   > **Note:** Szurubooru credentials are now configured per-user through the dashboard Settings page instead of environment variables.
+   > **Note:** Szurubooru credentials are configured per-user through the dashboard. The browser extension and mobile app use **JWT login** (username/password) to authenticate with the CCC backend; no API key is used.
 
 3. **Start the stack:**
    ```bash
@@ -207,7 +204,6 @@ Flutter Android app with share sheet integration, floating bubble overlay, and j
    ADMIN_USER=admin
    ADMIN_PASSWORD=your-secure-password
    ENCRYPTION_KEY=<key-from-step-1>
-   API_KEY=your-secret-api-key
    ```
 
 3. **Start the stack:**

@@ -80,6 +80,7 @@ ThemeData get appDarkTheme {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.bg,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: const OutlineInputBorder(),
       enabledBorder: const OutlineInputBorder(
         borderSide: BorderSide(color: AppColors.border),
@@ -89,6 +90,40 @@ ThemeData get appDarkTheme {
       ),
       labelStyle: const TextStyle(color: AppColors.textMuted),
       hintStyle: const TextStyle(color: AppColors.textMuted),
+    ),
+    dropdownMenuTheme: DropdownMenuThemeData(
+      menuStyle: MenuStyle(
+        backgroundColor: WidgetStateProperty.all(AppColors.bgCard),
+        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(vertical: 8)),
+      ),
+      textStyle: const TextStyle(color: AppColors.text),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.bgCard,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.accent, width: 1.5),
+        ),
+      ),
+    ),
+    menuTheme: MenuThemeData(
+      style: MenuStyle(
+        backgroundColor: WidgetStateProperty.all(AppColors.bgCard),
+        padding: WidgetStateProperty.all(const EdgeInsets.symmetric(vertical: 4)),
+      ),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: AppColors.bgCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: AppColors.border),
+      ),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: AppColors.bgCard,

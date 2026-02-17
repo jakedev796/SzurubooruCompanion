@@ -53,23 +53,41 @@ def resolve_categories(
     tag_names: List[str],
     metadata: Optional[dict] = None,
     job_url: Optional[str] = None,
+    user_category_mappings: Optional[Dict[str, str]] = None,
 ) -> Dict[str, str]:
     """
     Resolve each tag to the user's Szurubooru category name.
     When metadata has categorized lists (tags_artist, tags_author, etc.), we map those source
-    names to slots via SOURCE_NAMES_FOR_SLOT, then to the user's category name from env.
+    names to slots via SOURCE_NAMES_FOR_SLOT, then to the user's category name.
+
+    Args:
+        tag_names: List of tag names to categorize
+        metadata: Optional metadata dict from downloader
+        job_url: Optional job URL (for debugging)
+        user_category_mappings: Per-user category mappings from database (e.g., {"general": "general", "artist": "creator"})
+                                If None, falls back to ENV settings.
     """
-    settings = get_settings()
-    user_categories = get_szuru_categories()
-    default = settings.szuru_default_tag_category
-    if default not in user_categories:
-        default = user_categories[0] if user_categories else "general"
+    # Use per-user mappings if provided, otherwise fall back to ENV
+    if user_category_mappings:
+        # Build source_to_szuru mapping from user's settings
+        source_to_szuru: Dict[str, str] = {}
+        for slot in SLOTS:
+            user_cat = user_category_mappings.get(slot, slot)
+            for source_name in SOURCE_NAMES_FOR_SLOT.get(slot, [slot]):
+                source_to_szuru[source_name.lower()] = user_cat
+        default = user_category_mappings.get("general", "general")
+    else:
+        # Fallback to ENV settings
+        settings = get_settings()
+        user_categories = get_szuru_categories()
+        default = settings.szuru_default_tag_category
+        if default not in user_categories:
+            default = user_categories[0] if user_categories else "general"
+        source_to_szuru = _get_source_to_szuru_mapping()
 
     result: Dict[str, str] = {t: default for t in tag_names if t.strip()}
     if not result or not metadata:
         return result
-
-    source_to_szuru = _get_source_to_szuru_mapping()
     result_lower = {t.lower(): t for t in result}
 
     def category_for_meta_key(key: str) -> Optional[str]:

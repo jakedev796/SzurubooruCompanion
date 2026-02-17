@@ -1,26 +1,18 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' show File, Platform;
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/scheduled_folder.dart';
 import '../models/auth.dart';
+import '../models/scheduled_folder.dart';
 
 /// Settings model for the SzuruCompanion app.
-/// 
-/// Stores and manages:
-/// - Backend URL (the CCC backend server address)
-/// - API Key (optional, for authentication with the backend if required)
-/// - Background service preference
-/// - Default tags for uploads
-/// - Default safety rating
-/// - Polling interval for job status updates
+///
+/// Stores and manages backend URL, share/folder preferences, and scheduled folders.
+/// All settings except backendUrl are synced to the CCC backend when authenticated.
 class SettingsModel extends ChangeNotifier {
   String _backendUrl = '';
-  String _apiKey = '';
   bool _useBackgroundService = true;
   String _defaultTags = '';
   String _defaultSafety = 'unsafe';
@@ -30,14 +22,12 @@ class SettingsModel extends ChangeNotifier {
   bool _notifyOnFolderSync = false;
   bool _deleteMediaAfterSync = false;
   bool _showPersistentNotification = true;
-  int _folderSyncIntervalSeconds = 900;
-  String _szuruUser = '';
   bool _showFloatingBubble = false;
+  int _folderSyncIntervalSeconds = 900;
   bool _isAuthenticated = false;
-  String _username = '';
+  String? _username;
 
   String get backendUrl => _backendUrl;
-  String get apiKey => _apiKey;
   bool get useBackgroundService => _useBackgroundService;
   String get defaultTags => _defaultTags;
   String get defaultSafety => _defaultSafety;
@@ -47,67 +37,52 @@ class SettingsModel extends ChangeNotifier {
   bool get notifyOnFolderSync => _notifyOnFolderSync;
   bool get deleteMediaAfterSync => _deleteMediaAfterSync;
   bool get showPersistentNotification => _showPersistentNotification;
-  int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
-  String get szuruUser => _szuruUser;
   bool get showFloatingBubble => _showFloatingBubble;
+  int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
   bool get isAuthenticated => _isAuthenticated;
-  String get username => _username;
+  String? get username => _username;
 
   /// Load settings from persistent storage
-  /// If SharedPreferences is empty, attempts to restore from backup file
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // Check if SharedPreferences has any settings
-    final hasBackendUrl = prefs.containsKey('backendUrl');
-    
-    // If no settings found, try to restore from backup
-    if (!hasBackendUrl) {
-      await _restoreFromBackup();
-      // Reload prefs after restore
-      final prefsAfterRestore = await SharedPreferences.getInstance();
-      _backendUrl = prefsAfterRestore.getString('backendUrl') ?? '';
-      _apiKey = prefsAfterRestore.getString('apiKey') ?? '';
-      _useBackgroundService = prefsAfterRestore.getBool('useBackgroundService') ?? true;
-      _defaultTags = prefsAfterRestore.getString('defaultTags') ?? '';
-      _defaultSafety = prefsAfterRestore.getString('defaultSafety') ?? 'unsafe';
-      _skipTagging = prefsAfterRestore.getBool('skipTagging') ?? false;
-      _pollingIntervalSeconds = prefsAfterRestore.getInt('pollingIntervalSeconds') ?? 5;
-      _notifyOnFolderSync = prefsAfterRestore.getBool('notifyOnFolderSync') ?? false;
-      _deleteMediaAfterSync = prefsAfterRestore.getBool('deleteMediaAfterSync') ?? false;
-      _showPersistentNotification = prefsAfterRestore.getBool('showPersistentNotification') ?? true;
-      _folderSyncIntervalSeconds = prefsAfterRestore.getInt('folderSyncIntervalSeconds') ?? 900;
-      _szuruUser = prefsAfterRestore.getString('szuruUser') ?? '';
-      _showFloatingBubble = prefsAfterRestore.getBool('showFloatingBubble') ?? false;
-    } else {
-      // Load normally from SharedPreferences
-      _backendUrl = prefs.getString('backendUrl') ?? '';
-      _apiKey = prefs.getString('apiKey') ?? '';
-      _useBackgroundService = prefs.getBool('useBackgroundService') ?? true;
-      _defaultTags = prefs.getString('defaultTags') ?? '';
-      _defaultSafety = prefs.getString('defaultSafety') ?? 'unsafe';
-      _skipTagging = prefs.getBool('skipTagging') ?? false;
-      _pollingIntervalSeconds = prefs.getInt('pollingIntervalSeconds') ?? 5;
-      _notifyOnFolderSync = prefs.getBool('notifyOnFolderSync') ?? false;
-      _deleteMediaAfterSync = prefs.getBool('deleteMediaAfterSync') ?? false;
-      _showPersistentNotification = prefs.getBool('showPersistentNotification') ?? true;
-      _folderSyncIntervalSeconds = prefs.getInt('folderSyncIntervalSeconds') ?? 900;
-      _szuruUser = prefs.getString('szuruUser') ?? '';
-      _showFloatingBubble = prefs.getBool('showFloatingBubble') ?? false;
-    }
-
-    // Load auth state
-    _username = prefs.getString('username') ?? '';
+    _backendUrl = prefs.getString('backendUrl') ?? '';
+    _useBackgroundService = prefs.getBool('useBackgroundService') ?? true;
+    _defaultTags = prefs.getString('defaultTags') ?? '';
+    _defaultSafety = prefs.getString('defaultSafety') ?? 'unsafe';
+    _skipTagging = prefs.getBool('skipTagging') ?? false;
+    _pollingIntervalSeconds = prefs.getInt('pollingIntervalSeconds') ?? 5;
+    _notifyOnFolderSync = prefs.getBool('notifyOnFolderSync') ?? false;
+    _deleteMediaAfterSync = prefs.getBool('deleteMediaAfterSync') ?? false;
+    _showPersistentNotification = prefs.getBool('showPersistentNotification') ?? true;
+    _showFloatingBubble = prefs.getBool('showFloatingBubble') ?? false;
+    _folderSyncIntervalSeconds = prefs.getInt('folderSyncIntervalSeconds') ?? 900;
     _isAuthenticated = prefs.containsKey('auth_tokens');
-
+    _username = prefs.getString('username');
     _isConfigured = _backendUrl.isNotEmpty;
+    notifyListeners();
+  }
+
+  /// Update auth state (called after login/logout). [tokens] can be null on logout.
+  Future<void> setAuthState(bool authed, String username, dynamic tokens) async {
+    _isAuthenticated = authed;
+    _username = authed ? username : null;
+    final prefs = await SharedPreferences.getInstance();
+    if (authed && username.isNotEmpty) {
+      await prefs.setString('username', username);
+    } else {
+      await prefs.remove('username');
+    }
+    if (authed && tokens != null && tokens is AuthTokens) {
+      await prefs.setString('auth_tokens', jsonEncode(tokens.toJson()));
+    } else if (!authed) {
+      await prefs.remove('auth_tokens');
+    }
     notifyListeners();
   }
 
   /// Save settings to persistent storage
   Future<void> saveSettings({
     String? backendUrl,
-    String? apiKey,
     bool? useBackgroundService,
     String? defaultTags,
     String? defaultSafety,
@@ -116,20 +91,14 @@ class SettingsModel extends ChangeNotifier {
     bool? notifyOnFolderSync,
     bool? deleteMediaAfterSync,
     bool? showPersistentNotification,
-    int? folderSyncIntervalSeconds,
-    String? szuruUser,
     bool? showFloatingBubble,
+    int? folderSyncIntervalSeconds,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     
     if (backendUrl != null) {
       _backendUrl = backendUrl;
       await prefs.setString('backendUrl', _backendUrl);
-    }
-    
-    if (apiKey != null) {
-      _apiKey = apiKey;
-      await prefs.setString('apiKey', _apiKey);
     }
     if (useBackgroundService != null) {
       _useBackgroundService = useBackgroundService;
@@ -167,36 +136,23 @@ class SettingsModel extends ChangeNotifier {
       _showPersistentNotification = showPersistentNotification;
       await prefs.setBool('showPersistentNotification', _showPersistentNotification);
     }
-    if (folderSyncIntervalSeconds != null) {
-      _folderSyncIntervalSeconds = folderSyncIntervalSeconds.clamp(900, 604800);
-      await prefs.setInt('folderSyncIntervalSeconds', _folderSyncIntervalSeconds);
-    }
-    if (szuruUser != null) {
-      _szuruUser = szuruUser;
-      await prefs.setString('szuruUser', _szuruUser);
-    }
     if (showFloatingBubble != null) {
       _showFloatingBubble = showFloatingBubble;
       await prefs.setBool('showFloatingBubble', _showFloatingBubble);
     }
+    if (folderSyncIntervalSeconds != null) {
+      _folderSyncIntervalSeconds = folderSyncIntervalSeconds.clamp(900, 604800);
+      await prefs.setInt('folderSyncIntervalSeconds', _folderSyncIntervalSeconds);
+    }
     _isConfigured = _backendUrl.isNotEmpty;
-    
-    // Backup settings to external storage for persistence across reinstalls
-    await _backupToExternalStorage();
-    
     notifyListeners();
   }
 
-  /// Clear all settings and backup file
+  /// Clear all settings
   Future<void> clearSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
-    
-    // Also delete the backup file to prevent restoration
-    await _deleteBackupFile();
-    
     _backendUrl = '';
-    _apiKey = '';
     _useBackgroundService = true;
     _defaultTags = '';
     _defaultSafety = 'unsafe';
@@ -205,9 +161,10 @@ class SettingsModel extends ChangeNotifier {
     _notifyOnFolderSync = false;
     _deleteMediaAfterSync = false;
     _showPersistentNotification = true;
-    _folderSyncIntervalSeconds = 900;
-    _szuruUser = '';
     _showFloatingBubble = false;
+    _folderSyncIntervalSeconds = 900;
+    _isAuthenticated = false;
+    _username = null;
     _isConfigured = false;
     notifyListeners();
   }
@@ -221,39 +178,186 @@ class SettingsModel extends ChangeNotifier {
         .toList();
   }
 
-  /// Check if the settings are valid for making API calls.
-  /// Only requires backend URL - API key is optional.
+  /// Check if the settings are valid for making API calls (backend URL is set).
   bool get canMakeApiCalls => _backendUrl.isNotEmpty;
+
+  /// All mobile settings to sync to the CCC backend (everything except backendUrl). Used when saving or on logout.
+  Future<Map<String, dynamic>> getSyncablePreferences() async {
+    final folders = await getScheduledFolders();
+    return {
+      'useBackgroundService': _useBackgroundService,
+      'defaultTags': _defaultTags,
+      'defaultSafety': _defaultSafety,
+      'skipTagging': _skipTagging,
+      'pollingIntervalSeconds': _pollingIntervalSeconds,
+      'notifyOnFolderSync': _notifyOnFolderSync,
+      'deleteMediaAfterSync': _deleteMediaAfterSync,
+      'showPersistentNotification': _showPersistentNotification,
+      'showFloatingBubble': _showFloatingBubble,
+      'folderSyncIntervalSeconds': _folderSyncIntervalSeconds,
+      'scheduledFolders': folders.map((f) => f.toJson()).toList(),
+    };
+  }
+
+  /// Apply preferences fetched from the backend (e.g. after login). Persists to local storage.
+  Future<void> applySyncedPreferences(Map<String, dynamic> prefs) async {
+    final prefsStorage = await SharedPreferences.getInstance();
+    if (prefs.containsKey('useBackgroundService')) {
+      _useBackgroundService = prefs['useBackgroundService'] as bool? ?? _useBackgroundService;
+      await prefsStorage.setBool('useBackgroundService', _useBackgroundService);
+    }
+    if (prefs.containsKey('defaultTags')) {
+      _defaultTags = prefs['defaultTags'] as String? ?? _defaultTags;
+      await prefsStorage.setString('defaultTags', _defaultTags);
+    }
+    if (prefs.containsKey('defaultSafety')) {
+      _defaultSafety = prefs['defaultSafety'] as String? ?? _defaultSafety;
+      await prefsStorage.setString('defaultSafety', _defaultSafety);
+    }
+    if (prefs.containsKey('skipTagging')) {
+      _skipTagging = prefs['skipTagging'] as bool? ?? _skipTagging;
+      await prefsStorage.setBool('skipTagging', _skipTagging);
+    }
+    if (prefs.containsKey('pollingIntervalSeconds')) {
+      final v = prefs['pollingIntervalSeconds'];
+      if (v is int) {
+        _pollingIntervalSeconds = v.clamp(1, 3600);
+        await prefsStorage.setInt('pollingIntervalSeconds', _pollingIntervalSeconds);
+      }
+    }
+    if (prefs.containsKey('notifyOnFolderSync')) {
+      _notifyOnFolderSync = prefs['notifyOnFolderSync'] as bool? ?? _notifyOnFolderSync;
+      await prefsStorage.setBool('notifyOnFolderSync', _notifyOnFolderSync);
+    }
+    if (prefs.containsKey('deleteMediaAfterSync')) {
+      _deleteMediaAfterSync = prefs['deleteMediaAfterSync'] as bool? ?? _deleteMediaAfterSync;
+      await prefsStorage.setBool('deleteMediaAfterSync', _deleteMediaAfterSync);
+    }
+    if (prefs.containsKey('showPersistentNotification')) {
+      _showPersistentNotification = prefs['showPersistentNotification'] as bool? ?? _showPersistentNotification;
+      await prefsStorage.setBool('showPersistentNotification', _showPersistentNotification);
+    }
+    if (prefs.containsKey('showFloatingBubble')) {
+      _showFloatingBubble = prefs['showFloatingBubble'] as bool? ?? _showFloatingBubble;
+      await prefsStorage.setBool('showFloatingBubble', _showFloatingBubble);
+    }
+    if (prefs.containsKey('folderSyncIntervalSeconds')) {
+      final v = prefs['folderSyncIntervalSeconds'];
+      if (v is int) {
+        _folderSyncIntervalSeconds = v.clamp(900, 604800);
+        await prefsStorage.setInt('folderSyncIntervalSeconds', _folderSyncIntervalSeconds);
+      }
+    }
+    if (prefs.containsKey('scheduledFolders')) {
+      final list = prefs['scheduledFolders'];
+      if (list is List<dynamic>) {
+        final folders = list
+            .map((e) => e is Map<String, dynamic> ? ScheduledFolder.fromJson(e) : null)
+            .whereType<ScheduledFolder>()
+            .toList();
+        await setScheduledFolders(folders);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Export all settings (except auth) to a JSON file in [directoryPath]. Returns the file path or null on failure.
+  Future<String?> backupSettingsToDirectory(String directoryPath) async {
+    try {
+      final folders = await getScheduledFolders();
+      final map = <String, dynamic>{
+        'backendUrl': _backendUrl,
+        'useBackgroundService': _useBackgroundService,
+        'defaultTags': _defaultTags,
+        'defaultSafety': _defaultSafety,
+        'skipTagging': _skipTagging,
+        'pollingIntervalSeconds': _pollingIntervalSeconds,
+        'notifyOnFolderSync': _notifyOnFolderSync,
+        'deleteMediaAfterSync': _deleteMediaAfterSync,
+        'showPersistentNotification': _showPersistentNotification,
+        'showFloatingBubble': _showFloatingBubble,
+        'folderSyncIntervalSeconds': _folderSyncIntervalSeconds,
+        'scheduledFolders': folders.map((f) => f.toJson()).toList(),
+      };
+      final date = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-').split('.').first;
+      final fileName = 'szurucompanion_backup_$date.json';
+      final file = File('$directoryPath${Platform.pathSeparator}$fileName');
+      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(map));
+      return file.path;
+    } catch (e) {
+      debugPrint('[SettingsModel] backupSettingsToDirectory error: $e');
+      return null;
+    }
+  }
+
+  /// From backup JSON, determine which permissions to prompt for before restore (e.g. overlay if bubble was on, storage if folders enabled).
+  Map<String, bool> checkPermissionsNeededFromBackupContent(String backupJson) {
+    try {
+      final map = jsonDecode(backupJson) as Map<String, dynamic>;
+      final showFloatingBubble = map['showFloatingBubble'] as bool? ?? false;
+      final list = map['scheduledFolders'] as List<dynamic>?;
+      final hasEnabledFolders = list != null &&
+          list.any((e) => e is Map && (e['enabled'] as bool? ?? true));
+      return {
+        'needsOverlayPermission': showFloatingBubble,
+        'needsStoragePermission': hasEnabledFolders,
+      };
+    } catch (e) {
+      debugPrint('[SettingsModel] checkPermissionsNeededFromBackupContent error: $e');
+      return {'needsOverlayPermission': false, 'needsStoragePermission': false};
+    }
+  }
+
+  /// Restore settings from a backup JSON string (does not restore auth tokens). Returns true on success.
+  Future<bool> restoreSettingsFromJsonString(String backupJson) async {
+    try {
+      final map = jsonDecode(backupJson) as Map<String, dynamic>;
+      final prefs = await SharedPreferences.getInstance();
+      if (map.containsKey('backendUrl')) await prefs.setString('backendUrl', map['backendUrl'] as String? ?? '');
+      if (map.containsKey('useBackgroundService')) await prefs.setBool('useBackgroundService', map['useBackgroundService'] as bool? ?? true);
+      if (map.containsKey('defaultTags')) await prefs.setString('defaultTags', map['defaultTags'] as String? ?? '');
+      if (map.containsKey('defaultSafety')) await prefs.setString('defaultSafety', map['defaultSafety'] as String? ?? 'unsafe');
+      if (map.containsKey('skipTagging')) await prefs.setBool('skipTagging', map['skipTagging'] as bool? ?? false);
+      if (map.containsKey('pollingIntervalSeconds')) await prefs.setInt('pollingIntervalSeconds', map['pollingIntervalSeconds'] as int? ?? 5);
+      if (map.containsKey('notifyOnFolderSync')) await prefs.setBool('notifyOnFolderSync', map['notifyOnFolderSync'] as bool? ?? false);
+      if (map.containsKey('deleteMediaAfterSync')) await prefs.setBool('deleteMediaAfterSync', map['deleteMediaAfterSync'] as bool? ?? false);
+      if (map.containsKey('showPersistentNotification')) await prefs.setBool('showPersistentNotification', map['showPersistentNotification'] as bool? ?? true);
+      if (map.containsKey('showFloatingBubble')) await prefs.setBool('showFloatingBubble', map['showFloatingBubble'] as bool? ?? false);
+      if (map.containsKey('folderSyncIntervalSeconds')) {
+        final v = map['folderSyncIntervalSeconds'] as int? ?? 900;
+        await prefs.setInt('folderSyncIntervalSeconds', v.clamp(900, 604800));
+      }
+      if (map.containsKey('scheduledFolders')) {
+        final list = map['scheduledFolders'] as List<dynamic>?;
+        if (list != null) {
+          final folders = list
+              .map((e) => e is Map<String, dynamic> ? ScheduledFolder.fromJson(e) : null)
+              .whereType<ScheduledFolder>()
+              .toList();
+          await setScheduledFolders(folders);
+        }
+      }
+      await loadSettings();
+      return true;
+    } catch (e) {
+      debugPrint('[SettingsModel] restoreSettingsFromJsonString error: $e');
+      return false;
+    }
+  }
 
   static const String _scheduledFoldersKey = 'scheduled_folders';
   static const String _pendingDeleteUrisKey = 'pending_delete_uris';
   static const String _lastFolderSyncTimestampKey = 'last_folder_sync_timestamp';
   static const String _lastFolderSyncCountKey = 'last_folder_sync_count';
-  static const String _settingsBackupFileName = 'szurucompanion_settings_backup.json';
 
-  /// Get all scheduled folders. Returns empty list on parse error to avoid crashing.
+  /// Get all scheduled folders
   Future<List<ScheduledFolder>> getScheduledFolders() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString(_scheduledFoldersKey);
-      if (jsonString == null) return [];
-      final decoded = jsonDecode(jsonString);
-      if (decoded is! List<dynamic>) return [];
-      final result = <ScheduledFolder>[];
-      for (final item in decoded) {
-        try {
-          if (item is Map<String, dynamic>) {
-            result.add(ScheduledFolder.fromJson(item));
-          }
-        } catch (_) {
-          // Skip malformed folder entry
-        }
-      }
-      return result;
-    } catch (e) {
-      debugPrint('[SettingsModel] getScheduledFolders error: $e');
-      return [];
-    }
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_scheduledFoldersKey);
+    if (jsonString == null) return [];
+    
+    final List<dynamic> jsonList = jsonDecode(jsonString);
+    return jsonList.map((json) => ScheduledFolder.fromJson(json)).toList();
   }
 
   /// Save all scheduled folders
@@ -299,43 +403,33 @@ class SettingsModel extends ChangeNotifier {
 
   /// Enqueue a content URI for deletion when app is in foreground (used by background sync).
   Future<void> addPendingDeleteUri(String uri) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = await getPendingDeleteUris();
-      if (!list.contains(uri)) {
-        list.add(uri);
-        await prefs.setString(_pendingDeleteUrisKey, jsonEncode(list));
-      }
-    } catch (e) {
-      debugPrint('[SettingsModel] addPendingDeleteUri error: $e');
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingDeleteUrisKey);
+    final list = jsonString != null
+        ? (jsonDecode(jsonString) as List<dynamic>).cast<String>()
+        : <String>[];
+    if (!list.contains(uri)) {
+      list.add(uri);
+      await prefs.setString(_pendingDeleteUrisKey, jsonEncode(list));
     }
   }
 
-  /// Get URIs queued for deletion. Returns empty list on parse error.
+  /// Get URIs queued for deletion.
   Future<List<String>> getPendingDeleteUris() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString(_pendingDeleteUrisKey);
-      if (jsonString == null) return [];
-      final decoded = jsonDecode(jsonString);
-      if (decoded is! List<dynamic>) return [];
-      return decoded.map((e) => e.toString()).toList();
-    } catch (e) {
-      debugPrint('[SettingsModel] getPendingDeleteUris error: $e');
-      return [];
-    }
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingDeleteUrisKey);
+    if (jsonString == null) return [];
+    return (jsonDecode(jsonString) as List<dynamic>).cast<String>();
   }
 
   /// Remove a URI from the pending-delete queue.
   Future<void> removePendingDeleteUri(String uri) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = await getPendingDeleteUris();
-      list.remove(uri);
-      await prefs.setString(_pendingDeleteUrisKey, jsonEncode(list));
-    } catch (e) {
-      debugPrint('[SettingsModel] removePendingDeleteUri error: $e');
-    }
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingDeleteUrisKey);
+    if (jsonString == null) return;
+    final list = (jsonDecode(jsonString) as List<dynamic>).cast<String>();
+    list.remove(uri);
+    await prefs.setString(_pendingDeleteUrisKey, jsonEncode(list));
   }
 
   /// Record last folder sync result (called from background task).
@@ -351,318 +445,5 @@ class SettingsModel extends ChangeNotifier {
     final ts = prefs.getInt(_lastFolderSyncTimestampKey) ?? 0;
     final count = prefs.getInt(_lastFolderSyncCountKey) ?? 0;
     return (timestamp: ts, count: count);
-  }
-
-  Future<Map<String, dynamic>> _buildBackupMap(SharedPreferences prefs) async {
-    final folders = await getScheduledFolders();
-    return <String, dynamic>{
-      'backendUrl': prefs.getString('backendUrl') ?? '',
-      'apiKey': prefs.getString('apiKey') ?? '',
-      'useBackgroundService': prefs.getBool('useBackgroundService') ?? true,
-      'defaultTags': prefs.getString('defaultTags') ?? '',
-      'defaultSafety': prefs.getString('defaultSafety') ?? 'unsafe',
-      'skipTagging': prefs.getBool('skipTagging') ?? false,
-      'pollingIntervalSeconds': prefs.getInt('pollingIntervalSeconds') ?? 5,
-      'notifyOnFolderSync': prefs.getBool('notifyOnFolderSync') ?? false,
-      'deleteMediaAfterSync': prefs.getBool('deleteMediaAfterSync') ?? false,
-      'showPersistentNotification': prefs.getBool('showPersistentNotification') ?? true,
-      'folderSyncIntervalSeconds': prefs.getInt('folderSyncIntervalSeconds') ?? 900,
-      'szuruUser': prefs.getString('szuruUser') ?? '',
-      'showFloatingBubble': prefs.getBool('showFloatingBubble') ?? false,
-      'scheduledFolders': folders.map((f) => f.toJson()).toList(),
-    };
-  }
-
-  /// Backup settings to external storage (persists across app reinstalls)
-  Future<void> _backupToExternalStorage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final directory = await getApplicationDocumentsDirectory();
-      final backupFile = File(path.join(directory.path, _settingsBackupFileName));
-      await backupFile.writeAsString(jsonEncode(await _buildBackupMap(prefs)));
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to backup settings: $e');
-    }
-  }
-
-  Future<void> _applyBackupMapToPrefs(Map<String, dynamic> settingsMap, SharedPreferences prefs) async {
-    try {
-      if (settingsMap.containsKey('backendUrl')) {
-        await prefs.setString('backendUrl', settingsMap['backendUrl'] as String? ?? '');
-      }
-      if (settingsMap.containsKey('apiKey')) {
-        await prefs.setString('apiKey', settingsMap['apiKey'] as String? ?? '');
-      }
-      if (settingsMap.containsKey('useBackgroundService')) {
-        await prefs.setBool('useBackgroundService', settingsMap['useBackgroundService'] as bool? ?? true);
-      }
-      if (settingsMap.containsKey('defaultTags')) {
-        await prefs.setString('defaultTags', settingsMap['defaultTags'] as String? ?? '');
-      }
-      if (settingsMap.containsKey('defaultSafety')) {
-        await prefs.setString('defaultSafety', settingsMap['defaultSafety'] as String? ?? 'unsafe');
-      }
-      if (settingsMap.containsKey('skipTagging')) {
-        await prefs.setBool('skipTagging', settingsMap['skipTagging'] as bool? ?? false);
-      }
-      if (settingsMap.containsKey('pollingIntervalSeconds')) {
-        await prefs.setInt('pollingIntervalSeconds', settingsMap['pollingIntervalSeconds'] as int? ?? 5);
-      }
-      if (settingsMap.containsKey('notifyOnFolderSync')) {
-        await prefs.setBool('notifyOnFolderSync', settingsMap['notifyOnFolderSync'] as bool? ?? false);
-      }
-      if (settingsMap.containsKey('deleteMediaAfterSync')) {
-        await prefs.setBool('deleteMediaAfterSync', settingsMap['deleteMediaAfterSync'] as bool? ?? false);
-      }
-      if (settingsMap.containsKey('showPersistentNotification')) {
-        await prefs.setBool('showPersistentNotification', settingsMap['showPersistentNotification'] as bool? ?? true);
-      }
-      if (settingsMap.containsKey('folderSyncIntervalSeconds')) {
-        await prefs.setInt('folderSyncIntervalSeconds', settingsMap['folderSyncIntervalSeconds'] as int? ?? 900);
-      }
-      if (settingsMap.containsKey('szuruUser')) {
-        await prefs.setString('szuruUser', settingsMap['szuruUser'] as String? ?? '');
-      }
-      if (settingsMap.containsKey('showFloatingBubble')) {
-        await prefs.setBool('showFloatingBubble', settingsMap['showFloatingBubble'] as bool? ?? false);
-      }
-      if (settingsMap.containsKey('scheduledFolders')) {
-        try {
-          final foldersJson = settingsMap['scheduledFolders'];
-          if (foldersJson is List<dynamic>) {
-            final folders = foldersJson.map((json) {
-              try {
-                if (json is Map<String, dynamic>) {
-                  return ScheduledFolder.fromJson(json);
-                }
-              } catch (e) {
-                debugPrint('[SettingsModel] Failed to parse folder: $e');
-              }
-              return null;
-            }).whereType<ScheduledFolder>().toList();
-            await setScheduledFolders(folders);
-          }
-        } catch (e) {
-          debugPrint('[SettingsModel] Failed to restore scheduled folders: $e');
-        }
-      }
-    } catch (e) {
-      debugPrint('[SettingsModel] Error applying backup to prefs: $e');
-      rethrow;
-    }
-  }
-
-  /// Restore settings from external storage backup (default app documents path)
-  Future<void> _restoreFromBackup() async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final backupFile = File(path.join(directory.path, _settingsBackupFileName));
-      if (!await backupFile.exists()) return;
-      final jsonString = await backupFile.readAsString();
-      final settingsMap = jsonDecode(jsonString) as Map<String, dynamic>;
-      final prefs = await SharedPreferences.getInstance();
-      await _applyBackupMapToPrefs(settingsMap, prefs);
-      debugPrint('[SettingsModel] Restored settings from backup');
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to restore settings from backup: $e');
-    }
-  }
-
-  /// Delete the backup file
-  Future<void> _deleteBackupFile() async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final backupFile = File(path.join(directory.path, _settingsBackupFileName));
-      if (await backupFile.exists()) {
-        await backupFile.delete();
-        debugPrint('[SettingsModel] Deleted backup file');
-      }
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to delete backup file: $e');
-    }
-  }
-
-  /// Backup settings to the default app documents directory (used for auto-backup)
-  Future<bool> backupSettings() async {
-    try {
-      await _backupToExternalStorage();
-      return true;
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to backup settings: $e');
-      return false;
-    }
-  }
-
-  /// Backup settings to a user-selected directory. Returns the full file path on success, null on failure.
-  Future<String?> backupSettingsToDirectory(String directoryPath) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final backupFile = File(path.join(directoryPath, _settingsBackupFileName));
-      await backupFile.writeAsString(jsonEncode(await _buildBackupMap(prefs)));
-      return backupFile.path;
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to backup settings to directory: $e');
-      return null;
-    }
-  }
-
-  /// Read backup file and return what permissions are needed. Prefer [checkPermissionsNeededFromBackupContent] with already-read JSON when leaving the app to grant permissions.
-  Future<Map<String, bool>> checkPermissionsNeededFromBackup(String filePath) async {
-    try {
-      final backupFile = File(filePath);
-      if (!await backupFile.exists()) return {'needsOverlayPermission': false, 'needsStoragePermission': false};
-      final jsonString = await backupFile.readAsString();
-      return checkPermissionsNeededFromBackupContent(jsonString);
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to check permissions from backup: $e');
-      return {'needsOverlayPermission': false, 'needsStoragePermission': false};
-    }
-  }
-
-  /// Same as [checkPermissionsNeededFromBackup] but from backup JSON string. Use when content was already read (e.g. before sending user to Settings).
-  Map<String, bool> checkPermissionsNeededFromBackupContent(String jsonString) {
-    try {
-      final settingsMap = jsonDecode(jsonString) as Map<String, dynamic>?;
-      if (settingsMap == null) return {'needsOverlayPermission': false, 'needsStoragePermission': false};
-      final showFloatingBubble = settingsMap['showFloatingBubble'] as bool? ?? false;
-      final showPersistentNotification = settingsMap['showPersistentNotification'] as bool? ?? true;
-      bool needsStoragePermission = false;
-      if (showPersistentNotification) {
-        final foldersJson = settingsMap['scheduledFolders'] as List<dynamic>?;
-        if (foldersJson != null) {
-          try {
-            final folders = foldersJson.map((e) => e is Map<String, dynamic> ? ScheduledFolder.fromJson(e) : null).whereType<ScheduledFolder>().toList();
-            needsStoragePermission = folders.any((f) => f.enabled);
-          } catch (_) {}
-        }
-      }
-      return {'needsOverlayPermission': showFloatingBubble, 'needsStoragePermission': needsStoragePermission};
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to check permissions from backup content: $e');
-      return {'needsOverlayPermission': false, 'needsStoragePermission': false};
-    }
-  }
-
-  /// Restore settings from a user-selected backup file.
-  /// Prefer [restoreSettingsFromJsonString] when the app may leave to grant permissions so the path stays valid.
-  Future<bool> restoreSettingsFromFile(String filePath) async {
-    try {
-      final backupFile = File(filePath);
-      if (!await backupFile.exists()) {
-        debugPrint('[SettingsModel] Backup file does not exist: $filePath');
-        return false;
-      }
-      final jsonString = await backupFile.readAsString();
-      return await restoreSettingsFromJsonString(jsonString);
-    } catch (e, stackTrace) {
-      debugPrint('[SettingsModel] Failed to restore settings from file: $e');
-      debugPrint('[SettingsModel] Stack trace: $stackTrace');
-      return false;
-    }
-  }
-
-  /// Restore settings from backup JSON string. Use when file path may be invalid after leaving the app (e.g. returning from Settings).
-  /// Writes to SharedPreferences and internal backup so restart sees the same data.
-  Future<bool> restoreSettingsFromJsonString(String jsonString) async {
-    try {
-      if (jsonString.isEmpty) {
-        debugPrint('[SettingsModel] Backup JSON is empty');
-        return false;
-      }
-      final settingsMap = jsonDecode(jsonString) as Map<String, dynamic>?;
-      if (settingsMap == null) {
-        debugPrint('[SettingsModel] Failed to parse backup JSON');
-        return false;
-      }
-      final prefs = await SharedPreferences.getInstance();
-      await _applyBackupMapToPrefs(settingsMap, prefs);
-      await _writeInternalBackup(settingsMap);
-      await loadSettings();
-      debugPrint('[SettingsModel] Successfully restored settings from JSON');
-      return true;
-    } catch (e, stackTrace) {
-      debugPrint('[SettingsModel] Failed to restore from JSON: $e');
-      debugPrint('[SettingsModel] Stack trace: $stackTrace');
-      return false;
-    }
-  }
-
-  /// Write a backup map to the internal backup file (app documents directory).
-  /// Used so that after restart, if SharedPreferences has not yet persisted,
-  /// loadSettings() -> _restoreFromBackup() will still load the restored data.
-  Future<void> _writeInternalBackup(Map<String, dynamic> settingsMap) async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final internalFile = File(path.join(directory.path, _settingsBackupFileName));
-      await internalFile.writeAsString(jsonEncode(settingsMap));
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to write internal backup: $e');
-    }
-  }
-
-  /// Restore from the default app documents backup (used when SharedPreferences is empty)
-  Future<bool> restoreSettings() async {
-    try {
-      await _restoreFromBackup();
-      await loadSettings();
-      return true;
-    } catch (e) {
-      debugPrint('[SettingsModel] Failed to restore settings: $e');
-      return false;
-    }
-  }
-
-  /// Check if a backup file exists in the default app documents directory
-  Future<bool> hasBackup() async {
-    try {
-      final directory = await getApplicationDocumentsDirectory();
-      final backupFile = File(path.join(directory.path, _settingsBackupFileName));
-      return await backupFile.exists();
-    } catch (e) {
-      return false;
-    }
-  }
-
-  /// Set authentication state and store tokens
-  Future<void> setAuthState(bool authed, String username, AuthTokens? tokens) async {
-    _isAuthenticated = authed;
-    _username = username;
-
-    final prefs = await SharedPreferences.getInstance();
-    if (authed && tokens != null) {
-      await prefs.setString('auth_tokens', jsonEncode(tokens.toJson()));
-      await prefs.setString('username', username);
-    } else {
-      await prefs.remove('auth_tokens');
-      await prefs.remove('username');
-    }
-    notifyListeners();
-  }
-
-  /// Get preferences that should be synced to backend (excludes device-specific settings)
-  Map<String, dynamic> getSyncablePreferences() {
-    return {
-      'defaultTags': _defaultTags,
-      'defaultSafety': _defaultSafety,
-      'skipTagging': _skipTagging,
-      'pollingIntervalSeconds': _pollingIntervalSeconds,
-      'folderSyncIntervalSeconds': _folderSyncIntervalSeconds,
-      'notifyOnFolderSync': _notifyOnFolderSync,
-      'deleteMediaAfterSync': _deleteMediaAfterSync,
-      // Exclude: szuruUser (backend-side only), showFloatingBubble, useBackgroundService (device-specific)
-    };
-  }
-
-  /// Apply synced preferences from backend (merges with local, doesn't override device-specific settings)
-  Future<void> applySyncedPreferences(Map<String, dynamic> prefs) async {
-    await saveSettings(
-      defaultTags: prefs['defaultTags'] as String?,
-      defaultSafety: prefs['defaultSafety'] as String?,
-      skipTagging: prefs['skipTagging'] as bool?,
-      pollingIntervalSeconds: prefs['pollingIntervalSeconds'] as int?,
-      folderSyncIntervalSeconds: prefs['folderSyncIntervalSeconds'] as int?,
-      notifyOnFolderSync: prefs['notifyOnFolderSync'] as bool?,
-      deleteMediaAfterSync: prefs['deleteMediaAfterSync'] as bool?,
-    );
   }
 }

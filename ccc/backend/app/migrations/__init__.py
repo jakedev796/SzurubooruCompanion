@@ -167,6 +167,12 @@ MIGRATIONS: List[Tuple[str, str]] = [
         ALTER TABLE users ADD COLUMN IF NOT EXISTS szuru_public_url VARCHAR(512);
         """,
     ),
+    (
+        "012_add_szuru_category_mappings",
+        """
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS szuru_category_mappings JSONB DEFAULT '{}';
+        """,
+    ),
 ]
 
 async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:

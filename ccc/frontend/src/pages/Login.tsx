@@ -44,7 +44,7 @@ export default function Login() {
               id="login-user"
               type="text"
               value={user}
-              onChange={(e) => setUser(e.target.value)}
+              onChange={(e) => setUser(e.target.value.replace(/\s/g, ""))}
               autoComplete="username"
               required
               style={{ width: "100%", padding: 8 }}
@@ -58,7 +58,7 @@ export default function Login() {
               id="login-pass"
               type="password"
               value={pass}
-              onChange={(e) => setPass(e.target.value)}
+              onChange={(e) => setPass(e.target.value.replace(/\s/g, ""))}
               autoComplete="current-password"
               required
               style={{ width: "100%", padding: 8 }}

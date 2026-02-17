@@ -14,17 +14,9 @@ function hasDashboardAuth(): boolean {
   return typeof sessionStorage !== "undefined" && !!sessionStorage.getItem("dashboard_basic");
 }
 
-const SZURU_USER_KEY = "ccc_szuru_user";
-
-export function getSelectedUser(): string {
-  return localStorage.getItem(SZURU_USER_KEY) || "";
-}
-
 function AppContent() {
   const [authRequired, setAuthRequired] = useState(false);
   const [configLoaded, setConfigLoaded] = useState(false);
-  const [szuruUsers, setSzuruUsers] = useState<string[]>([]);
-  const [selectedUser, setSelectedUser] = useState(getSelectedUser());
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
@@ -37,20 +29,10 @@ function AppContent() {
     fetchConfig()
       .then((c) => {
         setAuthRequired(!!c.auth_required);
-        setSzuruUsers(c.szuru_users ?? []);
         setConfigLoaded(true);
       })
       .catch(() => setConfigLoaded(true));
   }, [loggedIn]);
-
-  function handleUserChange(user: string) {
-    setSelectedUser(user);
-    if (user) {
-      localStorage.setItem(SZURU_USER_KEY, user);
-    } else {
-      localStorage.removeItem(SZURU_USER_KEY);
-    }
-  }
 
   function handleLogout() {
     setDashboardAuth(null);
@@ -94,18 +76,6 @@ function AppContent() {
                 Settings
               </NavLink>
             )}
-            {szuruUsers.length > 1 && (
-              <select
-                className="user-select"
-                value={selectedUser}
-                onChange={(e) => handleUserChange(e.target.value)}
-              >
-                <option value="">All users</option>
-                {szuruUsers.map((u) => (
-                  <option key={u} value={u}>{u}</option>
-                ))}
-              </select>
-            )}
             {auth.user && (
               <button type="button" onClick={handleLogout} className="logout-btn" title="Log out">
                 <LogOut size={18} />
@@ -115,9 +85,9 @@ function AppContent() {
         </header>
       )}
       <Routes>
-        <Route path="/" element={<Dashboard szuruUser={selectedUser} />} />
+        <Route path="/" element={<Dashboard />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/jobs" element={<JobList szuruUser={selectedUser} />} />
+        <Route path="/jobs" element={<JobList />} />
         <Route path="/jobs/:id" element={<JobDetail />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>

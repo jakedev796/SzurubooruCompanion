@@ -26,7 +26,7 @@ Pre-built unpacked extensions are available in [`builds/`](../builds/).
 After loading the extension:
 1. Click the extension icon in your browser toolbar
 2. Enter your CCC backend URL (e.g., `https://ccc.example.com` or `http://localhost:21425`)
-3. Enter your API key (if configured in the backend)
+3. Log in with your dashboard username and password (JWT authentication; no API key is used)
 4. If the backend has multiple Szurubooru users configured, a user selector will appear
 
 ---
@@ -106,7 +106,7 @@ The extension works with any URL. Site compatibility depends on the CCC backend'
 **"Failed to queue" error:**
 - Verify the backend URL is correct and accessible
 - Check that the CCC backend is running
-- Ensure the API key matches (if required)
+- Ensure you are logged in (username/password); re-login if your session expired
 
 **Context menu items not appearing:**
 - Reload the extension
