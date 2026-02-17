@@ -227,13 +227,12 @@ async def create_job_file(
 async def list_jobs(
     status: Optional[str] = Query(None),
     was_merge: Optional[bool] = Query(None),
-    szuru_user: Optional[str] = Query(None),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs with optional status, was_merge, and user filter, paginated."""
+    """List jobs for current user with optional status and was_merge filter, paginated."""
     valid_statuses = {s.value.lower() for s in JobStatus}
     if status:
         status_lower = status.strip().lower()
@@ -261,9 +260,11 @@ async def list_jobs(
         if was_merge is not None:
             query = query.where(Job.was_merge == (1 if was_merge else 0))
             count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
-        if szuru_user:
-            query = query.where(Job.szuru_user == szuru_user)
-            count_query = count_query.where(Job.szuru_user == szuru_user)
+
+        # Auto-filter by current user's szuru_username (JWT auth)
+        if current_user.szuru_username:
+            query = query.where(Job.szuru_user == current_user.szuru_username)
+            count_query = count_query.where(Job.szuru_user == current_user.szuru_username)
 
         query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
 

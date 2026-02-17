@@ -547,7 +547,6 @@ class BackendClient {
     List<String>? tags,
     String? safety,
     bool? skipTagging,
-    String? szuruUser,
   }) async {
     final uri = Uri.parse('$baseUrl/api/jobs/upload');
     final request = http.MultipartRequest('POST', uri);
@@ -570,9 +569,6 @@ class BackendClient {
     }
     if (skipTagging != null) {
       request.fields['skip_tagging'] = skipTagging.toString();
-    }
-    if (szuruUser != null && szuruUser.isNotEmpty) {
-      request.fields['szuru_user'] = szuruUser;
     }
 
     try {

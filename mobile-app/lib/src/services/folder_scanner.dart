@@ -102,7 +102,6 @@ class FolderScanner {
         tags: folder.defaultTags,
         safety: folder.defaultSafety,
         skipTagging: folder.skipTagging,
-        szuruUser: _settings.szuruUser.isNotEmpty ? _settings.szuruUser : null,
       );
       debugPrint('[FolderScanner] backendClient returned jobId: ${result.jobId}, error: ${result.error}');
 

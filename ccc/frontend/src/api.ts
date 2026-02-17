@@ -433,6 +433,7 @@ export async function changeMyPassword(oldPassword: string, newPassword: string)
 
 export interface UserConfig {
   szuru_url?: string;
+  szuru_public_url?: string;
   szuru_username?: string;
   szuru_token?: string;
   site_credentials?: Record<string, Record<string, string>>;

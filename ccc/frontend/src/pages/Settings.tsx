@@ -92,7 +92,7 @@ function ProfileTab() {
   const { isAdmin } = useAuth();
   const { showToast } = useToast();
   const [config, setConfig] = useState<UserConfig | null>(null);
-  const [form, setForm] = useState({ szuru_url: "", szuru_username: "", szuru_token: "" });
+  const [form, setForm] = useState({ szuru_url: "", szuru_public_url: "", szuru_username: "", szuru_token: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<Array<{ name: string; color: string; order: number }> | null>(null);
@@ -109,6 +109,7 @@ function ProfileTab() {
         setConfig(c);
         setForm({
           szuru_url: c.szuru_url || "",
+          szuru_public_url: c.szuru_public_url || "",
           szuru_username: c.szuru_username || "",
           szuru_token: "",
         });
@@ -123,6 +124,7 @@ function ProfileTab() {
     try {
       await updateMyConfig({
         szuru_url: form.szuru_url || undefined,
+        szuru_public_url: form.szuru_public_url || undefined,
         szuru_username: form.szuru_username || undefined,
         szuru_token: form.szuru_token || undefined,
       });
@@ -217,13 +219,28 @@ function ProfileTab() {
       <h3>Szurubooru Configuration</h3>
       <div className="settings-form">
         <div className="form-group">
-          <label>Szurubooru URL</label>
+          <label>Szurubooru URL (Internal/API)</label>
           <input
             type="text"
             value={form.szuru_url}
             onChange={(e) => setForm({ ...form, szuru_url: e.target.value })}
-            placeholder="http://localhost:8080"
+            placeholder="http://192.168.1.100:8080"
           />
+          <small style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Internal URL used for API calls (can be local IP)
+          </small>
+        </div>
+        <div className="form-group">
+          <label>Szurubooru Public URL (Optional)</label>
+          <input
+            type="text"
+            value={form.szuru_public_url}
+            onChange={(e) => setForm({ ...form, szuru_public_url: e.target.value })}
+            placeholder="https://booru.example.com"
+          />
+          <small style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Public URL for sharing links (e.g., in mobile app). Leave empty to use internal URL.
+          </small>
         </div>
         <div className="form-group">
           <label>Szurubooru Username</label>

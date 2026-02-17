@@ -31,7 +31,6 @@ class SettingsModel extends ChangeNotifier {
   bool _deleteMediaAfterSync = false;
   bool _showPersistentNotification = true;
   int _folderSyncIntervalSeconds = 900;
-  String _szuruUser = '';
   bool _showFloatingBubble = false;
   bool _isAuthenticated = false;
   String _username = '';
@@ -48,7 +47,6 @@ class SettingsModel extends ChangeNotifier {
   bool get deleteMediaAfterSync => _deleteMediaAfterSync;
   bool get showPersistentNotification => _showPersistentNotification;
   int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
-  String get szuruUser => _szuruUser;
   bool get showFloatingBubble => _showFloatingBubble;
   bool get isAuthenticated => _isAuthenticated;
   String get username => _username;
@@ -77,7 +75,6 @@ class SettingsModel extends ChangeNotifier {
       _deleteMediaAfterSync = prefsAfterRestore.getBool('deleteMediaAfterSync') ?? false;
       _showPersistentNotification = prefsAfterRestore.getBool('showPersistentNotification') ?? true;
       _folderSyncIntervalSeconds = prefsAfterRestore.getInt('folderSyncIntervalSeconds') ?? 900;
-      _szuruUser = prefsAfterRestore.getString('szuruUser') ?? '';
       _showFloatingBubble = prefsAfterRestore.getBool('showFloatingBubble') ?? false;
     } else {
       // Load normally from SharedPreferences
@@ -92,7 +89,6 @@ class SettingsModel extends ChangeNotifier {
       _deleteMediaAfterSync = prefs.getBool('deleteMediaAfterSync') ?? false;
       _showPersistentNotification = prefs.getBool('showPersistentNotification') ?? true;
       _folderSyncIntervalSeconds = prefs.getInt('folderSyncIntervalSeconds') ?? 900;
-      _szuruUser = prefs.getString('szuruUser') ?? '';
       _showFloatingBubble = prefs.getBool('showFloatingBubble') ?? false;
     }
 
@@ -117,7 +113,6 @@ class SettingsModel extends ChangeNotifier {
     bool? deleteMediaAfterSync,
     bool? showPersistentNotification,
     int? folderSyncIntervalSeconds,
-    String? szuruUser,
     bool? showFloatingBubble,
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -171,10 +166,6 @@ class SettingsModel extends ChangeNotifier {
       _folderSyncIntervalSeconds = folderSyncIntervalSeconds.clamp(900, 604800);
       await prefs.setInt('folderSyncIntervalSeconds', _folderSyncIntervalSeconds);
     }
-    if (szuruUser != null) {
-      _szuruUser = szuruUser;
-      await prefs.setString('szuruUser', _szuruUser);
-    }
     if (showFloatingBubble != null) {
       _showFloatingBubble = showFloatingBubble;
       await prefs.setBool('showFloatingBubble', _showFloatingBubble);
@@ -206,7 +197,6 @@ class SettingsModel extends ChangeNotifier {
     _deleteMediaAfterSync = false;
     _showPersistentNotification = true;
     _folderSyncIntervalSeconds = 900;
-    _szuruUser = '';
     _showFloatingBubble = false;
     _isConfigured = false;
     notifyListeners();
@@ -367,7 +357,6 @@ class SettingsModel extends ChangeNotifier {
       'deleteMediaAfterSync': prefs.getBool('deleteMediaAfterSync') ?? false,
       'showPersistentNotification': prefs.getBool('showPersistentNotification') ?? true,
       'folderSyncIntervalSeconds': prefs.getInt('folderSyncIntervalSeconds') ?? 900,
-      'szuruUser': prefs.getString('szuruUser') ?? '',
       'showFloatingBubble': prefs.getBool('showFloatingBubble') ?? false,
       'scheduledFolders': folders.map((f) => f.toJson()).toList(),
     };
