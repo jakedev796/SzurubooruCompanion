@@ -18,10 +18,9 @@ logger = logging.getLogger(__name__)
 class TwitterHandler(SiteHandler):
     name = "twitter"
     gallery_dl_extractor = "twitter"
-    credentials = [
-        CredentialSpec("username", "gallery_dl_twitter_username"),
-        CredentialSpec("password", "gallery_dl_twitter_password"),
-    ]
+    # Twitter only needs cookies (auth_token). Username/password are only used as fallback
+    # if cookies are missing/invalid, but we always provide cookies.
+    credentials = []
 
     def __init__(self, settings: Settings, user_config: Optional[Dict[str, Dict[str, str]]] = None):
         super().__init__(settings, user_config)
@@ -63,7 +62,9 @@ class TwitterHandler(SiteHandler):
         """Override to add cookie temp file handling."""
         opts = super().gallery_dl_options()
 
-        cookies_content = (self.settings.gallery_dl_twitter_cookies or "").strip()
+        # Get cookies from user config (from database) only
+        site_creds = self.user_config.get(self.name, {})
+        cookies_content = (site_creds.get("cookies") or "").strip()
         if cookies_content:
             try:
                 fd = tempfile.NamedTemporaryFile(

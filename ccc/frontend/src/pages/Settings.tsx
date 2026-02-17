@@ -450,7 +450,7 @@ function SiteCredentialsTab() {
   const [expandedSite, setExpandedSite] = useState<string | null>(null);
 
   const sites = [
-    { name: "twitter", fields: ["username", "password", "cookies"] },
+    { name: "twitter", fields: ["cookies"] },
     { name: "sankaku", fields: ["username", "password"] },
     { name: "danbooru", fields: ["api-key", "user-id"] },
     { name: "gelbooru", fields: ["api-key", "user-id"] },

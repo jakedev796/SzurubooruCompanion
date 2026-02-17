@@ -27,14 +27,11 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # ---------------------------------------------------------------------------
-# Per-job user context (set by processor, read by _auth_headers and _request)
+# Per-job user context (set by processor, read by _auth_headers)
 # ---------------------------------------------------------------------------
 
 _current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_user", default=None
-)
-_current_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "szuru_token", default=None
 )
 _current_szuru_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_url", default=None
@@ -42,9 +39,8 @@ _current_szuru_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextV
 
 
 def set_current_user(username: Optional[str], token: Optional[str] = None, szuru_url: Optional[str] = None) -> None:
-    """Set the Szurubooru user credentials and URL for the current async task."""
+    """Set the Szurubooru user context for the current async task."""
     _current_user.set(username)
-    _current_token.set(token)
     _current_szuru_url.set(szuru_url)
 
 
@@ -56,26 +52,13 @@ def set_current_user(username: Optional[str], token: Optional[str] = None, szuru
 def _auth_headers() -> Dict[str, str]:
     """Build the Szurubooru Token auth header for the current user context."""
     username = _current_user.get()
-    token = _current_token.get()
-
-    # If context has both username and token (per-user auth), use them directly
-    if username and token:
-        raw = f"{username}:{token}"
-        encoded = base64.b64encode(raw.encode()).decode()
-        return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
-
-    # Fallback to global environment credentials (backward compatibility)
     users = get_szuru_users()
-    if not users:
-        raise RuntimeError("No Szurubooru credentials available. Set per-user credentials or SZURU_USERNAME/SZURU_TOKEN environment variables.")
-
     if username:
         token = next((t for u, t in users if u == username), None)
         if not token:
             username, token = users[0]
     else:
         username, token = users[0]
-
     raw = f"{username}:{token}"
     encoded = base64.b64encode(raw.encode()).decode()
     return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
@@ -122,8 +105,9 @@ async def _request(
     if _session is None or _session.closed:
         await init_session()
 
-    # Use per-user szuru_url if set, otherwise fall back to global settings
-    szuru_url = _current_szuru_url.get() or settings.szuru_url
+    szuru_url = _current_szuru_url.get()
+    if not szuru_url:
+        raise ValueError("szuru_url not set in current context - user config must be loaded")
     url = f"{szuru_url}{endpoint}"
 
     # Per-request auth headers (session has no baked-in auth for multi-user support)
@@ -478,47 +462,3 @@ async def search_by_checksum(checksum: str) -> List[dict]:
     if "error" in result:
         return [result]
     return result.get("results", [])
-
-
-# ---------------------------------------------------------------------------
-# Tag categories
-# ---------------------------------------------------------------------------
-
-
-async def fetch_tag_categories(szuru_url: str, username: str, token: str) -> dict:
-    """
-    Fetch tag categories from Szurubooru instance.
-    Returns {"results": [...]} with category list, or {"error": ...} on failure.
-
-    Example response:
-    {
-        "results": [
-            {"name": "general", "version": 1, "color": "...", "order": 1, ...},
-            {"name": "artist", "version": 1, "color": "...", "order": 2, ...},
-            ...
-        ]
-    }
-    """
-    if not _session or _session.closed:
-        await init_session()
-
-    # Build auth header with provided credentials
-    raw = f"{username}:{token}"
-    encoded = base64.b64encode(raw.encode()).decode()
-    headers = {"Authorization": f"Token {encoded}", "Accept": "application/json"}
-
-    try:
-        url = f"{szuru_url}/api/tag-categories"
-        async with _session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            data = await resp.json()
-            if resp.status == 200:
-                return data
-            else:
-                logger.error("Failed to fetch tag categories: HTTP %d - %s", resp.status, data)
-                return {"error": f"HTTP {resp.status}", "details": data}
-    except asyncio.TimeoutError:
-        logger.error("Timeout fetching tag categories from %s", szuru_url)
-        return {"error": "Timeout"}
-    except Exception as e:
-        logger.exception("Error fetching tag categories from %s", szuru_url)
-        return {"error": str(e)}

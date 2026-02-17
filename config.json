@@ -27,9 +27,10 @@
         ],
 
         "twitter": {
-            "#": "Twitter authentication - uses environment variables",
-            "username": "${TWITTER_USERNAME}",
-            "password": "${TWITTER_PASSWORD}",
+            "#": "Twitter authentication - cookies only (preferred method)",
+            "#": "Username/password are only used as fallback if cookies are missing/invalid",
+            "#": "Backend passes cookies from user database (not ENV)",
+            "cookies": null,
 
             "#": "Image size preference with fallbacks",
             "size": ["orig", "4096x4096", "large", "medium", "small"],
@@ -46,9 +47,6 @@
 
             "#": "Include text-only tweets",
             "text-tweets": true,
-
-            "#": "Twitter cookies: backend passes content from TWITTER_COOKIES env",
-            "cookies": null,
 
             "#": "Postprocessors for Twitter - write content/description to txt file",
             "postprocessors": [

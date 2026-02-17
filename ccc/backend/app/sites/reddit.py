@@ -21,9 +21,9 @@ class RedditHandler(SiteHandler):
         """Override to inject computed user-agent."""
         opts = super().gallery_dl_options()
 
-        # Get username from user config first, fallback to ENV
+        # Get username from user config (from database) only
         site_creds = self.user_config.get(self.name, {})
-        username = site_creds.get("username") or self.settings.gallery_dl_reddit_username
+        username = site_creds.get("username")
 
         if username and (username := username.strip()):
             ua = f"Python:ExtendedUploader:v1.0 (by /u/{username})"

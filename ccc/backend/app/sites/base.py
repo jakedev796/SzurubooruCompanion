@@ -44,7 +44,7 @@ class SiteHandler:
             settings: Global settings from ENV
             user_config: Per-user credentials from database
                         Format: {site_name: {credential_key: value}}
-                        Example: {"twitter": {"username": "user", "password": "pass"}}
+                        Example: {"twitter": {"cookies": "..."}, "sankaku": {"username": "user", "password": "pass"}}
         """
         self.settings = settings
         self.user_config = user_config or {}
@@ -96,13 +96,9 @@ class SiteHandler:
             opts.extend(["-o", f"extractor.{ext}.{opt_key}={opt_value}"])
 
         for spec in self.credentials:
-            # Try user config first (from database)
+            # Get credentials from user config (from database) only
             site_creds = self.user_config.get(self.name, {})
             value = site_creds.get(spec.gallery_dl_key)
-
-            # Fallback to ENV settings if not in user config
-            if not value:
-                value = getattr(self.settings, spec.settings_attr, None)
 
             if value and (cleaned := (value or "").strip()):
                 opts.extend(["-o", f"extractor.{ext}.{spec.gallery_dl_key}={cleaned}"])

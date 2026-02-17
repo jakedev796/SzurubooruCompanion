@@ -18,42 +18,21 @@ from app.services.auth import verify_password, verify_jwt_token
 settings = get_settings()
 
 
-def _basic_auth_valid(auth_header: Optional[str]) -> bool:
-    """Return True if Authorization: Basic matches configured dashboard user/pass."""
-    if not settings.dashboard_user or not settings.dashboard_password:
-        return False
-    if not auth_header or not auth_header.strip().lower().startswith("basic "):
-        return False
-    try:
-        raw = base64.b64decode(auth_header.strip()[6:].encode(), validate=True).decode()
-    except (binascii.Error, ValueError, UnicodeDecodeError):
-        return False
-    if ":" not in raw:
-        return False
-    user, _, password = raw.partition(":")
-    return user == settings.dashboard_user and password == settings.dashboard_password
-
-
 async def verify_api_key(
     request: Request,
     x_api_key: str = Header(default="", alias="X-API-Key"),
 ) -> str:
     """
-    Validate auth: X-API-Key when API_KEY is set, or Basic when DASHBOARD_USER/PASSWORD set.
-    If neither is configured, allow all. Otherwise require one of them.
+    Validate auth: X-API-Key when API_KEY is set.
+    If API_KEY is not configured, allow all. Otherwise require API key.
     """
-    auth_header = request.headers.get("authorization")
-
     if settings.api_key and x_api_key == settings.api_key:
         return x_api_key
-    if _basic_auth_valid(auth_header):
-        return "basic"
 
-    if settings.api_key or (settings.dashboard_user and settings.dashboard_password):
+    if settings.api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API key or credentials.",
-            headers={"WWW-Authenticate": "Basic realm=\"SzuruCompanion Dashboard\""},
+            detail="Invalid or missing API key.",
         )
     return ""
 
@@ -80,23 +59,11 @@ async def get_current_user(
                 if user:
                     return user
 
-    # Try legacy Basic auth (for ENV-based DASHBOARD_USER/PASSWORD)
+    # Try Basic auth (for DB users only)
     if authorization and authorization.startswith("Basic "):
         try:
             raw = base64.b64decode(authorization[6:].encode()).decode()
             username, _, password = raw.partition(":")
-
-            # Check against ENV admin user (backward compat during transition)
-            if (settings.dashboard_user and settings.dashboard_password and
-                username == settings.dashboard_user and password == settings.dashboard_password):
-                # Create virtual admin user for transition period
-                return User(
-                    id=None,
-                    username=settings.dashboard_user,
-                    password_hash="",
-                    role=UserRole.ADMIN,
-                    is_active=1,
-                )
 
             # Check against DB users
             result = await db.execute(select(User).where(User.username == username, User.is_active == 1))

@@ -34,7 +34,7 @@ Some sites require authentication or cookies to download media. Configure these 
 | Site | Domains | Credentials Needed | Example |
 |------|---------|-------------------|---------|
 | Sankaku | `sankaku.app`, `chan.sankakucomplex.com` | Username, Password | Required for all downloads |
-| Twitter/X | `twitter.com`, `x.com` | Username, Password, Cookies | `auth_token=abc123...` |
+| Twitter/X | `twitter.com`, `x.com` | Cookies | `auth_token=abc123...` |
 | Pixiv | `pixiv.net` | Cookies | Netscape format cookies |
 
 **How to configure:**
