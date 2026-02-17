@@ -300,6 +300,72 @@ export async function retryJob(jobId: string): Promise<Job> {
   return parseJson(res) as Promise<Job>;
 }
 
+export interface BulkJobAccepted {
+  accepted: boolean;
+  job_ids: string[];
+  action: string;
+}
+
+export async function bulkRetryJobs(jobIds: string[]): Promise<BulkJobAccepted> {
+  const res = await apiFetch(`${BASE}/jobs/bulk/retry`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res) as Promise<BulkJobAccepted>;
+}
+
+export async function bulkDeleteJobs(jobIds: string[]): Promise<BulkJobAccepted> {
+  const res = await apiFetch(`${BASE}/jobs/bulk/delete`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res) as Promise<BulkJobAccepted>;
+}
+
+export async function bulkStartJobs(jobIds: string[]): Promise<BulkJobAccepted> {
+  const res = await apiFetch(`${BASE}/jobs/bulk/start`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res) as Promise<BulkJobAccepted>;
+}
+
+export async function bulkPauseJobs(jobIds: string[]): Promise<BulkJobAccepted> {
+  const res = await apiFetch(`${BASE}/jobs/bulk/pause`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res) as Promise<BulkJobAccepted>;
+}
+
+export async function bulkStopJobs(jobIds: string[]): Promise<BulkJobAccepted> {
+  const res = await apiFetch(`${BASE}/jobs/bulk/stop`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res) as Promise<BulkJobAccepted>;
+}
+
+export async function bulkResumeJobs(jobIds: string[]): Promise<BulkJobAccepted> {
+  const res = await apiFetch(`${BASE}/jobs/bulk/resume`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({ job_ids: jobIds }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res) as Promise<BulkJobAccepted>;
+}
+
 // ============================================================================
 // Auth endpoints
 // ============================================================================

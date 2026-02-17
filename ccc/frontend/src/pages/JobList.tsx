@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Play, Pause, Square, Trash2, RefreshCcw } from "lucide-react";
 import {
@@ -11,6 +11,12 @@ import {
   deleteJob,
   resumeJob,
   retryJob,
+  bulkRetryJobs,
+  bulkDeleteJobs,
+  bulkStartJobs,
+  bulkPauseJobs,
+  bulkStopJobs,
+  bulkResumeJobs,
   getJobSources,
   type Job,
   type JobSummary,
@@ -38,6 +44,10 @@ export default function JobList() {
   const [error, setError] = useState<string | null>(null);
   const [booruUrl, setBooruUrl] = useState("");
   const [loadingActions, setLoadingActions] = useState<Record<string, boolean>>({});
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState<string | null>(null);
+  const [bulkMessage, setBulkMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     fetchConfig()
@@ -47,6 +57,7 @@ export default function JobList() {
 
   useEffect(() => {
     setError(null);
+    setSelectedJobIds(new Set());
     fetchJobs({
       status: statusFilter || undefined,
       offset: page * PAGE_SIZE,
@@ -188,6 +199,97 @@ export default function JobList() {
       console.error(`Failed to delete job ${jobId}:`, (e as Error).message);
     } finally {
       setLoadingActions((prev) => ({ ...prev, [`${jobId}-delete`]: false }));
+    }
+  }
+
+  const pageJobIds = data?.results?.map((j) => j.id) ?? [];
+  const allSelectedOnPage =
+    pageJobIds.length > 0 && pageJobIds.every((id) => selectedJobIds.has(id));
+
+  useEffect(() => {
+    const el = selectAllRef.current;
+    if (!el) return;
+    el.indeterminate = selectedJobIds.size > 0 && !allSelectedOnPage;
+  }, [selectedJobIds.size, allSelectedOnPage]);
+
+  function toggleSelection(jobId: string) {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    if (allSelectedOnPage) {
+      setSelectedJobIds((prev) => {
+        const next = new Set(prev);
+        pageJobIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedJobIds((prev) => new Set([...prev, ...pageJobIds]));
+    }
+  }
+
+  async function handleBulkAction(
+    action: "retry" | "delete" | "start" | "pause" | "stop" | "resume"
+  ) {
+    const ids = Array.from(selectedJobIds);
+    if (ids.length === 0) return;
+    if (action === "delete" && !confirm(`Delete ${ids.length} job(s)? This cannot be undone.`))
+      return;
+
+    setBulkMessage(null);
+    setBulkLoading(action);
+
+    const bulkFn =
+      action === "retry"
+        ? bulkRetryJobs
+        : action === "delete"
+          ? bulkDeleteJobs
+          : action === "start"
+            ? bulkStartJobs
+            : action === "pause"
+              ? bulkPauseJobs
+              : action === "stop"
+                ? bulkStopJobs
+                : bulkResumeJobs;
+
+    try {
+      const result = await bulkFn(ids);
+      const n = result.job_ids.length;
+      setBulkMessage({
+        type: "ok",
+        text: `Bulk ${result.action} accepted for ${n} job(s). Updates will appear shortly.`,
+      });
+      setSelectedJobIds(new Set());
+      setData((prev) => {
+        if (!prev) return prev;
+        if (action === "delete") {
+          const removed = new Set(result.job_ids);
+          return {
+            ...prev,
+            results: prev.results.filter((j) => !removed.has(j.id)),
+            total: Math.max(0, prev.total - removed.size),
+          };
+        }
+        return prev;
+      });
+      if (action !== "delete" && ids.length > 0) {
+        fetchJobs({
+          status: statusFilter || undefined,
+          offset: page * PAGE_SIZE,
+          limit: PAGE_SIZE,
+        })
+          .then(setData)
+          .catch((e: Error) => console.error("Refetch after bulk:", e.message));
+      }
+    } catch (e: Error) {
+      setBulkMessage({ type: "err", text: (e as Error).message });
+    } finally {
+      setBulkLoading(null);
     }
   }
 
@@ -355,6 +457,114 @@ export default function JobList() {
         })}
       </div>
 
+      {selectedJobIds.size > 0 && (
+        <div
+          className="card"
+          style={{
+            marginBottom: "0.75rem",
+            padding: "0.5rem 1rem",
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+          }}
+        >
+          <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+            {selectedJobIds.size} selected
+          </span>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            {statusFilter === "failed" && (
+              <button
+                type="button"
+                className="btn btn-warning btn-sm"
+                onClick={() => handleBulkAction("retry")}
+                disabled={!!bulkLoading}
+                title="Retry selected jobs"
+              >
+                {bulkLoading === "retry" ? "..." : <RefreshCcw size={14} />} Retry
+              </button>
+            )}
+            {statusFilter === "pending" && (
+              <button
+                type="button"
+                className="btn btn-success btn-sm"
+                onClick={() => handleBulkAction("start")}
+                disabled={!!bulkLoading}
+                title="Start selected jobs"
+              >
+                {bulkLoading === "start" ? "..." : <Play size={14} />} Start
+              </button>
+            )}
+            {(statusFilter === "downloading" ||
+              statusFilter === "tagging" ||
+              statusFilter === "uploading") && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-warning btn-sm"
+                  onClick={() => handleBulkAction("pause")}
+                  disabled={!!bulkLoading}
+                  title="Pause selected jobs"
+                >
+                  {bulkLoading === "pause" ? "..." : <Pause size={14} />} Pause
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => handleBulkAction("stop")}
+                  disabled={!!bulkLoading}
+                  title="Stop selected jobs"
+                >
+                  {bulkLoading === "stop" ? "..." : <Square size={14} />} Stop
+                </button>
+              </>
+            )}
+            {(statusFilter === "paused" || statusFilter === "stopped") && (
+              <button
+                type="button"
+                className="btn btn-success btn-sm"
+                onClick={() => handleBulkAction("resume")}
+                disabled={!!bulkLoading}
+                title="Resume selected jobs"
+              >
+                {bulkLoading === "resume" ? "..." : <Play size={14} />} Resume
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={() => handleBulkAction("delete")}
+              disabled={!!bulkLoading}
+              title="Delete selected jobs"
+            >
+              {bulkLoading === "delete" ? "..." : <Trash2 size={14} />} Delete
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm"
+            style={{ marginLeft: "auto" }}
+            onClick={() => {
+              setSelectedJobIds(new Set());
+              setBulkMessage(null);
+            }}
+          >
+            Clear selection
+          </button>
+          {bulkMessage && (
+            <span
+              style={{
+                width: "100%",
+                fontSize: "0.85rem",
+                color: bulkMessage.type === "err" ? "var(--red)" : "var(--green)",
+              }}
+            >
+              {bulkMessage.text}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="card">
         {!data ? (
           <p style={{ color: "var(--text-muted)" }}>No job list loaded. Try changing the filter or refresh.</p>
@@ -362,6 +572,15 @@ export default function JobList() {
         <table>
           <thead>
             <tr>
+              <th style={{ width: 36 }}>
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allSelectedOnPage}
+                  onChange={toggleSelectAllOnPage}
+                  title="Select all on this page"
+                />
+              </th>
               <th>Status</th>
               <th>Type</th>
               <th>User</th>
@@ -380,6 +599,14 @@ export default function JobList() {
               const extra = sources.length - maxVisible;
               return (
                 <tr key={j.id}>
+                  <td style={{ verticalAlign: "middle" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedJobIds.has(j.id)}
+                      onChange={() => toggleSelection(j.id)}
+                      title="Select job"
+                    />
+                  </td>
                   <td>
                     <StatusBadge status={j.status} />
                   </td>
@@ -468,7 +695,7 @@ export default function JobList() {
             })}
             {data.results.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                <td colSpan={9} style={{ textAlign: "center", color: "var(--text-muted)" }}>
                   No jobs found.
                 </td>
               </tr>
