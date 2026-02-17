@@ -153,6 +153,7 @@ class AppState extends ChangeNotifier {
         safety: existingJob.safety,
         skipTagging: existingJob.skipTagging,
         szuruPostId: update.szuruPostId ?? existingJob.szuruPostId,
+        relatedPostIds: update.relatedPostIds ?? existingJob.relatedPostIds,
         errorMessage: update.error ?? existingJob.errorMessage,
         tagsApplied: update.tags ?? existingJob.tagsApplied,
         tagsFromSource: existingJob.tagsFromSource,

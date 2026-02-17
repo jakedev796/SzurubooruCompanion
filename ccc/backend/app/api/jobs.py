@@ -185,6 +185,8 @@ async def create_job_url(
     db.add(job)
     await db.commit()
     await db.refresh(job)
+    from app.api.events import publish_job_update
+    await publish_job_update(job_id=job.id, status="pending", progress=0)
     return _job_to_out(job)
 
 
@@ -226,6 +228,8 @@ async def create_job_file(
     db.add(job)
     await db.commit()
     await db.refresh(job)
+    from app.api.events import publish_job_update
+    await publish_job_update(job_id=job.id, status="pending", progress=0)
     return _job_to_out(job)
 
 
@@ -508,7 +512,7 @@ async def retry_job(
     await db.commit()
     await db.refresh(job)
 
-    await publish_job_update(job_id=job.id, status="pending")
+    await publish_job_update(job_id=job.id, status="pending", progress=0)
     return _job_to_out(job)
 
 @router.post("/jobs/{job_id}/resume", response_model=JobOut)
@@ -541,5 +545,5 @@ async def resume_job(
     await db.commit()
     await db.refresh(job)
 
-    await publish_job_update(job_id=job.id, status="pending")
+    await publish_job_update(job_id=job.id, status="pending", progress=0)
     return _job_to_out(job)
