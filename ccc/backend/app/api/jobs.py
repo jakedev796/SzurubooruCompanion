@@ -13,14 +13,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import cast, func, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from app.config import get_settings
-from app.database import Job, JobStatus, JobType, User, get_db
+from app.database import Job, JobStatus, JobType, User, async_session, get_db
 from app.api.deps import get_current_user
 from app.sites import normalize_url
 
@@ -105,6 +105,38 @@ class JobSummaryOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BulkJobIdsRequest(BaseModel):
+    """Request body for bulk job operations."""
+    job_ids: List[str]
+
+
+class BulkJobFailedItem(BaseModel):
+    job_id: str
+    error: str
+
+
+class BulkJobResult(BaseModel):
+    """Response for bulk job operations."""
+    succeeded: List[str] = []
+    failed: List[BulkJobFailedItem] = []
+
+
+class BulkJobAccepted(BaseModel):
+    """Response when bulk operation is accepted and will be processed in the background."""
+    accepted: bool = True
+    job_ids: List[str]
+    action: str
+
+
+class _BulkUserContext:
+    """Minimal user context for background bulk operations."""
+    __slots__ = ("szuru_username",)
+    szuru_username: Optional[str]
+
+    def __init__(self, szuru_username: Optional[str]) -> None:
+        self.szuru_username = szuru_username
 
 
 def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSummaryOut:
@@ -343,7 +375,227 @@ async def get_job(
 
 
 # ---------------------------------------------------------------------------
-# Job Control Endpoints
+# Bulk Job Control Endpoints
+# ---------------------------------------------------------------------------
+
+
+def _user_can_access_job(job: Job, current_user: User) -> bool:
+    """Return True if current user is allowed to act on this job."""
+    if not current_user.szuru_username:
+        return True
+    return job.szuru_user == current_user.szuru_username
+
+
+def _user_ctx_can_access_job(job: Job, ctx: _BulkUserContext) -> bool:
+    """Same as _user_can_access_job but for background bulk context."""
+    if not ctx.szuru_username:
+        return True
+    return job.szuru_user == ctx.szuru_username
+
+
+async def _bg_bulk_retry(job_ids: List[str], user_ctx: _BulkUserContext) -> None:
+    from app.api.events import publish_job_update
+    async with async_session() as db:
+        for job_id in job_ids:
+            try:
+                result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                job = result.scalar_one_or_none()
+                if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status != JobStatus.FAILED:
+                    continue
+                job.status = JobStatus.PENDING
+                job.error_message = None
+                job.retry_count = 0
+                job.updated_at = datetime.now(timezone.utc)
+                await db.commit()
+                await db.refresh(job)
+                await publish_job_update(job_id=job.id, status="pending", progress=0)
+            except (ValueError, Exception):
+                await db.rollback()
+
+
+async def _bg_bulk_delete(job_ids: List[str], user_ctx: _BulkUserContext) -> None:
+    async with async_session() as db:
+        for job_id in job_ids:
+            try:
+                result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                job = result.scalar_one_or_none()
+                if not job or not _user_ctx_can_access_job(job, user_ctx):
+                    continue
+                job_dir = os.path.join(settings.job_data_dir, job_id)
+                if os.path.isdir(job_dir):
+                    try:
+                        shutil.rmtree(job_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+                await db.delete(job)
+                await db.commit()
+            except (ValueError, Exception):
+                await db.rollback()
+
+
+async def _bg_bulk_start(job_ids: List[str], user_ctx: _BulkUserContext) -> None:
+    from app.api.events import publish_job_update
+    async with async_session() as db:
+        for job_id in job_ids:
+            try:
+                result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                job = result.scalar_one_or_none()
+                if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status != JobStatus.PENDING:
+                    continue
+                await db.refresh(job)
+                await publish_job_update(job_id=job.id, status="pending")
+            except (ValueError, Exception):
+                await db.rollback()
+
+
+async def _bg_bulk_pause(job_ids: List[str], user_ctx: _BulkUserContext) -> None:
+    from app.api.events import publish_job_update
+    allowed = {JobStatus.DOWNLOADING, JobStatus.TAGGING, JobStatus.UPLOADING}
+    async with async_session() as db:
+        for job_id in job_ids:
+            try:
+                result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                job = result.scalar_one_or_none()
+                if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status not in allowed:
+                    continue
+                job.status = JobStatus.PAUSED
+                job.updated_at = datetime.now(timezone.utc)
+                await db.commit()
+                await db.refresh(job)
+                await publish_job_update(job_id=job.id, status="paused")
+            except (ValueError, Exception):
+                await db.rollback()
+
+
+async def _bg_bulk_stop(job_ids: List[str], user_ctx: _BulkUserContext) -> None:
+    from app.api.events import publish_job_update
+    terminal = {JobStatus.COMPLETED, JobStatus.MERGED, JobStatus.FAILED}
+    async with async_session() as db:
+        for job_id in job_ids:
+            try:
+                result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                job = result.scalar_one_or_none()
+                if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status in terminal:
+                    continue
+                job.status = JobStatus.STOPPED
+                job.updated_at = datetime.now(timezone.utc)
+                await db.commit()
+                await db.refresh(job)
+                await publish_job_update(job_id=job.id, status="stopped")
+            except (ValueError, Exception):
+                await db.rollback()
+
+
+async def _bg_bulk_resume(job_ids: List[str], user_ctx: _BulkUserContext) -> None:
+    from app.api.events import publish_job_update
+    allowed = {JobStatus.PAUSED, JobStatus.STOPPED}
+    async with async_session() as db:
+        for job_id in job_ids:
+            try:
+                result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                job = result.scalar_one_or_none()
+                if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status not in allowed:
+                    continue
+                job.status = JobStatus.PENDING
+                job.updated_at = datetime.now(timezone.utc)
+                await db.commit()
+                await db.refresh(job)
+                await publish_job_update(job_id=job.id, status="pending", progress=0)
+            except (ValueError, Exception):
+                await db.rollback()
+
+
+@router.post("/jobs/bulk/retry", response_model=BulkJobAccepted, status_code=202)
+async def bulk_retry_jobs(
+    body: BulkJobIdsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Retry multiple failed jobs by ID. Accepted immediately; processing runs in background.
+    Results appear via SSE and job list refresh.
+    """
+    if not body.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids must not be empty.")
+    ctx = _BulkUserContext(szuru_username=current_user.szuru_username)
+    background_tasks.add_task(_bg_bulk_retry, body.job_ids, ctx)
+    return BulkJobAccepted(job_ids=body.job_ids, action="retry")
+
+
+@router.post("/jobs/bulk/delete", response_model=BulkJobAccepted, status_code=202)
+async def bulk_delete_jobs(
+    body: BulkJobIdsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete multiple jobs by ID. Accepted immediately; processing runs in background.
+    """
+    if not body.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids must not be empty.")
+    ctx = _BulkUserContext(szuru_username=current_user.szuru_username)
+    background_tasks.add_task(_bg_bulk_delete, body.job_ids, ctx)
+    return BulkJobAccepted(job_ids=body.job_ids, action="delete")
+
+
+@router.post("/jobs/bulk/start", response_model=BulkJobAccepted, status_code=202)
+async def bulk_start_jobs(
+    body: BulkJobIdsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Start multiple pending jobs. Accepted immediately; processing runs in background."""
+    if not body.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids must not be empty.")
+    ctx = _BulkUserContext(szuru_username=current_user.szuru_username)
+    background_tasks.add_task(_bg_bulk_start, body.job_ids, ctx)
+    return BulkJobAccepted(job_ids=body.job_ids, action="start")
+
+
+@router.post("/jobs/bulk/pause", response_model=BulkJobAccepted, status_code=202)
+async def bulk_pause_jobs(
+    body: BulkJobIdsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Pause multiple running jobs. Accepted immediately; processing runs in background."""
+    if not body.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids must not be empty.")
+    ctx = _BulkUserContext(szuru_username=current_user.szuru_username)
+    background_tasks.add_task(_bg_bulk_pause, body.job_ids, ctx)
+    return BulkJobAccepted(job_ids=body.job_ids, action="pause")
+
+
+@router.post("/jobs/bulk/stop", response_model=BulkJobAccepted, status_code=202)
+async def bulk_stop_jobs(
+    body: BulkJobIdsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Stop multiple non-terminal jobs. Accepted immediately; processing runs in background."""
+    if not body.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids must not be empty.")
+    ctx = _BulkUserContext(szuru_username=current_user.szuru_username)
+    background_tasks.add_task(_bg_bulk_stop, body.job_ids, ctx)
+    return BulkJobAccepted(job_ids=body.job_ids, action="stop")
+
+
+@router.post("/jobs/bulk/resume", response_model=BulkJobAccepted, status_code=202)
+async def bulk_resume_jobs(
+    body: BulkJobIdsRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    """Resume multiple paused or stopped jobs. Accepted immediately; processing runs in background."""
+    if not body.job_ids:
+        raise HTTPException(status_code=400, detail="job_ids must not be empty.")
+    ctx = _BulkUserContext(szuru_username=current_user.szuru_username)
+    background_tasks.add_task(_bg_bulk_resume, body.job_ids, ctx)
+    return BulkJobAccepted(job_ids=body.job_ids, action="resume")
+
+
+# ---------------------------------------------------------------------------
+# Job Control Endpoints (single)
 # ---------------------------------------------------------------------------
 
 
