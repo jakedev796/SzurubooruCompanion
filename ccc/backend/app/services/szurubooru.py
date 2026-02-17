@@ -33,11 +33,15 @@ settings = get_settings()
 _current_user: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_user", default=None
 )
+_current_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "szuru_token", default=None
+)
 
 
-def set_current_user(username: Optional[str]) -> None:
-    """Set the Szurubooru user for the current async task."""
+def set_current_user(username: Optional[str], token: Optional[str] = None) -> None:
+    """Set the Szurubooru user credentials for the current async task."""
     _current_user.set(username)
+    _current_token.set(token)
 
 
 # ---------------------------------------------------------------------------
@@ -48,13 +52,26 @@ def set_current_user(username: Optional[str]) -> None:
 def _auth_headers() -> Dict[str, str]:
     """Build the Szurubooru Token auth header for the current user context."""
     username = _current_user.get()
+    token = _current_token.get()
+
+    # If context has both username and token (per-user auth), use them directly
+    if username and token:
+        raw = f"{username}:{token}"
+        encoded = base64.b64encode(raw.encode()).decode()
+        return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
+
+    # Fallback to global environment credentials (backward compatibility)
     users = get_szuru_users()
+    if not users:
+        raise RuntimeError("No Szurubooru credentials available. Set per-user credentials or SZURU_USERNAME/SZURU_TOKEN environment variables.")
+
     if username:
         token = next((t for u, t in users if u == username), None)
         if not token:
             username, token = users[0]
     else:
         username, token = users[0]
+
     raw = f"{username}:{token}"
     encoded = base64.b64encode(raw.encode()).decode()
     return {"Authorization": f"Token {encoded}", "Accept": "application/json"}
