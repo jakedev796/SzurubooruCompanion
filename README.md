@@ -17,7 +17,7 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 
 ---
 
-## ✨ Features
+## Features
 
 ### **Multi-Platform Input**
 - **Browser Extension** (Chrome, Firefox, Edge) — Right-click images or use the popup to send URLs
@@ -35,10 +35,17 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 - **Visual Feedback** — Green glow on success, red pulse on failure—know the status without switching apps
 - **Background Sync** — Optional folder monitoring for automated uploads from camera/downloads
 
-### **Flexible Configuration**
-- **Multi-User Support** — Configure multiple Szurubooru users; clients show a user selector for per-job assignment
-- **Per-Site Cookies / Logins** — Environment-based cookie support for authenticated sites (Twitter, Sankaku, etc.)
-- **Queue Management** — Monitor jobs in real-time, retry failures, and track upload history in the dashboard
+### **User Management & Security**
+- **Database-Backed User System** — Create and manage users through the dashboard with JWT authentication
+- **Per-User Credentials** — Each user configures their own Szurubooru and site credentials (Twitter, Sankaku, etc.)
+- **Encrypted Storage** — All credentials encrypted in database using Fernet
+- **Role-Based Access** — Admin and user roles with granular permissions
+- **Category Mappings** — Map WD14 tag categories to your Szurubooru instance's custom categories
+
+### **Queue Management**
+- **Real-Time Monitoring** — Track job status, view processing logs, and manage queue in the dashboard
+- **User-Specific Jobs** — Jobs are attributed to the user who submitted them
+- **Retry & Control** — Pause, resume, stop, or retry failed jobs with visual feedback
 
 ### **Self-Hosted & Private**
 - All processing happens on your infrastructure
@@ -47,7 +54,7 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 
 ---
 
-## 🏛️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -99,7 +106,7 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Docker + Docker Compose
@@ -114,12 +121,20 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
    cp ccc/backend/.env.example ccc/backend/.env
    ```
 
-2. **Edit `ccc/backend/.env`** with your Szurubooru credentials:
+2. **Edit `ccc/backend/.env`** with admin credentials and encryption key:
    ```env
-   SZURU_URL=https://your-szurubooru.com
-   SZURU_USERNAME=your-username
-   SZURU_TOKEN=your-api-token
+   # Admin account (required)
+   ADMIN_USER=admin
+   ADMIN_PASSWORD=your-secure-password
+
+   # Encryption key for credentials (required - generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+   ENCRYPTION_KEY=your-generated-encryption-key
+
+   # API key for browser extension and mobile app
+   API_KEY=your-secret-api-key
    ```
+
+   > **Note:** Szurubooru credentials are now configured per-user through the dashboard Settings page instead of environment variables.
 
 3. **Start the stack:**
    ```bash
@@ -128,12 +143,18 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 
 4. **Access services:**
    - **CCC Backend API:** `http://localhost:21425`
-   - **CCC Dashboard:** `http://localhost:21430`
+   - **CCC Dashboard:** `http://localhost:21430` (login with admin credentials)
    - Configure reverse proxy (optional but recommended): [docs/reverse-proxy.md](docs/reverse-proxy.md)
+
+5. **Configure through dashboard:**
+   - Login with your admin credentials
+   - Navigate to Settings → My Profile
+   - Enter your Szurubooru URL, username, and API token
+   - Configure site credentials if needed (Settings → Site Credentials)
 
 ---
 
-## 📦 Components
+## Components
 
 ### **CCC Backend**
 FastAPI service that handles all processing. Includes background worker, job queue (Redis), database (Postgres), and WD14 tagger.
@@ -142,10 +163,16 @@ FastAPI service that handles all processing. Includes background worker, job que
 - **Tech:** Python, FastAPI, gallery-dl, yt-dlp, wdtagger
 
 ### **CCC Dashboard**
-React web interface for monitoring the job queue and viewing processing history.
+React web interface with user management, settings, and job monitoring.
 - **Port:** 21430
-- **Features:** Real-time job status, queue overview, processing logs
-- **Tech:** React, Vite, TailwindCSS
+- **Features:**
+  - User authentication with JWT tokens
+  - User management (admin only) — Create, edit, deactivate users
+  - Personal settings — Configure Szurubooru credentials and site authentication
+  - Global settings (admin only) — WD14 tagger, worker concurrency, timeouts
+  - Category mappings — Map internal tag categories to Szurubooru categories
+  - Real-time job monitoring and queue management
+- **Tech:** React, Vite
 
 ### **Browser Extension**
 WXT-based extension for Chrome, Firefox, and Edge.
@@ -166,30 +193,74 @@ Flutter Android app with share sheet integration, floating bubble overlay, and j
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-### Environment Variables
-All backend configuration is done via `ccc/backend/.env`. See [ccc/backend/.env.example](ccc/backend/.env.example) for full options.
+### Initial Setup
 
-### Multi-User Support
-Configure multiple Szurubooru users with comma-delimited credentials:
+1. **Generate encryption key:**
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
 
-```env
-SZURU_USERNAME=user1,user2,user3
-SZURU_TOKEN=token1,token2,token3
-```
+2. **Configure environment variables** in `ccc/backend/.env`:
+   ```env
+   ADMIN_USER=admin
+   ADMIN_PASSWORD=your-secure-password
+   ENCRYPTION_KEY=<key-from-step-1>
+   API_KEY=your-secret-api-key
+   ```
 
-The first user is the default. Clients (extension, mobile app, dashboard) will show a user selector when multiple users are configured.
+3. **Start the stack:**
+   ```bash
+   docker compose up -d
+   ```
+
+4. **Login to dashboard** at `http://localhost:21430` with your admin credentials
+
+### Dashboard Configuration
+
+After logging in, configure settings through the dashboard:
+
+#### **My Profile** (Settings → My Profile)
+- Szurubooru URL, username, and API token
+- Test connection to verify credentials
+- Fetch and map tag categories from your Szurubooru instance
+
+#### **Site Credentials** (Settings → Site Credentials)
+Configure authentication for sites that require login credentials (Twitter, Sankaku, Danbooru, Reddit, etc.). All credentials are encrypted in the database and never stored in plain text.
+
+#### **Global Settings** (Settings → Global Settings - Admin only)
+- **WD14 Tagger:** Enable/disable, model selection, confidence threshold, max tags
+- **Worker Settings:** Concurrency, timeouts, retry configuration
+- Container restart required for WD14 changes to take effect
+
+#### **User Management** (Settings → Users - Admin only)
+- Create new users with username, password, and role (admin/user)
+- Edit users: Reset password, promote/demote admin, activate/deactivate
+- Each user configures their own Szurubooru and site credentials
+
+#### **Category Mappings** (Settings → My Profile)
+Map internal tag categories to your Szurubooru instance's custom categories:
+- **general** → Default category for general tags
+- **artist** → Artist/creator tags
+- **character** → Character name tags
+- **copyright** → Series/franchise tags
+- **meta** → Meta information tags
+
+Fetch categories directly from Szurubooru using "Fetch Tag Categories" button.
+
+### Environment Variables Reference
+See [ccc/backend/.env.example](ccc/backend/.env.example) for all available options. .
 
 ### Site-Specific Configuration
 Some sites require cookies or special handling. See [docs/sites.md](docs/sites.md) for:
 - Confirmed working sites
-- Cookie setup (Twitter, Sankaku, etc.)
+- Cookie/authentication setup
 - Special cases (Moeview, 4chan, etc.)
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 - **[Browser Extension Guide](docs/browser-extension.md)** — Build, install, and usage
 - **[Mobile App Guide](docs/mobile-app.md)** — Build, install, floating bubble setup
@@ -198,7 +269,7 @@ Some sites require cookies or special handling. See [docs/sites.md](docs/sites.m
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 SzurubooruCompanion/
@@ -214,7 +285,7 @@ SzurubooruCompanion/
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Backend
 ```bash
@@ -249,23 +320,31 @@ flutter run
 
 ---
 
-## 🐛 Known Issues & TODO
+## Known Issues & TODO
 
+### In Progress
 - [ ] Finetune site extractors for edge cases
 - [ ] Performance optimizations for large batch jobs
 - [ ] Right-click individual images on Twitter/X (currently queues entire feed)
+
+### Future Enhancements
+- [ ] Password reset via email
+- [ ] Two-factor authentication (2FA)
+- [ ] Session management (revoke tokens)
+- [ ] Encryption key rotation tool
+- [ ] Per-user WD14 settings
+- [ ] Audit log viewer in dashboard
 - [ ] iOS app (no current plans—contributions welcome)
-- [ ] Cookie sync via extension (shelved—manual export works fine for now)
 
 ---
 
-## 📜 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## 🙏 Credits
+## Credits
 
 - **WD14 Tagger:** [SmilingWolf/wd-tagger](https://huggingface.co/SmilingWolf/wd-tagger)
 - **gallery-dl:** [mikf/gallery-dl](https://github.com/mikf/gallery-dl)
