@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import '../models/scheduled_folder.dart';
 import 'backend_client.dart';
+import 'notification_service.dart';
 import 'settings_model.dart';
 
 /// Supported media file extensions
@@ -95,7 +96,7 @@ class FolderScanner {
       }
 
       debugPrint('[FolderScanner] Calling backendClient.enqueueFromFile...');
-      final jobId = await _backendClient.enqueueFromFile(
+      final result = await _backendClient.enqueueFromFile(
         file: file,
         source: 'folder:${folder.name}',
         tags: folder.defaultTags,
@@ -103,8 +104,17 @@ class FolderScanner {
         skipTagging: folder.skipTagging,
         szuruUser: _settings.szuruUser.isNotEmpty ? _settings.szuruUser : null,
       );
-      debugPrint('[FolderScanner] backendClient returned jobId: $jobId');
+      debugPrint('[FolderScanner] backendClient returned jobId: ${result.jobId}, error: ${result.error}');
 
+      if (result.error != null) {
+        debugPrint('[FolderScanner] Upload failed: ${result.error}');
+        await NotificationService.instance.showUploadError(
+          '$fileName: ${result.error}',
+        );
+        return null;
+      }
+
+      final jobId = result.jobId;
       if (jobId != null) {
         debugPrint('[FolderScanner] Upload successful: jobId=$jobId');
 

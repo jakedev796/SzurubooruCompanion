@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/job.dart';
 import 'backend_client.dart';
+import 'notification_service.dart';
 import 'settings_model.dart';
 
 /// Application state management class.
@@ -130,6 +131,7 @@ class AppState extends ChangeNotifier {
     if (index != -1) {
       // Update existing job
       final existingJob = jobs[index];
+      final wasFailed = existingJob.status.toLowerCase() == 'failed';
       final updatedJob = Job(
         id: existingJob.id,
         status: update.status,
@@ -150,6 +152,30 @@ class AppState extends ChangeNotifier {
       );
       
       jobs[index] = updatedJob;
+      if (!wasFailed && updatedJob.status.toLowerCase() == 'failed') {
+        String websiteName;
+        String fullDomain;
+        if (updatedJob.sources.isNotEmpty) {
+          final url = updatedJob.sources.first;
+          final uri = Uri.tryParse(url);
+          websiteName = uri != null
+              ? (uri.host.startsWith('www.') ? uri.host.substring(4) : uri.host)
+              : url;
+          fullDomain = url;
+        } else {
+          websiteName = updatedJob.displayName != 'Job ${updatedJob.id}'
+              ? updatedJob.displayName
+              : 'Processing';
+          fullDomain = '';
+        }
+        final notificationId = updatedJob.id.hashCode.abs() % 100000;
+        NotificationService.instance.showUploadErrorExpanded(
+          websiteName: websiteName,
+          jobId: updatedJob.id,
+          fullDomain: fullDomain,
+          notificationId: notificationId,
+        );
+      }
     } else {
       // Job not in list - refresh to get full details
       refreshJobs();
@@ -372,6 +398,16 @@ class AppState extends ChangeNotifier {
       return null;
     } catch (error) {
       return userFriendlyErrorMessage(error);
+    }
+  }
+
+  /// Fetch a single job by ID (for detail view).
+  Future<Job?> fetchJob(String jobId) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) return null;
+    try {
+      return await backendClient.fetchJob(jobId);
+    } catch (_) {
+      return null;
     }
   }
 
