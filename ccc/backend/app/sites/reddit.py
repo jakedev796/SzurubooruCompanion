@@ -11,6 +11,7 @@ class RedditHandler(SiteHandler):
     credentials = [
         CredentialSpec("client-id", "gallery_dl_reddit_client_id"),
         CredentialSpec("client-secret", "gallery_dl_reddit_client_secret"),
+        CredentialSpec("username", "gallery_dl_reddit_username"),
     ]
 
     def matches_url(self, url: str) -> bool:
@@ -19,8 +20,12 @@ class RedditHandler(SiteHandler):
     def gallery_dl_options(self) -> List[str]:
         """Override to inject computed user-agent."""
         opts = super().gallery_dl_options()
-        username = (self.settings.gallery_dl_reddit_username or "").strip()
-        if username:
+
+        # Get username from user config first, fallback to ENV
+        site_creds = self.user_config.get(self.name, {})
+        username = site_creds.get("username") or self.settings.gallery_dl_reddit_username
+
+        if username and (username := username.strip()):
             ua = f"Python:ExtendedUploader:v1.0 (by /u/{username})"
             opts.extend(["-o", f"extractor.{self.gallery_dl_extractor}.user-agent={ua}"])
         return opts

@@ -452,10 +452,10 @@ function SiteCredentialsTab() {
   const sites = [
     { name: "twitter", fields: ["username", "password", "cookies"] },
     { name: "sankaku", fields: ["username", "password"] },
-    { name: "danbooru", fields: ["api_key", "user_id"] },
-    { name: "gelbooru", fields: ["api_key", "user_id"] },
-    { name: "rule34", fields: ["api_key", "user_id"] },
-    { name: "reddit", fields: ["client_id", "client_secret", "username"] },
+    { name: "danbooru", fields: ["api-key", "user-id"] },
+    { name: "gelbooru", fields: ["api-key", "user-id"] },
+    { name: "rule34", fields: ["api-key", "user-id"] },
+    { name: "reddit", fields: ["client-id", "client-secret", "username"] },
     { name: "misskey", fields: ["username", "password"] },
   ];
 
