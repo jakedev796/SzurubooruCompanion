@@ -6,9 +6,10 @@ import logging
 import re
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
+from app.config import Settings
 from app.sites.base import CredentialSpec, SiteHandler
 
 logger = logging.getLogger(__name__)
@@ -22,8 +23,8 @@ class TwitterHandler(SiteHandler):
         CredentialSpec("password", "gallery_dl_twitter_password"),
     ]
 
-    def __init__(self, settings):
-        super().__init__(settings)
+    def __init__(self, settings: Settings, user_config: Optional[Dict[str, Dict[str, str]]] = None):
+        super().__init__(settings, user_config)
         self._cookie_path: Optional[Path] = None
 
     def matches_url(self, url: str) -> bool:
