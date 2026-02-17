@@ -486,11 +486,6 @@ export async function updateGlobalSettings(data: Partial<GlobalSettings>): Promi
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
-export async function fetchApiKey(): Promise<{ api_key: string }> {
-  const res = await apiFetch(`${BASE}/settings/api-key`, { headers: headers() });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<{ api_key: string }>;
-}
 
 export async function fetchSzuruCategories(
   szuru_url: string,

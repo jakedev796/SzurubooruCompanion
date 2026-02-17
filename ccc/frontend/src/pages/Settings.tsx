@@ -17,7 +17,6 @@ import {
   promoteToAdmin,
   demoteFromAdmin,
   changeMyPassword,
-  fetchApiKey,
   fetchSzuruCategories,
   fetchCategoryMappings,
   updateCategoryMappings,
@@ -26,7 +25,7 @@ import {
   GlobalSettings,
 } from "../api";
 
-type Tab = "profile" | "site-creds" | "global" | "users" | "api-key";
+type Tab = "profile" | "site-creds" | "global" | "users";
 
 export default function Settings() {
   const { isAdmin } = useAuth();
@@ -63,12 +62,6 @@ export default function Settings() {
             >
               Users
             </button>
-            <button
-              onClick={() => setActiveTab("api-key")}
-              className={`tab-button ${activeTab === "api-key" ? "active" : ""}`}
-            >
-              API Key
-            </button>
           </>
         )}
       </div>
@@ -78,7 +71,6 @@ export default function Settings() {
         {activeTab === "site-creds" && <SiteCredentialsTab />}
         {activeTab === "global" && isAdmin && <GlobalSettingsTab />}
         {activeTab === "users" && isAdmin && <UsersTab />}
-        {activeTab === "api-key" && isAdmin && <ApiKeyTab />}
       </div>
     </div>
   );
@@ -1114,46 +1106,3 @@ function EditUserModal({ user, onClose, onSuccess }: EditUserModalProps) {
   );
 }
 
-// ============================================================================
-// API Key Tab (Admin Only)
-// ============================================================================
-
-function ApiKeyTab() {
-  const [apiKey, setApiKey] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [revealed, setRevealed] = useState(false);
-
-  useEffect(() => {
-    fetchApiKey()
-      .then((data) => setApiKey(data.api_key))
-      .catch(() => setApiKey("(failed to load)"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <div className="card"><p>Loading...</p></div>;
-
-  return (
-    <div className="card">
-      <h3>API Key</h3>
-      <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-        The API key is stored in the <code style={{ background: "var(--bg)", padding: "0.15rem 0.35rem", borderRadius: "4px" }}>API_KEY</code> environment variable and grants admin-level access for external integrations.
-      </p>
-      <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-        Use this key for:
-      </p>
-      <ul style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem", paddingLeft: "1.5rem" }}>
-        <li>Browser extension authentication</li>
-        <li>Mobile app access</li>
-        <li>External API integrations</li>
-      </ul>
-      <button onClick={() => setRevealed(!revealed)} className="btn btn-primary" style={{ marginBottom: "1rem" }}>
-        {revealed ? "Hide API Key" : "Reveal API Key"}
-      </button>
-      {revealed && (
-        <div className="api-key-display">
-          {apiKey}
-        </div>
-      )}
-    </div>
-  );
-}
