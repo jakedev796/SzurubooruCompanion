@@ -112,11 +112,11 @@ enum SseConnectionState {
 /// - Job creation and retrieval
 /// - Statistics fetching
 /// - SSE streaming for real-time updates
-/// - Optional API key authentication via X-API-Key header
+/// - JWT Bearer token authentication
 class BackendClient {
   final Dio _dio;
   final String baseUrl;
-  String _apiKey;
+  String? _accessToken;
 
   // SSE connection state
   SseConnectionState _sseState = SseConnectionState.disconnected;
@@ -127,21 +127,37 @@ class BackendClient {
 
   BackendClient({
     required this.baseUrl,
-    String apiKey = '',
-  })  : _apiKey = apiKey,
-        _dio = Dio(
+  })  : _dio = Dio(
           BaseOptions(
             baseUrl: baseUrl,
             connectTimeout: const Duration(seconds: 10),
             receiveTimeout: const Duration(seconds: 10),
             headers: {
               'Content-Type': 'application/json',
-              if (apiKey.isNotEmpty) 'X-API-Key': apiKey,
             },
           ),
         ) {
-    // Add interceptor for automatic token refresh on 401
+    // Apply stored JWT before requests so clients that never called setAccessToken still work
     _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        final path = options.path;
+        if (path.contains('/api/auth/login') || path.contains('/api/auth/refresh')) {
+          return handler.next(options);
+        }
+        if (options.headers.containsKey('Authorization')) {
+          return handler.next(options);
+        }
+        final prefs = await SharedPreferences.getInstance();
+        final authJson = prefs.getString('auth_tokens');
+        if (authJson != null) {
+          try {
+            final tokens = AuthTokens.fromJson(jsonDecode(authJson) as Map<String, dynamic>);
+            _accessToken = tokens.accessToken;
+            options.headers['Authorization'] = 'Bearer ${tokens.accessToken}';
+          } catch (_) {}
+        }
+        handler.next(options);
+      },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
           final prefs = await SharedPreferences.getInstance();
@@ -186,17 +202,6 @@ class BackendClient {
   /// Current SSE connection state
   SseConnectionState get sseState => _sseState;
 
-  /// Update the API key for authentication.
-  /// If apiKey is empty, the X-API-Key header will be removed.
-  void updateApiKey(String apiKey) {
-    _apiKey = apiKey;
-    if (apiKey.isNotEmpty) {
-      _dio.options.headers['X-API-Key'] = apiKey;
-    } else {
-      _dio.options.headers.remove('X-API-Key');
-    }
-  }
-
   /// Update the base URL for the backend
   void updateBaseUrl(String newBaseUrl) {
     _dio.options.baseUrl = newBaseUrl;
@@ -226,9 +231,11 @@ class BackendClient {
 
   /// Set access token for JWT authentication
   void setAccessToken(String? token) {
+    _accessToken = token;
     if (token != null) {
       _dio.options.headers['Authorization'] = 'Bearer $token';
-      _dio.options.headers.remove('X-API-Key');
+    } else {
+      _dio.options.headers.remove('Authorization');
     }
   }
 
@@ -259,8 +266,8 @@ class BackendClient {
       
       _sseClient = http.Client();
       final request = http.Request('GET', Uri.parse('$baseUrl/api/events'));
-      if (_apiKey.isNotEmpty) {
-        request.headers['X-API-Key'] = _apiKey;
+      if (_accessToken != null && _accessToken!.isNotEmpty) {
+        request.headers['Authorization'] = 'Bearer $_accessToken';
       }
       
       _sseClient!.send(request).then((response) {
@@ -550,8 +557,8 @@ class BackendClient {
   }) async {
     final uri = Uri.parse('$baseUrl/api/jobs/upload');
     final request = http.MultipartRequest('POST', uri);
-    if (_apiKey.isNotEmpty) {
-      request.headers['X-API-Key'] = _apiKey;
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $_accessToken';
     }
 
     // Add file
@@ -698,12 +705,12 @@ class BackendClient {
     }
   }
 
-  /// Check if the backend is reachable and API key is valid.
-  /// 
-  /// Uses the stats endpoint as a health check.
+  /// Check if the backend is reachable (no auth required).
+  ///
+  /// Uses the public health endpoint.
   Future<bool> checkConnection() async {
     try {
-      await _dio.get('/api/stats');
+      await _dio.get('/api/health', options: Options(headers: {}));
       return true;
     } catch (_) {
       return false;

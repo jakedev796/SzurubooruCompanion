@@ -56,7 +56,11 @@ class _SetupScreenState extends State<SetupScreen> {
 
     try {
       final client = BackendClient(baseUrl: url);
-      await client.fetchConfig();
+      final success = await client.checkConnection();
+
+      if (!success) {
+        throw Exception('Unable to reach backend');
+      }
 
       if (!mounted) return;
 
@@ -80,6 +84,7 @@ class _SetupScreenState extends State<SetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Setup'),
+        automaticallyImplyLeading: false, // Remove back button
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

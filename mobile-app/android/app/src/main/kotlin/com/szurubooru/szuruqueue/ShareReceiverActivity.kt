@@ -52,7 +52,7 @@ class ShareReceiverActivity : Activity() {
 
         val settings = BackendHelper.readSettings(this)
 
-        Log.d(TAG, "Settings loaded - backendUrl: ${settings.backendUrl}, apiKey: ${if (settings.apiKey.isNullOrBlank()) "not set" else "present"}")
+        Log.d(TAG, "Settings loaded - backendUrl: ${settings.backendUrl}, accessToken: ${if (settings.accessToken.isNullOrBlank()) "not set" else "present"}")
         Log.d(TAG, "Default settings - tags: ${settings.defaultTags}, safety: ${settings.defaultSafety}, skipTagging: ${settings.skipTagging}")
 
         if (settings.backendUrl.isNullOrBlank()) {
@@ -85,7 +85,7 @@ class ShareReceiverActivity : Activity() {
                     mimeType = urlData.mimeType,
                 )
                 val success = withContext(Dispatchers.IO) {
-                    BackendHelper.sendJobToBackend(settings.backendUrl, settings.apiKey, payload)
+                    BackendHelper.sendJobToBackend(settings.backendUrl, settings.accessToken, payload)
                 }
                 if (success) successCount++ else failCount++
             }

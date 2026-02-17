@@ -57,10 +57,7 @@ class AppState extends ChangeNotifier {
 
   /// Create or get the backend client with current settings.
   BackendClient get backendClient {
-    _backendClient ??= BackendClient(
-      baseUrl: settings.backendUrl,
-      apiKey: settings.apiKey,
-    );
+    _backendClient ??= BackendClient(baseUrl: settings.backendUrl);
     return _backendClient!;
   }
 
@@ -121,7 +118,13 @@ class AppState extends ChangeNotifier {
     _backendClient?.disconnectSse();
     sseConnectionState = SseConnectionState.disconnected;
   }
-  
+
+  /// Manually reconnect to SSE (called from UI reconnect button)
+  void reconnect() {
+    debugPrint('[AppState] Manual reconnect requested');
+    _connectSse();
+  }
+
   /// Handle a job update from SSE
   void _handleJobUpdate(JobUpdate update) {
     // Find and update the job in the list
@@ -197,8 +200,6 @@ class AppState extends ChangeNotifier {
       _backendClient?.dispose();
       _backendClient = null;
       _initializeSse();
-    } else if (_backendClient != null) {
-      _backendClient!.updateApiKey(settings.apiKey);
     }
     
     if (settings.isConfigured && settings.canMakeApiCalls) {
@@ -286,7 +287,7 @@ class AppState extends ChangeNotifier {
     }
 
     if (!settings.canMakeApiCalls) {
-      return 'API key is required';
+      return 'Backend URL is required';
     }
 
     // Add tagme if no tags provided

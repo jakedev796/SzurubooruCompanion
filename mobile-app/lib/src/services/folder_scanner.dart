@@ -98,7 +98,6 @@ class FolderScanner {
       debugPrint('[FolderScanner] Calling backendClient.enqueueFromFile...');
       final result = await _backendClient.enqueueFromFile(
         file: file,
-        source: 'folder:${folder.name}',
         tags: folder.defaultTags,
         safety: folder.defaultSafety,
         skipTagging: folder.skipTagging,

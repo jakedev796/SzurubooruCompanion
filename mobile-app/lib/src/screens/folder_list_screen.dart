@@ -18,7 +18,6 @@ class FolderListScreen extends StatefulWidget {
 class _FolderListScreenState extends State<FolderListScreen> {
   List<ScheduledFolder> _folders = [];
   bool _isLoading = true;
-  bool _backgroundTaskEnabled = false;
   bool _isSyncing = false;
 
   @override
@@ -37,32 +36,32 @@ class _FolderListScreenState extends State<FolderListScreen> {
       setState(() {
         _folders = folders;
         _isLoading = false;
-        _backgroundTaskEnabled = _folders.any((f) => f.enabled);
       });
-      if (_folders.any((f) => f.enabled)) {
+      final hasEnabled = _folders.any((f) => f.enabled);
+      if (hasEnabled) {
         await scheduleFolderScanTask();
+      } else {
+        await cancelFolderScanTask();
       }
     }
   }
 
-  Future<void> _toggleBackgroundTask(bool enabled) async {
-    if (enabled) {
+  Future<void> _toggleFolderEnabled(ScheduledFolder folder) async {
+    final settings = context.read<SettingsModel>();
+    final newEnabledState = !folder.enabled;
+
+    await settings.updateScheduledFolder(folder.copyWith(
+      enabled: newEnabledState,
+    ));
+
+    await _loadFolders();
+
+    final hasEnabledFolders = _folders.any((f) => f.enabled);
+    if (hasEnabledFolders) {
       await scheduleFolderScanTask();
       if (mounted) await _maybePromptBatteryOptimization();
     } else {
       await cancelFolderScanTask();
-    }
-
-    setState(() => _backgroundTaskEnabled = enabled);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(enabled
-              ? 'Background scanning enabled'
-              : 'Background scanning disabled'),
-        ),
-      );
     }
   }
 
@@ -169,30 +168,6 @@ class _FolderListScreenState extends State<FolderListScreen> {
     }
   }
 
-  Future<void> _toggleFolderEnabled(ScheduledFolder folder) async {
-    final settings = context.read<SettingsModel>();
-    final newEnabledState = !folder.enabled;
-    
-    await settings.updateScheduledFolder(folder.copyWith(
-      enabled: newEnabledState,
-    ));
-    
-    // Update background task state based on enabled folders
-    await _loadFolders();
-    
-    // If this was the first enabled folder, ensure background task is scheduled
-    // If no folders are enabled, cancel the background task
-    final hasEnabledFolders = _folders.any((f) => f.enabled);
-    if (hasEnabledFolders && !_backgroundTaskEnabled) {
-      await scheduleFolderScanTask();
-      setState(() => _backgroundTaskEnabled = true);
-      if (mounted) await _maybePromptBatteryOptimization();
-    } else if (!hasEnabledFolders && _backgroundTaskEnabled) {
-      await cancelFolderScanTask();
-      setState(() => _backgroundTaskEnabled = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -209,10 +184,6 @@ class _FolderListScreenState extends State<FolderListScreen> {
                 : const Icon(Icons.sync),
             tooltip: 'Sync now',
             onPressed: _isSyncing ? null : _syncNow,
-          ),
-          Switch(
-            value: _backgroundTaskEnabled,
-            onChanged: _toggleBackgroundTask,
           ),
           const SizedBox(width: 8),
         ],
@@ -293,18 +264,18 @@ class _FolderListScreenState extends State<FolderListScreen> {
                   ? Text('Tags: ${folder.defaultTags!.join(", ")}')
                   : null,
               trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Switch(
-                  value: folder.enabled,
-                  onChanged: (_) => _toggleFolderEnabled(folder),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: () => _deleteFolder(folder),
-                ),
-              ],
-            ),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Switch(
+                    value: folder.enabled,
+                    onChanged: (_) => _toggleFolderEnabled(folder),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () => _deleteFolder(folder),
+                  ),
+                ],
+              ),
               onTap: () async {
                 await Navigator.push(
                   context,
