@@ -189,19 +189,19 @@ typedef FolderScanOutcome = ({bool success, int uploaded});
 Future<FolderScanOutcome> processScheduledFolders() async {
   try {
     debugPrint('[FolderSync] processScheduledFolders() started');
-    final settings = SettingsModel();
-    await settings.loadSettings();
+  final settings = SettingsModel();
+  await settings.loadSettings();
 
-    final serverUrl = settings.backendUrl;
+  final serverUrl = settings.backendUrl;
 
-    if (serverUrl.isEmpty) {
-      debugPrint(
-        '[FolderSync] Server URL not configured, skipping folder scan',
-      );
-      return (success: true, uploaded: 0);
-    }
+  if (serverUrl.isEmpty) {
+    debugPrint(
+      '[FolderSync] Server URL not configured, skipping folder scan',
+    );
+    return (success: true, uploaded: 0);
+  }
 
-    final intervalSeconds = settings.folderSyncIntervalSeconds.clamp(
+  final intervalSeconds = settings.folderSyncIntervalSeconds.clamp(
       900,
       604800,
     );
@@ -425,6 +425,7 @@ Future<void> cancelFolderScanTask() async {
   await stopCompanionForegroundService();
   debugPrint('[BackgroundTask] AlarmManager sync cancelled');
 }
+
 
 /// Debug: Print detailed status of background sync
 Future<void> debugBackgroundSyncStatus() async {

@@ -1,23 +1,35 @@
-/// Job model matching the new CCC backend API schema.
-/// 
-/// Backend returns:
-/// - id: UUID string
-/// - status: "pending" | "downloading" | "tagging" | "uploading" | "completed" | "failed" | "paused" | "stopped"
-/// - job_type: "url" | "file"
-/// - url: optional URL for URL jobs
-/// - original_filename: optional filename for file uploads
-/// - source_override: optional source URL override
-/// - safety: "safe" | "sketchy" | "unsafe"
-/// - skip_tagging: bool
-/// - szuru_post_id: optional post ID after successful upload
-/// - related_post_ids: list of related post IDs from multi-file sources
-/// - error_message: optional error message for failed jobs
-/// - tags_applied: list of tags that were applied
-/// - tags_from_source: tags extracted from source
-/// - tags_from_ai: tags from AI tagging
-/// - retry_count: number of retry attempts
-/// - created_at: ISO timestamp
-/// - updated_at: ISO timestamp
+/// Job model matching the CCC backend API schema.
+///
+/// Note: For completed jobs, the backend may also return a `post` mirror
+/// with its own safety rating. When present, we prefer `post.safety` over
+/// the job-level `safety` value for display purposes.
+class SzuruPostMirror {
+  final int id;
+  final List<String> tags;
+  final String? source;
+  final String? safety;
+  final List<int> relations;
+
+  SzuruPostMirror({
+    required this.id,
+    required this.tags,
+    this.source,
+    this.safety,
+    required this.relations,
+  });
+
+  factory SzuruPostMirror.fromJson(Map<String, dynamic> json) {
+    return SzuruPostMirror(
+      id: json['id'] as int,
+      tags: Job._parseStringList(json['tags']),
+      source: json['source'] as String?,
+      safety: json['safety'] as String?,
+      relations: Job._parseIntList(json['relations']) ?? const [],
+    );
+  }
+}
+
+/// Job model as returned by the backend.
 class Job {
   final String id;
   final String status;
@@ -38,6 +50,7 @@ class Job {
   final int retryCount;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final SzuruPostMirror? post;
 
   Job({
     required this.id,
@@ -59,6 +72,7 @@ class Job {
     this.retryCount = 0,
     required this.createdAt,
     required this.updatedAt,
+    this.post,
   });
 
   factory Job.fromJson(Map<String, dynamic> json) {
@@ -82,6 +96,9 @@ class Job {
       retryCount: json['retry_count'] as int? ?? 0,
       createdAt: _parseDateTime(json['created_at']) ?? DateTime.now(),
       updatedAt: _parseDateTime(json['updated_at']) ?? DateTime.now(),
+      post: json['post'] is Map<String, dynamic>
+          ? SzuruPostMirror.fromJson(json['post'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -129,8 +146,8 @@ class Job {
   }
 
   /// Progress value (0-100) - for URL jobs, we don't have real progress
-  /// so we return 0 for pending, 25 for downloading, 50 for tagging, 
-  /// 75 for uploading, 100 for completed
+  /// so we return 0 for pending, 25 for downloading, 50 for tagging,
+  /// 75 for uploading, 100 for completed/merged
   double get progressValue {
     switch (status.toLowerCase()) {
       case 'pending':
@@ -142,6 +159,7 @@ class Job {
       case 'uploading':
         return 75.0;
       case 'completed':
+      case 'merged':
         return 100.0;
       case 'failed':
         return 0.0;
@@ -173,8 +191,11 @@ class Job {
       errorMessage != null && 
       errorMessage!.isNotEmpty;
 
-  /// Whether this job is completed (successfully or failed)
-  bool get isCompleted => status.toLowerCase() == 'completed' || status.toLowerCase() == 'failed';
+  /// Whether this job is completed (successfully, merged, or failed)
+  bool get isCompleted {
+    final s = status.toLowerCase();
+    return s == 'completed' || s == 'merged' || s == 'failed';
+  }
 
   /// Whether this job is currently being processed (any active status)
   bool get isActive => ['downloading', 'tagging', 'uploading'].contains(status.toLowerCase());
@@ -227,7 +248,8 @@ class Job {
 
   /// Safety rating display (text only, no status icons)
   String get safetyDisplay {
-    switch (safety?.toLowerCase()) {
+    final s = (post?.safety ?? safety)?.toLowerCase();
+    switch (s) {
       case 'safe':
         return 'Safe';
       case 'sketchy':
@@ -260,6 +282,14 @@ class Job {
       'retry_count': retryCount,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      if (post != null)
+        'post': {
+          'id': post!.id,
+          'tags': post!.tags,
+          'source': post!.source,
+          'safety': post!.safety,
+          'relations': post!.relations,
+        },
     };
   }
 

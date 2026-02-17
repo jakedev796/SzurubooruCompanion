@@ -95,6 +95,7 @@ class JobSummaryOut(BaseModel):
     job_type: str
     url: Optional[str] = None
     original_filename: Optional[str] = None
+    safety: Optional[str] = None
     szuru_user: Optional[str] = None
     dashboard_username: Optional[str] = None
     szuru_post_id: Optional[int] = None
@@ -113,6 +114,7 @@ def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSu
         job_type=job.job_type.value if isinstance(job.job_type, JobType) else job.job_type,
         url=job.url,
         original_filename=job.original_filename,
+        safety=job.safety,
         szuru_user=job.szuru_user,
         dashboard_username=dashboard_username,
         szuru_post_id=job.szuru_post_id,
@@ -249,10 +251,17 @@ async def list_jobs(
     try:
         query = select(Job).options(
             load_only(
-                Job.id, Job.status, Job.job_type, Job.url,
-                Job.original_filename, Job.szuru_user,
-                Job.szuru_post_id, Job.related_post_ids,
-                Job.created_at, Job.updated_at,
+                Job.id,
+                Job.status,
+                Job.job_type,
+                Job.url,
+                Job.original_filename,
+                Job.safety,
+                Job.szuru_user,
+                Job.szuru_post_id,
+                Job.related_post_ids,
+                Job.created_at,
+                Job.updated_at,
             )
         )
         count_query = select(func.count(Job.id))
@@ -311,6 +320,11 @@ async def get_job(
     result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
     job = result.scalar_one_or_none()
     if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    # Enforce per-user scoping: users should only see their own jobs
+    if current_user.szuru_username and job.szuru_user != current_user.szuru_username:
+        # Hide existence of other users' jobs
         raise HTTPException(status_code=404, detail="Job not found.")
 
     # Look up dashboard username for this job's szuru_user
@@ -456,6 +470,46 @@ async def delete_job(
 
     return {"message": f"Job {job_id} deleted successfully"}
 
+
+@router.post("/jobs/{job_id}/retry", response_model=JobOut)
+async def retry_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retry a failed job using the same job ID.
+
+    - Only allowed when status is 'failed'.
+    - Resets status to 'pending', clears the error message, and resets retry_count to 0.
+    - The worker will pick it up again and run the full pipeline.
+    """
+    from app.api.events import publish_job_update
+
+    result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    if job.status != JobStatus.FAILED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot retry job with status '{job.status.value}'. Job must be in 'failed' status.",
+        )
+
+    # Optional: enforce per-user ownership, mirroring list filter
+    if current_user.szuru_username and job.szuru_user != current_user.szuru_username:
+        raise HTTPException(status_code=403, detail="Not authorized to retry this job.")
+
+    job.status = JobStatus.PENDING
+    job.error_message = None
+    job.retry_count = 0
+    job.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(job)
+
+    await publish_job_update(job_id=job.id, status="pending")
+    return _job_to_out(job)
 
 @router.post("/jobs/{job_id}/resume", response_model=JobOut)
 async def resume_job(

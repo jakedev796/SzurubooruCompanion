@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +9,7 @@ import 'src/screens/setup_screen.dart';
 import 'src/services/app_state.dart';
 import 'src/services/background_task.dart';
 import 'src/services/notification_service.dart';
+import 'src/services/sse_background_service.dart';
 import 'src/services/settings_model.dart';
 import 'src/theme/app_theme.dart';
 
@@ -64,6 +63,22 @@ class _AppRootState extends State<_AppRoot> {
           scheduleFolderScanTask().catchError((e) {
             debugPrint('[AppRoot] Error scheduling folder scan: $e');
           });
+        }
+        
+        // Restart SSE service if foreground service should be running
+        // This handles the case where the app process was killed and restarted
+        // (e.g., when app was fully closed/swiped away)
+        final hasFoldersEnabled = folders.any((f) => f.enabled);
+        final shouldHaveForegroundService = hasFoldersEnabled || settingsModel.showFloatingBubble;
+        if (shouldHaveForegroundService && settingsModel.isConfigured && settingsModel.canMakeApiCalls) {
+          // Restart SSE service if it's not already running
+          // The foreground service keeps the process alive, but if Android killed it,
+          // we need to restart SSE when the app process comes back
+          if (!SseBackgroundService.instance.isRunning) {
+            SseBackgroundService.instance.start().catchError((e) {
+              debugPrint('[AppRoot] Error restarting SSE service: $e');
+            });
+          }
         }
       }
     } catch (e, stackTrace) {

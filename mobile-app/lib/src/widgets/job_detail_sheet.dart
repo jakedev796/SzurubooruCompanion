@@ -194,21 +194,39 @@ class _JobDetailSheetContentState extends State<JobDetailSheetContent> {
     final statusColor = AppStatusColors.forStatus(job.status);
 
     final actionButtons = <Widget>[];
-    void addButton(String label, Future<String?> Function() action, Color color) {
+    void addButton(String label, Future<String?> Function() action, Color color, {IconData? icon, bool iconOnly = false}) {
+      final button = ElevatedButton(
+        onPressed: _actionLoading != null
+            ? null
+            : () => _runAction(action, label.toLowerCase()),
+        style: ElevatedButton.styleFrom(backgroundColor: color),
+        child: iconOnly && icon != null
+            ? (_actionLoading == label.toLowerCase()
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(icon, size: 18))
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 18),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    _actionLoading == label.toLowerCase()
+                        ? '${label}ing...'
+                        : label,
+                  ),
+                ],
+              ),
+      );
       actionButtons.add(
         Padding(
           padding: const EdgeInsets.only(right: 8, bottom: 8),
-          child: ElevatedButton(
-            onPressed: _actionLoading != null
-                ? null
-                : () => _runAction(action, label.toLowerCase()),
-            style: ElevatedButton.styleFrom(backgroundColor: color),
-            child: Text(
-              _actionLoading == label.toLowerCase()
-                  ? '${label}ing...'
-                  : label,
-            ),
-          ),
+          child: iconOnly ? Tooltip(message: label, child: button) : button,
         ),
       );
     }
@@ -226,6 +244,9 @@ class _JobDetailSheetContentState extends State<JobDetailSheetContent> {
       case 'paused':
       case 'stopped':
         addButton('Resume', () => appState.resumeJob(job.id), AppColors.green);
+        break;
+      case 'failed':
+        addButton('Retry', () => appState.retryJob(job.id), AppColors.yellow, icon: Icons.refresh, iconOnly: true);
         break;
     }
 
@@ -326,7 +347,20 @@ class _JobDetailSheetContentState extends State<JobDetailSheetContent> {
         ),
         _detailRow(
           'Safety',
-          Text(job.safetyDisplay, style: const TextStyle(fontSize: 13)),
+          Text(
+            job.safetyDisplay,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: () {
+                final s = (job.post?.safety ?? job.safety)?.toLowerCase();
+                if (s == 'safe') return const Color(0xFF88D488);
+                if (s == 'sketchy') return const Color(0xFFF3D75F);
+                if (s == 'unsafe') return const Color(0xFFF3985F);
+                return AppColors.text;
+              }(),
+            ),
+          ),
         ),
         _detailRow(
           'Upload User',

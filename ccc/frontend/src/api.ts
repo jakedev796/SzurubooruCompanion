@@ -122,6 +122,7 @@ export interface JobSummary {
   job_type: string;
   url?: string;
   original_filename?: string;
+  safety?: string;
   szuru_user?: string;
   dashboard_username?: string;
   szuru_post_id?: number;
@@ -283,6 +284,15 @@ export async function deleteJob(jobId: number): Promise<void> {
 
 export async function resumeJob(jobId: number): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${jobId}/resume`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson(res) as Promise<Job>;
+}
+
+export async function retryJob(jobId: number): Promise<Job> {
+  const res = await apiFetch(`${BASE}/jobs/${jobId}/retry`, {
     method: "POST",
     headers: headers(),
   });

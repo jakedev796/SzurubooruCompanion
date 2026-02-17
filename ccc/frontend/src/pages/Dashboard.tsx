@@ -420,23 +420,26 @@ export default function Dashboard() {
                       <td>
                         {(j.post?.id ?? j.szuru_post_id) ? (
                           <span className="post-links">
-                            <a
-                              href={`${booruUrl}/post/${j.post?.id ?? j.szuru_post_id!}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="post-link"
-                            >
-                              #{j.post?.id ?? j.szuru_post_id}
-                            </a>
-                            {(j.post?.relations ?? j.related_post_ids)?.length ? (
-                              <span
-                                className="related-posts"
-                                title={`Related: ${(j.post?.relations ?? j.related_post_ids)!.map((id) => `#${id}`).join(", ")}`}
-                              >
-                                {" "}
-                                +{(j.post?.relations ?? j.related_post_ids)!.length}
+                            {Array.from(
+                              new Set(
+                                [
+                                  j.post?.id ?? j.szuru_post_id,
+                                  ...((j.post?.relations ?? j.related_post_ids) ?? []),
+                                ].filter((id): id is number => id != null)
+                              )
+                            ).map((id, idx) => (
+                              <span key={id}>
+                                {idx > 0 && " "}
+                                <a
+                                  href={`${booruUrl}/post/${id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="post-link"
+                                >
+                                  #{id}
+                                </a>
                               </span>
-                            ) : null}
+                            ))}
                           </span>
                         ) : (
                           "-"

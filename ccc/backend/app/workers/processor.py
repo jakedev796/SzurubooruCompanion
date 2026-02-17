@@ -180,6 +180,10 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
     # Set current user context for Szurubooru API calls (with decrypted credentials and URL)
     set_current_user(job.szuru_user, szuru_token, szuru_url)
 
+    # Snapshot retry policy from global config (DB-backed)
+    max_retries = _global_config.max_retries
+    retry_delay = _global_config.retry_delay
+
     try:
         if await _abort_if_paused_or_stopped(job):
             return
@@ -235,13 +239,13 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 was_merge=primary.get("merged", False),
             )
         elif last_error:
-            await _fail_job(job, last_error)
+            await _fail_job(job, last_error, max_retries=max_retries, retry_delay=retry_delay)
         else:
-            await _fail_job(job, "No posts created.")
+            await _fail_job(job, "No posts created.", max_retries=max_retries, retry_delay=retry_delay)
 
     except Exception as exc:
         logger.exception("%s Job %s failed", tag, job.id)
-        await _fail_job(job, str(exc))
+        await _fail_job(job, str(exc), max_retries=max_retries, retry_delay=retry_delay)
     finally:
         try:
             if os.path.isdir(job_dir):
@@ -608,16 +612,50 @@ async def _abort_if_paused_or_stopped(job: Job) -> bool:
     return False
 
 
-async def _fail_job(job: Job, error: str) -> None:
+async def _fail_job(
+    job: Job,
+    error: str,
+    *,
+    max_retries: int = 0,
+    retry_delay: float = 0.0,
+) -> None:
+    """
+    Mark a job as failed and, if configured, schedule an automatic retry using the same job ID.
+    """
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
         j = result.scalar_one()
-        j.status = JobStatus.FAILED
+
+        # Increment retry counter
+        current_retries = j.retry_count or 0
+        current_retries += 1
+        j.retry_count = current_retries
+
+        should_retry = max_retries > 0 and current_retries <= max_retries
+
         j.error_message = error[:4000]
         j.updated_at = datetime.now(timezone.utc)
+
+        if should_retry:
+            # Re-queue the same job ID by setting it back to pending
+            j.status = JobStatus.PENDING
+        else:
+            j.status = JobStatus.FAILED
+
         await db.commit()
-    logger.error("Job %s failed: %s", job.id, error[:200])
-    await publish_job_update(job_id=job.id, status="failed", error=error[:500])
+
+    if should_retry and retry_delay > 0:
+        async def _delayed_publish() -> None:
+            await asyncio.sleep(retry_delay)
+            await publish_job_update(job_id=job.id, status="pending", error=error[:500])
+
+        asyncio.create_task(_delayed_publish())
+    elif should_retry:
+        # Immediate retry without delay
+        await publish_job_update(job_id=job.id, status="pending", error=error[:500])
+    else:
+        logger.error("Job %s failed: %s", job.id, error[:200])
+        await publish_job_update(job_id=job.id, status="failed", error=error[:500])
 
 
 async def _complete_job(

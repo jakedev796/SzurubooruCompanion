@@ -40,9 +40,9 @@ class NotificationService {
   /// Simple one-line upload error (e.g. folder scan, background enqueue).
   Future<void> showUploadError(String error) async {
     const androidDetails = AndroidNotificationDetails(
-      'szuruqueue',
-      'SzuruCompanion Notifications',
-      channelDescription: 'Notifications for upload queue',
+      'job_failures',
+      'Job failure notifications',
+      channelDescription: 'Notifications for failed uploads and processing errors',
       importance: Importance.high,
       priority: Priority.high,
     );
@@ -70,9 +70,9 @@ class NotificationService {
       contentTitle: 'Upload Failed - $websiteName',
     );
     final androidDetails = AndroidNotificationDetails(
-      'szuruqueue',
-      'SzuruCompanion Notifications',
-      channelDescription: 'Notifications for upload queue',
+      'job_failures',
+      'Job failure notifications',
+      channelDescription: 'Notifications for failed uploads and processing errors',
       importance: Importance.high,
       priority: Priority.high,
       styleInformation: style,
