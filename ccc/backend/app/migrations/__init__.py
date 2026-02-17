@@ -170,8 +170,8 @@ MIGRATIONS: List[Tuple[str, str]] = [
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'szuru_public_url'
           ) THEN
-            ALTER TABLE users ADD COLUMN szuru_public_url VARCHAR(512);
-          END IF;
+            ALTER TABLE users ADD COLUMN szuru_public_url VARCHAR(512)
+          END IF
         END $$;
         """,
     ),

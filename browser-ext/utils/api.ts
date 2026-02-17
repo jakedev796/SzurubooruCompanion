@@ -20,7 +20,7 @@ export async function loadConfig(): Promise<CccConfig> {
   const result = await browser.storage.local.get(STORAGE_KEY);
   return (
     result[STORAGE_KEY] ?? {
-      baseUrl: "http://localhost:21425",
+      baseUrl: "",
     }
   );
 }
