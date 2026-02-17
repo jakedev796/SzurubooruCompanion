@@ -8,113 +8,268 @@ _Artwork: Hakurei Reimu by [kageharu](https://twitter.com/kageharu) - [Source](h
 
 [![Status: WIP](https://img.shields.io/badge/status-WIP-orange)](https://github.com/jakedev796/SzurubooruCompanion) [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](https://github.com/jakedev796/SzurubooruCompanion) [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/jakedev796/SzurubooruCompanion/blob/main/LICENSE)
 
-A multi-component workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) from various sources (browser, mobile) with automatic AI tagging via WD14 Tagger and metadata parsing via gallery-dl / yt-dlp.
+**A complete workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) from anywhere—browser or mobile—with automatic AI tagging, metadata extraction, and intelligent processing.**
+
+Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URLs from your phone, right-click images in Chrome, or tap the floating bubble. The CCC backend handles everything: downloading with gallery-dl/yt-dlp, AI tagging with WD14, and uploading to your Szurubooru instance.
+
+> **Early Development Notice**
+> This project is actively evolving. APIs and behavior may change. Built as a passion project for personal use—contributions and feedback welcome!
 
 ---
 
-> **Disclaimer — Early work in progress**  
-> This project is in early development. APIs and behaviour may change. Use at your own risk.  
-> It was started as a passion project for my friend and me, so expect some bugs and rough edges. We welcome issues and contributions.
+## ✨ Features
 
-**Releases:** Current release builds (browser extension and mobile app) are in [`builds/`](builds/).
+### **Multi-Platform Input**
+- **Browser Extension** (Chrome, Firefox, Edge) — Right-click images or use the popup to send URLs
+- **Mobile App** (Android) — Share from any app via system share sheet, floating bubble for instant clipboard capture, and built-in job status viewer
+- **Web Dashboard** — Real-time job monitoring, queue status, and processing history
 
-### Floating Bubble (Android)
+### **Intelligent Processing**
+- **Automatic AI Tagging** — WD14 Tagger runs in-process (CPU or GPU), no separate container needed
+- **Metadata Extraction** — gallery-dl and yt-dlp parse artist info, descriptions, ratings, and more
+- **Smart Normalization** — Handles fxtwitter.com, fixupx.com, ddinstagram.com, and other redirect domains automatically
+- **Site-Specific Handling** — Custom logic for Moeview infinite scrolls, 4chan boards, and special cases
 
-The mobile app includes an optional floating bubble overlay. When enabled in settings, a small draggable bubble sits on top of other apps. Copy a URL in any browser or app, then tap the bubble to instantly queue it to the CCC backend — no share sheet required. Requires the "Display over other apps" permission.
+### **Mobile-First Features**
+- **Floating Bubble** — Optional overlay that sits on top of other apps; copy a URL anywhere, tap the bubble to queue it instantly
+- **Visual Feedback** — Green glow on success, red pulse on failure—know the status without switching apps
+- **Background Sync** — Optional folder monitoring for automated uploads from camera/downloads
+
+### **Flexible Configuration**
+- **Multi-User Support** — Configure multiple Szurubooru users; clients show a user selector for per-job assignment
+- **Per-Site Cookies / Logins** — Environment-based cookie support for authenticated sites (Twitter, Sankaku, etc.)
+- **Queue Management** — Monitor jobs in real-time, retry failures, and track upload history in the dashboard
+
+### **Self-Hosted & Private**
+- All processing happens on your infrastructure
+- Clients never talk to Szurubooru directly—only to your CCC backend
+- Easy reverse proxy setup with Nginx Proxy Manager or any standard proxy
 
 ---
 
-## TODO
-
-- Finetune browser extension / ccc for popular sites
-- Further enhancements to performance
-- Cookie sync (shelved): Browser extension could capture cookies for sites (e.g. Twitter) and send them to CCC; CCC stores/updates them in Postgres and reads when needed instead of env. Would remove manual cookie export/paste.
-- Allow right click individual images on TWT/X so it grabs the post and not the entire feed/profile
-- Refactor settings handler to save to database instead of ENV so individual users can have their own cookies/logins(?)
-
-## Architecture
+## 🏛️ Architecture
 
 ```
-Clients (Browser Ext, Mobile App)
-        |
-        v
-   CCC Backend  -->  gallery-dl / yt-dlp  (download)
-        |             wdtagger (in-process AI tagging)
-        v
-   Szurubooru   (upload)
+┌─────────────────────────────────────────────────────────────────┐
+│                          INPUT SOURCES                          │
+├─────────────────────┬──────────────────────┬────────────────────┤
+│  Browser Extension  │    Mobile App        │   Web Dashboard    │
+│  (Chrome/FF/Edge)   │    (Android)         │   (React + Vite)   │
+│                     │                      │                    │
+│  • Right-click      │  • Share sheet       │  • Queue monitor   │
+│  • Popup submit     │  • Floating bubble   │  • Job history     │
+│  • Context menu     │  • Job status viewer │  • Real-time logs  │
+└──────────┬──────────┴──────────┬───────────┴──────────┬─────────┘
+           │                     │                      │
+           └─────────────────────┴──────────────────────┘
+                                 ▼
+              ┌─────────────────────────────────────┐
+              │       CCC Backend (FastAPI)         │
+              │   • Job queue (Redis + Postgres)    │
+              │   • Background worker (sync/async)  │
+              │   • WD14 Tagger (in-process)        │
+              └──────────────┬──────────────────────┘
+                             ▼
+           ┌─────────────────────────────────────────┐
+           │         DOWNLOAD & PROCESS              │
+           ├──────────────────┬──────────────────────┤
+           │   gallery-dl     │      yt-dlp          │
+           │   • Metadata     │      • Videos        │
+           │   • Multi-image  │      • Audio         │
+           │   • Pagination   │      • Live streams  │
+           └──────────────────┴──────────────────────┘
+                             ▼
+           ┌─────────────────────────────────────────┐
+           │          AI TAGGING (WD14)              │
+           │   • Character recognition               │
+           │   • Object/scene detection              │
+           │   • Style classification                │
+           │   • Automatic threshold filtering       │
+           └─────────────────┬───────────────────────┘
+                             ▼
+              ┌─────────────────────────────────────┐
+              │       Szurubooru Instance           │
+              │   • Upload media + metadata         │
+              │   • Merge tags (AI + manual)        │
+              │   • Multi-user attribution          │
+              └─────────────────────────────────────┘
 ```
 
-All media flows through the **CCC** backend. Clients never talk to Szurubooru directly. Use your existing reverse proxy (e.g. Nginx Proxy Manager) to expose services publicly.
+**Data Flow:** All clients send URLs to the CCC backend → Backend downloads, tags, and uploads → Szurubooru receives fully processed posts.
 
-## Repository Layout
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker + Docker Compose
+- Szurubooru instance (URL + API token)
+
+### Setup
+
+1. **Clone and configure:**
+   ```bash
+   git clone https://github.com/jakedev796/SzurubooruCompanion.git
+   cd SzurubooruCompanion
+   cp ccc/backend/.env.example ccc/backend/.env
+   ```
+
+2. **Edit `ccc/backend/.env`** with your Szurubooru credentials:
+   ```env
+   SZURU_URL=https://your-szurubooru.com
+   SZURU_USERNAME=your-username
+   SZURU_TOKEN=your-api-token
+   ```
+
+3. **Start the stack:**
+   ```bash
+   docker compose up -d
+   ```
+
+4. **Access services:**
+   - **CCC Backend API:** `http://localhost:21425`
+   - **CCC Dashboard:** `http://localhost:21430`
+   - Configure reverse proxy (optional but recommended): [docs/reverse-proxy.md](docs/reverse-proxy.md)
+
+---
+
+## 📦 Components
+
+### **CCC Backend**
+FastAPI service that handles all processing. Includes background worker, job queue (Redis), database (Postgres), and WD14 tagger.
+- **Port:** 21425
+- **Config:** [ccc/backend/.env.example](ccc/backend/.env.example)
+- **Tech:** Python, FastAPI, gallery-dl, yt-dlp, wdtagger
+
+### **CCC Dashboard**
+React web interface for monitoring the job queue and viewing processing history.
+- **Port:** 21430
+- **Features:** Real-time job status, queue overview, processing logs
+- **Tech:** React, Vite, TailwindCSS
+
+### **Browser Extension**
+WXT-based extension for Chrome, Firefox, and Edge.
+- **Install:** See [docs/browser-extension.md](docs/browser-extension.md)
+- **Location:** Pre-built in [`builds/`](builds/)
+- **Features:** Right-click context menu, popup submit, automatic URL detection
+
+### **Mobile App**
+Flutter Android app with share sheet integration, floating bubble overlay, and job monitoring.
+- **Install:** See [docs/mobile-app.md](docs/mobile-app.md)
+- **Location:** APK in [`builds/`](builds/)
+- **Features:**
+  - System share sheet integration
+  - **Floating bubble overlay** — Tap to queue clipboard URLs from any app
+  - Visual feedback (green glow = success, red pulse = failure)
+  - Built-in job status viewer
+  - Optional background folder sync
+
+---
+
+## ⚙️ Configuration
+
+### Environment Variables
+All backend configuration is done via `ccc/backend/.env`. See [ccc/backend/.env.example](ccc/backend/.env.example) for full options.
+
+### Multi-User Support
+Configure multiple Szurubooru users with comma-delimited credentials:
+
+```env
+SZURU_USERNAME=user1,user2,user3
+SZURU_TOKEN=token1,token2,token3
+```
+
+The first user is the default. Clients (extension, mobile app, dashboard) will show a user selector when multiple users are configured.
+
+### Site-Specific Configuration
+Some sites require cookies or special handling. See [docs/sites.md](docs/sites.md) for:
+- Confirmed working sites
+- Cookie setup (Twitter, Sankaku, etc.)
+- Special cases (Moeview, 4chan, etc.)
+
+---
+
+## 📚 Documentation
+
+- **[Browser Extension Guide](docs/browser-extension.md)** — Build, install, and usage
+- **[Mobile App Guide](docs/mobile-app.md)** — Build, install, floating bubble setup
+- **[Reverse Proxy Setup](docs/reverse-proxy.md)** — Nginx Proxy Manager configuration
+- **[Supported Sites](docs/sites.md)** — Confirmed sites and special configurations
+
+---
+
+## 🗂️ Project Structure
 
 ```
 SzurubooruCompanion/
-  docker-compose.yml    Root-level compose for the full stack
-  ccc/
-    backend/            Python (FastAPI) - API + background worker (includes wdtagger)
-    frontend/            React + Vite dashboard
-  browser-ext/          WXT browser extension (Chrome, Firefox, Edge)
-  mobile-app/           Flutter app (Android only; no iOS plans at this time)
+├── ccc/
+│   ├── backend/            # FastAPI service + worker + wdtagger
+│   └── frontend/           # React dashboard
+├── browser-ext/            # WXT browser extension
+├── mobile-app/             # Flutter Android app
+├── builds/                 # Pre-built releases (extension, APK)
+├── docs/                   # Detailed guides
+└── docker-compose.yml      # Full stack orchestration
 ```
 
-## Quick Start
+---
 
+## 🛠️ Development
+
+### Backend
 ```bash
-cp ccc/backend/.env.example ccc/backend/.env
-# Edit ccc/backend/.env with your Szurubooru URL, token, etc.
-docker compose up -d
+cd ccc/backend
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+pip install -r requirements.txt
+uvicorn main:app --reload
 ```
 
-This starts:
-
-- **ccc-backend** on port 21425 (API + worker; AI tagging via wdtagger in-process)
-- **ccc-frontend** on port 21430 (dashboard)
-- **postgres** (job database, internal only)
-- **redis** (queue/cache, internal only)
-
-Point your reverse proxy at these ports as needed; see [docs/reverse-proxy.md](docs/reverse-proxy.md) for setup.
+### Frontend
+```bash
+cd ccc/frontend
+npm install
+npm run dev
+```
 
 ### Browser Extension
-
-**Install:** Pre-built builds are in [`builds/`](builds/). For build and load instructions, see [docs/browser-extension.md](docs/browser-extension.md).
-
-### Mobile App (Flutter)
-
-**Install:** Release APKs are in [`builds/`](builds/). For build and developer instructions, see [docs/mobile-app.md](docs/mobile-app.md).
-
-## Ports
-
-| Service | Port | Description |
-|---------|------|-------------|
-| ccc-backend | 21425 | FastAPI REST API + background worker + wdtagger |
-| ccc-frontend | 21430 | React dashboard |
-| postgres | internal | PostgreSQL |
-| redis | internal | Redis |
-
-## Configuration
-
-All backend configuration is done via environment variables (see [ccc/backend/.env.example](ccc/backend/.env.example)).
-
-### Multi-user support
-
-To upload as different Szurubooru users, provide comma-delimited credentials. The first user is the default:
-
-```env
-SZURU_USERNAME=user1,user2
-SZURU_TOKEN=token1,token2
+```bash
+cd browser-ext
+npm install
+npm run dev          # Chrome
+npm run dev:firefox  # Firefox
 ```
 
-Clients (browser extension, mobile app, dashboard) will show a user selector when multiple users are configured. Each job records which user it uploads as.
+### Mobile App
+```bash
+cd mobile-app
+flutter pub get
+flutter run
+```
 
-## Sites
+---
 
-Confirmed sites, extra configuration (Sankaku, Twitter, etc., via env vars), and special handling (Moeview, 4chan) are documented in [docs/sites.md](docs/sites.md).
+## 🐛 Known Issues & TODO
 
-## WD14 Tagger
+- [ ] Finetune site extractors for edge cases
+- [ ] Performance optimizations for large batch jobs
+- [ ] Right-click individual images on Twitter/X (currently queues entire feed)
+- [ ] iOS app (no current plans—contributions welcome)
+- [ ] Cookie sync via extension (shelved—manual export works fine for now)
 
-WD14 runs in-process in the CCC backend using the `wdtagger` library. No separate tagger container is required. The backend uses CPU by default; if the host has a CUDA-capable GPU and PyTorch sees it, the tagger will use it automatically.
+---
 
-## Reverse proxy
+## 📜 License
 
-Route `/api` to the backend and `/` to the frontend when exposing via a single host. See [docs/reverse-proxy.md](docs/reverse-proxy.md) for Nginx Proxy Manager and alternate setup.
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Credits
+
+- **WD14 Tagger:** [SmilingWolf/wd-tagger](https://huggingface.co/SmilingWolf/wd-tagger)
+- **gallery-dl:** [mikf/gallery-dl](https://github.com/mikf/gallery-dl)
+- **yt-dlp:** [yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- **Szurubooru:** [rr-/szurubooru](https://github.com/rr-/szurubooru)
+
+Banner artwork: Hakurei Reimu by [kageharu](https://twitter.com/kageharu)
