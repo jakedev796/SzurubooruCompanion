@@ -123,6 +123,7 @@ export interface JobSummary {
   url?: string;
   original_filename?: string;
   szuru_user?: string;
+  dashboard_username?: string;
   szuru_post_id?: number;
   related_post_ids?: number[];
   created_at?: string;

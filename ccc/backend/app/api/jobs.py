@@ -95,6 +95,7 @@ class JobSummaryOut(BaseModel):
     url: Optional[str] = None
     original_filename: Optional[str] = None
     szuru_user: Optional[str] = None
+    dashboard_username: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     created_at: datetime
@@ -104,7 +105,7 @@ class JobSummaryOut(BaseModel):
         from_attributes = True
 
 
-def _job_to_summary(job: Job) -> JobSummaryOut:
+def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSummaryOut:
     return JobSummaryOut(
         id=str(job.id),
         status=job.status.value if isinstance(job.status, JobStatus) else job.status,
@@ -112,6 +113,7 @@ def _job_to_summary(job: Job) -> JobSummaryOut:
         url=job.url,
         original_filename=job.original_filename,
         szuru_user=job.szuru_user,
+        dashboard_username=dashboard_username,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         created_at=job.created_at,
@@ -274,8 +276,17 @@ async def list_jobs(
         total_result = await db.execute(count_query)
         total = total_result.scalar() or 0
 
+        # Batch lookup dashboard usernames for all jobs
+        szuru_users = {j.szuru_user for j in jobs if j.szuru_user}
+        username_map = {}
+        if szuru_users:
+            user_result = await db.execute(
+                select(User.szuru_username, User.username).where(User.szuru_username.in_(szuru_users))
+            )
+            username_map = {row[0]: row[1] for row in user_result.all()}
+
         return {
-            "results": [_job_to_summary(j) for j in jobs],
+            "results": [_job_to_summary(j, username_map.get(j.szuru_user)) for j in jobs],
             "total": total,
             "offset": offset,
             "limit": limit,

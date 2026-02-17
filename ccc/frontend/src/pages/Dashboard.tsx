@@ -388,7 +388,7 @@ export default function Dashboard() {
                         <StatusBadge status={j.status} />
                       </td>
                       <td>{j.job_type}</td>
-                      <td>{j.szuru_user || "-"}</td>
+                      <td>{j.dashboard_username || "-"}</td>
                       <td>
                         {sources.length > 0 ? (
                           <div className="source-cell" title={sources.join("\n")}>

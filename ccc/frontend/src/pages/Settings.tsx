@@ -570,12 +570,13 @@ function GlobalSettingsTab() {
 
   useEffect(() => {
     if (!settings || !initialSettings) return;
-    // Check if WD14 settings changed
+    // Check if WD14 or worker settings changed (both require restart)
     const changed =
       settings.wd14_enabled !== initialSettings.wd14_enabled ||
       settings.wd14_model !== initialSettings.wd14_model ||
       settings.wd14_confidence_threshold !== initialSettings.wd14_confidence_threshold ||
-      settings.wd14_max_tags !== initialSettings.wd14_max_tags;
+      settings.wd14_max_tags !== initialSettings.wd14_max_tags ||
+      settings.worker_concurrency !== initialSettings.worker_concurrency;
     setWd14Changed(changed);
   }, [settings, initialSettings]);
 
@@ -600,14 +601,14 @@ function GlobalSettingsTab() {
     <div className="card">
       <h3>Global Settings</h3>
       <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-        Configure system-wide settings for the worker and AI tagging. Worker settings take effect immediately, but WD14 settings require a container restart.
+        Configure system-wide settings for the worker and AI tagging. Note: WD14 and worker concurrency settings require a container restart to take effect.
       </p>
 
       {wd14Changed && (
         <div className="status-message" style={{ background: "rgba(251, 146, 60, 0.12)", color: "var(--orange)", border: "1px solid rgba(251, 146, 60, 0.35)", marginBottom: "1.5rem", display: "flex", alignItems: "center" }}>
           <AlertTriangle size={16} style={{ marginRight: "0.5rem", flexShrink: 0 }} />
           <div>
-            <strong>WD14 settings changed!</strong> Container restart required for changes to take effect.
+            <strong>Restart required!</strong> WD14 or worker settings changed. Container restart required for changes to take effect.
             <br />
             <small>Run: <code style={{ background: "var(--bg)", padding: "0.15rem 0.35rem", borderRadius: "4px" }}>docker-compose restart ccc-backend</code></small>
           </div>

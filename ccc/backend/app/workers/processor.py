@@ -151,7 +151,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
         # Load user configuration and category mappings
         user_category_mappings = None
         if job.szuru_user:
-            result = await db.execute(select(User).where(User.username == job.szuru_user))
+            result = await db.execute(select(User).where(User.szuru_username == job.szuru_user))
             user = result.scalar_one_or_none()
             if user:
                 user_config_obj = await load_user_config(db, str(user.id))
@@ -191,7 +191,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 if await _abort_if_paused_or_stopped(job):
                     return
 
-                post_info = await _process_single_media(job, media, media_dir, user_config_dict)
+                post_info = await _process_single_media(job, media, media_dir, user_config_dict, user_category_mappings)
                 if post_info:
                     created_posts.append(post_info)
                     all_sources.append(media.source_url)
@@ -279,6 +279,7 @@ async def _process_single_media(
     media: downloader.ExtractedMedia,
     media_dir: str,
     user_config: Optional[Dict] = None,
+    user_category_mappings: Optional[Dict] = None,
 ) -> Optional[dict]:
     """
     Download, tag, and upload a single media item.
@@ -299,7 +300,7 @@ async def _process_single_media(
 
     # ---- Tag ----
     await _set_status(job, JobStatus.TAGGING)
-    tag_result = await _tag_file(job, fp, metadata)
+    tag_result = await _tag_file(job, fp, metadata, user_category_mappings)
 
     if await _abort_if_paused_or_stopped(job):
         return None
@@ -333,7 +334,7 @@ async def _download_media(
     return dl.files, merged_meta
 
 
-async def _tag_file(job: Job, fp: Path, metadata: Dict) -> dict:
+async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: Optional[Dict] = None) -> dict:
     """
     Collect tags from all sources (initial, metadata, WD14) and return a dict with:
 
