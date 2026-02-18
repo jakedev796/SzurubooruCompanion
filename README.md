@@ -109,7 +109,7 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 ## Quick Start
 
 ### Prerequisites
-- Docker + Docker Compose
+- Docker (and Docker Compose if using compose)
 - Szurubooru instance (URL + API token)
 
 ### Setup
@@ -133,14 +133,22 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 
    > **Note:** Szurubooru credentials are configured per-user through the dashboard. The browser extension and mobile app use **JWT login** (username/password) to authenticate with the CCC backend; no API key is used.
 
-3. **Start the stack:**
+3. **Start CCC (single s6 image from GHCR):**
    ```bash
    docker compose up -d
    ```
+   Or without compose:
+   ```bash
+   docker run -d --name szurubooru-companion \
+     -p 21425:21425 \
+     --env-file ccc/backend/.env \
+     -v szurubooru-companion-data:/data \
+     -v szurubooru-companion-config:/config \
+     ghcr.io/jakedev796/szuruboorucompanion:latest
+   ```
 
-4. **Access services:**
-   - **CCC Backend API:** `http://localhost:21425`
-   - **CCC Dashboard:** `http://localhost:21430` (login with admin credentials)
+4. **Access:**
+   - **CCC API and Dashboard:** `http://localhost:21425` (login with admin credentials)
    - Configure reverse proxy (optional but recommended): [docs/reverse-proxy.md](docs/reverse-proxy.md)
 
 5. **Configure through dashboard:**
@@ -148,6 +156,9 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
    - Navigate to Settings → My Profile
    - Enter your Szurubooru URL, username, and API token
    - Configure site credentials if needed (Settings → Site Credentials)
+
+**Development:** For local development with separate backend, frontend, Postgres, and Redis, use the dev compose:
+`docker compose -f docker-compose.dev.yml up -d`. Backend at 21425, dashboard at 21430.
 
 ---
 
@@ -161,7 +172,7 @@ FastAPI service that handles all processing. Includes background worker, job que
 
 ### **CCC Dashboard**
 React web interface with user management, settings, and job monitoring.
-- **Port:** 21430
+- **Port:** 21430 (dev compose) / served with backend at 21425 (s6 single image)
 - **Features:**
   - User authentication with JWT tokens
   - User management (admin only) — Create, edit, deactivate users
@@ -174,13 +185,13 @@ React web interface with user management, settings, and job monitoring.
 ### **Browser Extension**
 WXT-based extension for Chrome, Firefox, and Edge.
 - **Install:** See [docs/browser-extension.md](docs/browser-extension.md)
-- **Location:** Pre-built in [`builds/`](builds/)
+- **Location:** [GitHub Releases](https://github.com/jakedev796/SzurubooruCompanion/releases) (chrome-mv3.zip, firefox-mv2.zip)
 - **Features:** Right-click context menu, popup submit, automatic URL detection
 
 ### **Mobile App**
 Flutter Android app with share sheet integration, floating bubble overlay, and job monitoring.
 - **Install:** See [docs/mobile-app.md](docs/mobile-app.md)
-- **Location:** APK in [`builds/`](builds/)
+- **Location:** APK from [GitHub Releases](https://github.com/jakedev796/SzurubooruCompanion/releases); in-app updater checks for updates.
 - **Features:**
   - System share sheet integration
   - **Floating bubble overlay** — Tap to queue clipboard URLs from any app
@@ -274,9 +285,12 @@ SzurubooruCompanion/
 │   └── frontend/           # React dashboard
 ├── browser-ext/            # WXT browser extension
 ├── mobile-app/             # Flutter Android app
-├── builds/                 # Pre-built releases (extension, APK)
+├── builds/                 # Local use only (only for local dev); distribution via GitHub Releases
 ├── docs/                   # Detailed guides
-└── docker-compose.yml      # Full stack orchestration
+├── VERSION                 # Single version for releases (versionName+versionCode)
+├── CHANGELOG.md            # Changelog for all components
+├── docker-compose.yml      # Production: s6 image from GHCR
+└── docker-compose.dev.yml  # Development: backend, frontend, postgres, redis
 ```
 
 ---

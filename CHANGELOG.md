@@ -1,0 +1,39 @@
+# Changelog
+
+All notable changes to Szurubooru Companion (CCC, browser extension, mobile app) are documented here. Unreleased notes go under [Unreleased] by component.
+
+## [Unreleased]
+
+### CCC - Frontend
+
+### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+---
+
+## [1.0.0] - 2026-02-17
+
+Initial release.
+
+### CCC (Backend + Dashboard)
+
+- FastAPI backend with JWT auth, user management, and encrypted per-user credentials.
+- React dashboard: job queue, real-time monitoring, category mappings, global and user settings.
+- Job queue (Redis + Postgres), background worker, WD14 tagger (in-process).
+- gallery-dl and yt-dlp for downloads; site-specific handlers and metadata extraction.
+- Single s6 image for production (Postgres + Redis + backend + frontend); dev compose for local development.
+
+### Browser Extension
+
+- Chrome, Firefox, and Edge (WXT: MV3 for Chrome/Edge, MV2 for Firefox).
+- Right-click context menu: send link, image, or page URL to CCC.
+- Popup: backend URL config, login, quick submit; multi-user selector when applicable.
+
+### Mobile App (Android)
+
+- Share sheet integration and floating bubble overlay for quick URL queueing.
+- Visual feedback (success/failure), job status viewer, optional background folder sync.
+- In-app updater: check for updates from GitHub Releases, download and install APK.

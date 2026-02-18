@@ -15,6 +15,7 @@ import '../services/floating_bubble_service.dart';
 import '../services/settings_model.dart';
 import '../services/storage_permission.dart';
 import '../theme/app_theme.dart';
+import '../widgets/settings/about_card.dart';
 import '../widgets/settings/app_features_card.dart';
 import '../widgets/settings/backup_restore_card.dart';
 import '../widgets/settings/backend_settings_card.dart';
@@ -533,6 +534,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               },
             ),
+            AboutCard(onShowMessage: _showSnackBar),
 
             // Save Settings Button
             ElevatedButton(

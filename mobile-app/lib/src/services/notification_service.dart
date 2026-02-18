@@ -1,5 +1,8 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+/// Notification ID for the single in-app update flow (updated in place).
+const int kUpdateNotificationId = 100;
+
 /// Service for showing local notifications
 class NotificationService {
   static final NotificationService instance = NotificationService._();
@@ -8,7 +11,10 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
 
-  Future<void> init() async {
+  /// [onNotificationResponse] is called when user taps a notification (e.g. update flow).
+  Future<void> init({
+    void Function(NotificationResponse response)? onNotificationResponse,
+  }) async {
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
@@ -17,7 +23,10 @@ class NotificationService {
       android: androidSettings,
       iOS: iosSettings,
     );
-    await _notifications.initialize(settings: settings);
+    await _notifications.initialize(
+      settings: settings,
+      onDidReceiveNotificationResponse: onNotificationResponse,
+    );
   }
 
   /// Upload queued success. Uses a dedicated channel so it does not pool under the persistent status notification.
@@ -112,5 +121,106 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.requestNotificationsPermission();
+  }
+
+  static const _updateChannelId = 'app_updates';
+  static const _updateChannelName = 'App updates';
+  static const _updateChannelDescription =
+      'Update available and download progress';
+
+  /// Update available: tap to start download. Uses BigText for changelog.
+  Future<void> showUpdateAvailable({
+    required String versionName,
+    required String changelog,
+  }) async {
+    final style = BigTextStyleInformation(
+      changelog.isNotEmpty ? changelog : 'Tap to download.',
+      contentTitle: 'Update available: $versionName',
+    );
+    final androidDetails = AndroidNotificationDetails(
+      _updateChannelId,
+      _updateChannelName,
+      channelDescription: _updateChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      styleInformation: style,
+    );
+    final details = NotificationDetails(android: androidDetails);
+    await _notifications.show(
+      id: kUpdateNotificationId,
+      title: 'Update available: $versionName',
+      body: changelog.isNotEmpty ? changelog : 'Tap to download.',
+      notificationDetails: details,
+      payload: 'update_available',
+    );
+  }
+
+  /// Download in progress; [progressPercent] 0–100.
+  Future<void> showUpdateDownloading(int progressPercent) async {
+    const androidDetails = AndroidNotificationDetails(
+      _updateChannelId,
+      _updateChannelName,
+      channelDescription: _updateChannelDescription,
+      importance: Importance.low,
+      priority: Priority.low,
+      showProgress: true,
+      maxProgress: 100,
+      progress: 0,
+    );
+    final details = NotificationDetails(android: androidDetails);
+    await _notifications.show(
+      id: kUpdateNotificationId,
+      title: 'Downloading update',
+      body: '$progressPercent%',
+      notificationDetails: details,
+      payload: 'downloading',
+    );
+  }
+
+  /// Update download progress (update same notification).
+  Future<void> updateUpdateDownloadProgress(int progressPercent) async {
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _updateChannelId,
+        _updateChannelName,
+        channelDescription: _updateChannelDescription,
+        importance: Importance.low,
+        priority: Priority.low,
+        showProgress: true,
+        maxProgress: 100,
+        progress: progressPercent,
+      ),
+    );
+    await _notifications.show(
+      id: kUpdateNotificationId,
+      title: 'Downloading update',
+      body: '$progressPercent%',
+      notificationDetails: details,
+      payload: 'downloading',
+    );
+  }
+
+  /// Download complete; tap to install.
+  Future<void> showUpdateReadyToInstall() async {
+    const androidDetails = AndroidNotificationDetails(
+      _updateChannelId,
+      _updateChannelName,
+      channelDescription: _updateChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const details = NotificationDetails(android: androidDetails);
+    await _notifications.show(
+      id: kUpdateNotificationId,
+      title: 'Update ready',
+      body: 'Tap to install',
+      notificationDetails: details,
+      payload: 'ready_to_install',
+    );
+  }
+
+  /// Dismiss the update notification.
+  Future<void> dismissUpdateNotification() async {
+    await _notifications.cancel(id: kUpdateNotificationId);
   }
 }

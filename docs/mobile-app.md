@@ -8,19 +8,23 @@ Flutter Android app for sending URLs and media to the CCC backend. Supports syst
 
 ## Installation
 
-### Pre-built APK
+### Release APK (GitHub)
 
-Release APKs are available in [`builds/`](../builds/).
+Download **SzuruCompanion.apk** from [GitHub Releases](https://github.com/jakedev796/SzurubooruCompanion/releases). The app checks GitHub for updates on launch; you can also use "Check for updates" in Settings.
 
 **Install via sideloading:**
-1. Copy `SzuruCompanion.apk` to your Android device
+1. Download the APK and copy it to your Android device (or open the release page on the device)
 2. Open the APK file and tap "Install"
 3. Allow installation from unknown sources if prompted
 
-**Install via ADB:**
+**Install via ADB** (after downloading the APK):
 ```bash
-adb install builds/SzuruCompanion.apk
+adb install path/to/SzuruCompanion.apk
 ```
+
+### Local build
+
+If you [build from source](#building-from-source), the APK is at `mobile-app/build/app/outputs/flutter-apk/app-release.apk`. Install with `adb install mobile-app/build/app/outputs/flutter-apk/app-release.apk` or copy to your device. The `builds/` directory is for local use only and is not used for distribution.
 
 ### Configuration
 
