@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:battery_optimization_helper/battery_optimization_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,10 +13,11 @@ import '../services/backend_client.dart';
 import '../services/background_task.dart';
 import '../services/companion_foreground_service.dart';
 import '../services/floating_bubble_service.dart';
+import '../services/notification_service.dart';
 import '../services/settings_model.dart';
 import '../services/storage_permission.dart';
+import '../services/update_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/settings/about_card.dart';
 import '../widgets/settings/app_features_card.dart';
 import '../widgets/settings/backup_restore_card.dart';
 import '../widgets/settings/backend_settings_card.dart';
@@ -48,11 +50,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isSyncingFolders = false;
   bool _isRestoreInProgress = false;
   bool _settingsInitialized = false;
+  bool _checkingUpdates = false;
+  String _versionText = '';
   Timer? _autoSaveTimer;
 
   @override
   void initState() {
     super.initState();
+    _loadVersion();
     _backendUrlFocusNode.addListener(_handleBackendUrlFocusChange);
     _defaultTagsFocusNode.addListener(_handleDefaultTagsFocusChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -468,6 +473,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _versionText = info.version);
+  }
+
+  Future<void> _checkForUpdates() async {
+    if (_checkingUpdates || !mounted) return;
+    setState(() => _checkingUpdates = true);
+    try {
+      final updateService = await UpdateService.getInstance();
+      final result = await updateService.checkAndNotifyUpdate(
+        ignoreSkipped: true,
+        isManualCheck: true,
+      );
+      if (!mounted) return;
+      if (result == UpdateService.checkResultNoUpdate) {
+        _showSnackBar('Already up to date.');
+      } else if (result == UpdateService.checkResultError) {
+        _showSnackBar('Could not check for updates. Try again later.');
+      } else if (result == UpdateService.checkResultUpdateAvailable) {
+        final pending = updateService.getPendingUpdate();
+        if (pending != null) await _showUpdateDialog(pending, updateService);
+      }
+    } finally {
+      if (mounted) setState(() => _checkingUpdates = false);
+    }
+  }
+
+  Future<void> _showUpdateDialog(RemoteVersion remote, UpdateService updateService) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Update ${remote.versionName} available'),
+        content: SingleChildScrollView(
+          child: Text(remote.changelog.isNotEmpty ? remote.changelog : 'Tap Download to get the update.'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'skip'),
+            child: const Text('Skip this version'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, 'download'),
+            child: const Text('Download'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'skip') {
+      updateService.markVersionSkipped(remote.versionCode);
+      _showSnackBar('Skipped version ${remote.versionName}.');
+    } else {
+      await NotificationService.instance.showUpdateAvailable(
+        versionName: remote.versionName,
+        changelog: remote.changelog,
+      );
+      _showSnackBar('Tap the notification to download.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsModel>();
@@ -534,9 +600,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               },
             ),
-            AboutCard(onShowMessage: _showSnackBar),
-
-            // Save Settings Button
+            if (_versionText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('Version $_versionText', style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ),
             ElevatedButton(
               onPressed: _saveSettings,
               style: ElevatedButton.styleFrom(
@@ -545,6 +613,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
               child: const Text('Save settings', style: TextStyle(fontSize: 16)),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _checkingUpdates ? null : _checkForUpdates,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: _checkingUpdates
+                  ? const Text('Checking...', style: TextStyle(fontSize: 16))
+                  : const Text('Check for updates', style: TextStyle(fontSize: 16)),
             ),
             const SizedBox(height: 16),
             // App Health Section

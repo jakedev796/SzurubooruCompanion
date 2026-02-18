@@ -1,7 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -62,26 +62,37 @@ Future<RemoteVersion?> fetchLatestFromNetwork() async {
       }
       if (versionJsonUrl == null || apkUrl == null) continue;
 
-      final versionResponse = await dio.get<Map<String, dynamic>>(versionJsonUrl);
+      final versionResponse = await dio.get<dynamic>(versionJsonUrl);
       if (versionResponse.data == null || versionResponse.statusCode != 200) continue;
 
-      final data = versionResponse.data!;
-      final versionCode = data['versionCode'];
-      final versionName = data['versionName'];
-      final changelog = data['changelog'];
-      if (versionCode is! int || versionName is! String) continue;
+      Map<String, dynamic>? data;
+      if (versionResponse.data is Map<String, dynamic>) {
+        data = versionResponse.data as Map<String, dynamic>;
+      } else if (versionResponse.data is Map) {
+        data = Map<String, dynamic>.from(versionResponse.data as Map);
+      } else if (versionResponse.data is String) {
+        try {
+          data = jsonDecode(versionResponse.data as String) as Map<String, dynamic>?;
+        } catch (_) {
+          continue;
+        }
+      }
+      if (data == null) continue;
+      final versionCodeRaw = data['versionCode'];
+      final versionName = data['versionName'] is String ? data['versionName'] as String : data['versionName']?.toString();
+      final changelog = data['changelog'] is String ? data['changelog'] as String : '';
+      final versionCode = versionCodeRaw is int ? versionCodeRaw : (versionCodeRaw is double ? versionCodeRaw.toInt() : null);
+      if (versionName == null || versionName.isEmpty || versionCode == null) continue;
 
       return RemoteVersion(
         versionCode: versionCode,
         versionName: versionName,
         downloadUrl: apkUrl,
-        changelog: changelog is String ? changelog : '',
+        changelog: changelog,
       );
     }
     return null;
-  } catch (e, st) {
-    debugPrint('[UpdateService] fetchLatestFromNetwork error: $e');
-    debugPrint('[UpdateService] $st');
+  } catch (e, _) {
     return null;
   }
 }
@@ -143,45 +154,60 @@ class UpdateService {
   /// Fetches the latest release that has mobile assets (version.json + APK). Ignores CCC-only or ext-only releases.
   Future<RemoteVersion?> getLatestVersion() async {
     try {
-      final response = await _dio.get<List<dynamic>>(UpdateConfig.listReleasesUrl);
+      final response = await _dio.get<dynamic>(UpdateConfig.listReleasesUrl);
       if (response.data == null || response.statusCode != 200) return null;
+      final list = response.data is List<dynamic> ? response.data : null;
+      if (list == null) return null;
 
-      for (final r in response.data!) {
-        final release = r is Map<String, dynamic> ? r : null;
+      for (final r in list) {
+        final release = r is Map<String, dynamic> ? r : (r is Map ? Map<String, dynamic>.from(r) : null);
         if (release == null) continue;
-        final assets = release['assets'] as List<dynamic>?;
-        if (assets == null || assets.isEmpty) continue;
+        final assets = release['assets'];
+        final assetsList = assets is List<dynamic> ? assets : null;
+        if (assetsList == null || assetsList.isEmpty) continue;
 
         String? versionJsonUrl;
         String? apkUrl;
-        for (final a in assets) {
-          final name = a is Map ? a['name'] as String? : null;
-          final url = a is Map ? a['browser_download_url'] as String? : null;
+        for (final a in assetsList) {
+          final m = a is Map ? a : null;
+          if (m == null) continue;
+          final name = m['name']?.toString();
+          final url = m['browser_download_url']?.toString();
           if (name == 'version.json' && url != null) versionJsonUrl = url;
           if (name == 'SzuruCompanion.apk' && url != null) apkUrl = url;
         }
         if (versionJsonUrl == null || apkUrl == null) continue;
 
-        final versionResponse = await _dio.get<Map<String, dynamic>>(versionJsonUrl);
+        final versionResponse = await _dio.get<dynamic>(versionJsonUrl);
         if (versionResponse.data == null || versionResponse.statusCode != 200) continue;
-
-        final data = versionResponse.data!;
-        final versionCode = data['versionCode'];
-        final versionName = data['versionName'];
-        final changelog = data['changelog'];
-        if (versionCode is! int || versionName is! String) continue;
+        Map<String, dynamic>? data;
+        if (versionResponse.data is Map<String, dynamic>) {
+          data = versionResponse.data as Map<String, dynamic>;
+        } else if (versionResponse.data is Map) {
+          data = Map<String, dynamic>.from(versionResponse.data as Map);
+        } else if (versionResponse.data is String) {
+          try {
+            data = jsonDecode(versionResponse.data as String) as Map<String, dynamic>?;
+          } catch (_) {
+            continue;
+          }
+        }
+        if (data == null) continue;
+        final versionCodeRaw = data['versionCode'];
+        final versionName = data['versionName'] is String ? data['versionName'] as String : data['versionName']?.toString();
+        final changelog = data['changelog'] is String ? data['changelog'] as String : '';
+        final versionCode = versionCodeRaw is int ? versionCodeRaw : (versionCodeRaw is double ? versionCodeRaw.toInt() : null);
+        if (versionName == null || versionName.isEmpty || versionCode == null) continue;
 
         return RemoteVersion(
           versionCode: versionCode,
           versionName: versionName,
           downloadUrl: apkUrl,
-          changelog: changelog is String ? changelog : '',
+          changelog: changelog,
         );
       }
       return null;
-    } catch (e, st) {
-      debugPrint('[UpdateService] getLatestVersion error: $e');
-      debugPrint('[UpdateService] $st');
+    } catch (e, _) {
       return null;
     }
   }
@@ -343,17 +369,11 @@ class UpdateService {
         },
       );
 
-      if (!await apkFile.exists()) {
-        debugPrint('[UpdateService] Download failed: file missing');
-        return;
-      }
+      if (!await apkFile.exists()) return;
 
       _setPendingInstallApkPath(apkFile.path);
       await NotificationService.instance.showUpdateReadyToInstall();
-    } catch (e, st) {
-      debugPrint('[UpdateService] startDownload error: $e');
-      debugPrint('[UpdateService] $st');
-    }
+    } catch (e, _) {}
   }
 
   Future<void> _launchInstall() async {
@@ -362,8 +382,7 @@ class UpdateService {
     setShowBackendUpdateNotice(true);
     try {
       await _updaterChannel.invokeMethod<void>('installApk', path);
-    } on PlatformException catch (e) {
-      debugPrint('[UpdateService] installApk error: ${e.message}');
+    } on PlatformException catch (_) {
       setShowBackendUpdateNotice(false);
     } finally {
       _setPendingInstallApkPath(null);

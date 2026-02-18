@@ -14,6 +14,14 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ---
 
+## [1.0.1] - 2026-02-18
+
+### Mobile App
+
+- Fix in-app update check when GitHub returns version.json as raw JSON string (parse via jsonDecode when response is not already a map).
+
+---
+
 ## [1.0.0] - 2026-02-17
 
 Initial release.
