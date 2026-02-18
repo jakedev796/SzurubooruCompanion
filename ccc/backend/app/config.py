@@ -66,7 +66,8 @@ class Settings:
     gallery_dl_twitter_username: Optional[str] = os.getenv("TWITTER_USERNAME")
     gallery_dl_twitter_password: Optional[str] = os.getenv("TWITTER_PASSWORD")
     gallery_dl_twitter_cookies: Optional[str] = os.getenv("TWITTER_COOKIES")
-    # Misskey: used by config file or for future -o injection when URL is Misskey.
+    # Misskey: gallery-dl uses access-token for favorites; username/password unused by extractor.
+    gallery_dl_misskey_access_token: Optional[str] = os.getenv("MISSKEY_ACCESS_TOKEN")
     gallery_dl_misskey_username: Optional[str] = os.getenv("MISSKEY_USERNAME")
     gallery_dl_misskey_password: Optional[str] = os.getenv("MISSKEY_PASSWORD")
     # Sankaku (sankaku.app / sankakucomplex.com): passed as -o extractor.sankaku.username/password when URL is Sankaku.

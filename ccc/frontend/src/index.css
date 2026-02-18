@@ -435,19 +435,29 @@ tr:hover td {
   color: var(--accent-hover);
 }
 
-/* Multi-source display */
+/* Multi-source display: 2 stacked, then +N */
 .source-cell {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .multi-source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
   color: var(--text-muted);
+}
+.source-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 .source-count {
   font-size: 0.85em;
   color: var(--text-muted);
   cursor: help;
+  flex-shrink: 0;
 }
 .source-link {
   color: var(--accent);

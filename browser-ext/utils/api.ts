@@ -13,7 +13,36 @@ export interface AuthTokens {
 
 const STORAGE_KEY = "ccc_config";
 const STORAGE_KEY_AUTH = "ccc_auth";
+const STORAGE_KEY_NOTIFICATIONS = "ccc_notifications_enabled";
+const STORAGE_KEY_SAFETY = "ccc_default_safety";
 const CLIENT_TYPE = "extension-chrome";  // TODO: Detect Firefox and use "extension-firefox"
+
+export type SafetyRating = "safe" | "sketchy" | "unsafe";
+
+/** Load default safety for uploads. Default "unsafe". */
+export async function getDefaultSafety(): Promise<SafetyRating> {
+  const result = await browser.storage.local.get(STORAGE_KEY_SAFETY);
+  const v = result[STORAGE_KEY_SAFETY];
+  if (v === "safe" || v === "sketchy" || v === "unsafe") return v;
+  return "unsafe";
+}
+
+/** Persist default safety for uploads. */
+export async function setDefaultSafety(safety: SafetyRating): Promise<void> {
+  await browser.storage.local.set({ [STORAGE_KEY_SAFETY]: safety });
+}
+
+/** Load notifications enabled preference. Default true. */
+export async function getNotificationsEnabled(): Promise<boolean> {
+  const result = await browser.storage.local.get(STORAGE_KEY_NOTIFICATIONS);
+  if (result[STORAGE_KEY_NOTIFICATIONS] === false) return false;
+  return true;
+}
+
+/** Persist notifications enabled preference. */
+export async function setNotificationsEnabled(enabled: boolean): Promise<void> {
+  await browser.storage.local.set({ [STORAGE_KEY_NOTIFICATIONS]: enabled });
+}
 
 /** Load persisted CCC config from extension storage. */
 export async function loadConfig(): Promise<CccConfig> {

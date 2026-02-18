@@ -94,15 +94,17 @@ class CompanionForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     // -- Notification ---------------------------------------------------------
+    // Persistent notification uses a dedicated channel so other notifications
+    // (errors, success, folder sync) do not pool under it.
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "SzuruCompanion Notifications",
+                "Companion status",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "App status and folder sync"
+                description = "Connection and folder sync status"
                 setShowBadge(false)
             }
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
@@ -124,6 +126,8 @@ class CompanionForegroundService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setGroup(COMPANION_GROUP_KEY)
+            .setGroupSummary(false)
             .build()
     }
 
@@ -381,7 +385,8 @@ class CompanionForegroundService : Service() {
     companion object {
         private const val TAG = "CompanionFgService"
         const val NOTIFICATION_ID = 100
-        const val CHANNEL_ID = "status"
+        const val CHANNEL_ID = "companion_status"
+        private const val COMPANION_GROUP_KEY = "companion_persistent"
         private const val JOB_FAILURE_CHANNEL_ID = "job_failures"
         const val EXTRA_SHOW_BUBBLE = "showBubble"
         const val EXTRA_BODY = "body"

@@ -63,7 +63,8 @@
         },
 
         "misskey": {
-            "#": "Misskey authentication - uses environment variables",
+            "#": "Misskey: use access-token for favorites (create app in instance Settings → API). Username/password unused by gallery-dl.",
+            "access-token": "${MISSKEY_ACCESS_TOKEN}",
             "username": "${MISSKEY_USERNAME}",
             "password": "${MISSKEY_PASSWORD}",
 

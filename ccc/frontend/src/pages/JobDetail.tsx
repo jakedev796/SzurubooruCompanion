@@ -163,7 +163,10 @@ export default function JobDetail() {
 
   const sources = getJobSources(job);
   const postId = job.post?.id ?? job.szuru_post_id;
-  const postRelations = job.post?.relations ?? job.related_post_ids ?? [];
+  const rawRelations = job.post?.relations ?? job.related_post_ids ?? [];
+  const postRelations = postId != null
+    ? rawRelations.filter((pid: number) => pid !== postId)
+    : rawRelations;
   const postSafety = (job.post?.safety ?? job.safety)?.toLowerCase();
   const postTags = job.post?.tags ?? job.tags_applied;
 

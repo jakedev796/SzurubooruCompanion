@@ -20,11 +20,12 @@ class NotificationService {
     await _notifications.initialize(settings: settings);
   }
 
+  /// Upload queued success. Uses a dedicated channel so it does not pool under the persistent status notification.
   Future<void> showUploadSuccess(String url) async {
     const androidDetails = AndroidNotificationDetails(
-      'szuruqueue',
-      'SzuruCompanion Notifications',
-      channelDescription: 'Notifications for upload queue',
+      'upload_sync',
+      'Upload & sync',
+      channelDescription: 'Upload queued and folder sync complete',
       importance: Importance.high,
       priority: Priority.high,
     );
@@ -37,7 +38,7 @@ class NotificationService {
     );
   }
 
-  /// Simple one-line upload error (e.g. folder scan, background enqueue).
+  /// Dedicated error channel; does not pool under the persistent status notification.
   Future<void> showUploadError(String error) async {
     const androidDetails = AndroidNotificationDetails(
       'job_failures',
@@ -55,8 +56,7 @@ class NotificationService {
     );
   }
 
-  /// Expandable upload-failed notification: title "Upload Failed - {websiteName}",
-  /// expanded body shows jobId and fullDomain on separate lines.
+  /// Expandable upload-failed notification (same dedicated error channel; does not pool under persistent).
   /// [notificationId] should be unique per job (e.g. jobId.hashCode) so multiple failures don't overwrite.
   Future<void> showUploadErrorExpanded({
     required String websiteName,
@@ -86,11 +86,12 @@ class NotificationService {
     );
   }
 
+  /// Folder sync complete. Same channel as upload success so these events stay separate from the persistent status notification.
   Future<void> showFolderSyncComplete(int filesUploaded) async {
     const androidDetails = AndroidNotificationDetails(
-      'folder_sync',
-      'SzuruCompanion Notifications',
-      channelDescription: 'Folder sync notifications',
+      'upload_sync',
+      'Upload & sync',
+      channelDescription: 'Upload queued and folder sync complete',
       importance: Importance.defaultImportance,
       priority: Priority.defaultPriority,
     );
