@@ -408,7 +408,7 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
 
     # Ensure all tags exist in Szurubooru with correct categories (concurrent)
     tags_with_categories = [
-        (tag, tag_to_category.get(tag) or settings.szuru_default_tag_category)
+        (tag, tag_to_category.get(tag) or "general")
         for tag in all_tags
     ]
     await szurubooru.ensure_tags_batch(tags_with_categories)

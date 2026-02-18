@@ -43,7 +43,7 @@ class SiteHandler:
             settings: Global settings from ENV
             user_config: Per-user credentials from database
                         Format: {site_name: {credential_key: value}}
-                        Example: {"twitter": {"username": "user", "password": "pass"}}
+                        Example: {"twitter": {"cookies": "..."}, "sankaku": {"username": "user", "password": "pass"}}
         """
         self.settings = settings
         self.user_config = user_config or {}

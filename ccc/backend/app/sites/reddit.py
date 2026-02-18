@@ -22,6 +22,7 @@ class RedditHandler(SiteHandler):
         opts = super().gallery_dl_options()
         site_creds = self.user_config.get(self.name, {})
         username = (site_creds.get("username") or "").strip()
+        
         if username:
             ua = f"Python:ExtendedUploader:v1.0 (by /u/{username})"
             opts.extend(["-o", f"extractor.{self.gallery_dl_extractor}.user-agent={ua}"])

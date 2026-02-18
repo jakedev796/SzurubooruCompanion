@@ -77,10 +77,9 @@ def resolve_categories(
                 source_to_szuru[source_name.lower()] = user_cat
         default = user_category_mappings.get("general", "general")
     else:
-        # Fallback to ENV settings
-        settings = get_settings()
+        # Fallback to "general" if not in user categories
         user_categories = get_szuru_categories()
-        default = settings.szuru_default_tag_category
+        default = "general"
         if default not in user_categories:
             default = user_categories[0] if user_categories else "general"
         source_to_szuru = _get_source_to_szuru_mapping()

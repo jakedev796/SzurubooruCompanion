@@ -18,10 +18,8 @@ logger = logging.getLogger(__name__)
 class TwitterHandler(SiteHandler):
     name = "twitter"
     gallery_dl_extractor = "twitter"
-    credentials = [
-        CredentialSpec("username"),
-        CredentialSpec("password"),
-    ]
+    # Twitter only needs cookies (auth_token)
+    credentials = []
 
     def __init__(self, settings: Settings, user_config: Optional[Dict[str, Dict[str, str]]] = None):
         super().__init__(settings, user_config)
