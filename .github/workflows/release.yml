@@ -152,9 +152,8 @@ jobs:
 
       - name: Zip artifacts
         run: |
-          cd browser-ext
-          (cd .output/chrome-mv3 && zip -r ../../chrome-mv3.zip .)
-          (cd .output/firefox-mv2 && zip -r ../../firefox-mv2.zip .)
+          (cd builds/browser-ext/chrome-mv3 && zip -r ../../../browser-ext/chrome-mv3.zip .)
+          (cd builds/browser-ext/firefox-mv2 && zip -r ../../../browser-ext/firefox-mv2.zip .)
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
@@ -185,7 +184,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.38.0'
           channel: 'stable'
           cache: true
 
