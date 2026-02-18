@@ -64,13 +64,13 @@ jobs:
           ' CHANGELOG.md > release-notes.md
           [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
 
-      - name: Create release
+      - name: Create release (draft)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: SzuruCompanion ${{ needs.scope.outputs.version_name }}
           body_path: release-notes.md
-          draft: false
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -252,5 +252,35 @@ jobs:
           files: |
             release-artifacts/SzuruCompanion.apk
             release-artifacts/version.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs: [scope, create-release, ccc, browser, mobile]
+    if: always() && needs.create-release.result == 'success' && (needs.ccc.result == 'success' || needs.ccc.result == 'skipped') && (needs.browser.result == 'success' || needs.browser.result == 'skipped') && (needs.mobile.result == 'success' || needs.mobile.result == 'skipped')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract release notes
+        run: |
+          VN="${{ needs.scope.outputs.version_name }}"
+          awk -v ver="$VN" '
+            BEGIN { gsub(/\./, "\\.", ver); re = "^## \\[" ver "\\]" }
+            $0 ~ re { found=1; print; next }
+            found { if ($0 ~ /^## \[/) exit; print }
+          ' CHANGELOG.md > release-notes.md
+          [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
+
+      - name: Publish release (set draft to false)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SzuruCompanion ${{ needs.scope.outputs.version_name }}
+          body_path: release-notes.md
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
