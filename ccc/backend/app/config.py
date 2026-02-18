@@ -62,30 +62,7 @@ class Settings:
     gallery_dl_timeout: int = int(os.getenv("GALLERY_DL_TIMEOUT", "120"))
     # Optional gallery-dl config file; if set, passed as -c to gallery-dl. Else we pass per-extractor options for known sites.
     gallery_dl_config_file: Optional[str] = os.getenv("GALLERY_DL_CONFIG_FILE")
-    # Twitter (twitter.com / x.com): cookies written to temp file and passed when URL is Twitter. Username/password used by config file.
-    gallery_dl_twitter_username: Optional[str] = os.getenv("TWITTER_USERNAME")
-    gallery_dl_twitter_password: Optional[str] = os.getenv("TWITTER_PASSWORD")
-    gallery_dl_twitter_cookies: Optional[str] = os.getenv("TWITTER_COOKIES")
-    # Misskey: gallery-dl uses access-token for favorites; username/password unused by extractor.
-    gallery_dl_misskey_access_token: Optional[str] = os.getenv("MISSKEY_ACCESS_TOKEN")
-    gallery_dl_misskey_username: Optional[str] = os.getenv("MISSKEY_USERNAME")
-    gallery_dl_misskey_password: Optional[str] = os.getenv("MISSKEY_PASSWORD")
-    # Sankaku (sankaku.app / sankakucomplex.com): passed as -o extractor.sankaku.username/password when URL is Sankaku.
-    gallery_dl_sankaku_username: Optional[str] = os.getenv("SANKAKU_USERNAME")
-    gallery_dl_sankaku_password: Optional[str] = os.getenv("SANKAKU_PASSWORD")
-    # Danbooru: used by config file or for future -o injection.
-    gallery_dl_danbooru_api_key: Optional[str] = os.getenv("DANBOORU_API_KEY")
-    gallery_dl_danbooru_user_id: Optional[str] = os.getenv("DANBOORU_USER_ID")
-    # Gelbooru: used by config file or for future -o injection.
-    gallery_dl_gelbooru_api_key: Optional[str] = os.getenv("GELBOORU_API_KEY")
-    gallery_dl_gelbooru_user_id: Optional[str] = os.getenv("GELBOORU_USER_ID")
-    # Rule34.xxx: passed as -o extractor.rule34.api-key / user-id when URL is rule34.
-    gallery_dl_rule34_api_key: Optional[str] = os.getenv("RULE34_API_KEY")
-    gallery_dl_rule34_user_id: Optional[str] = os.getenv("RULE34_USER_ID")
-    # Reddit: used by config file or for future -o injection.
-    gallery_dl_reddit_client_id: Optional[str] = os.getenv("REDDIT_CLIENT_ID")
-    gallery_dl_reddit_client_secret: Optional[str] = os.getenv("REDDIT_CLIENT_SECRET")
-    gallery_dl_reddit_username: Optional[str] = os.getenv("REDDIT_USERNAME")
+    # Site credentials (Twitter, Misskey, Sankaku, Danbooru, Gelbooru, Rule34, Reddit) are configured via the dashboard only.
     ytdlp_timeout: int = int(os.getenv("YTDLP_TIMEOUT", "300"))
     max_retries: int = int(os.getenv("MAX_RETRIES", "3"))
     retry_delay: float = float(os.getenv("RETRY_DELAY", "5.0"))

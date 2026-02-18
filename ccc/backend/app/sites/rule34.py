@@ -7,8 +7,8 @@ class Rule34Handler(SiteHandler):
     name = "rule34"
     gallery_dl_extractor = "rule34"
     credentials = [
-        CredentialSpec("api-key", "gallery_dl_rule34_api_key"),
-        CredentialSpec("user-id", "gallery_dl_rule34_user_id"),
+        CredentialSpec("api-key"),
+        CredentialSpec("user-id"),
     ]
 
     def matches_url(self, url: str) -> bool:

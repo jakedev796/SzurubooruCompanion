@@ -14,9 +14,9 @@ class MisskeyHandler(SiteHandler):
     name = "misskey"
     gallery_dl_extractor = "misskey"
     credentials = [
-        CredentialSpec("access-token", "gallery_dl_misskey_access_token"),
-        CredentialSpec("username", "gallery_dl_misskey_username"),
-        CredentialSpec("password", "gallery_dl_misskey_password"),
+        CredentialSpec("access-token"),
+        CredentialSpec("username"),
+        CredentialSpec("password"),
     ]
 
     def matches_url(self, url: str) -> bool:

@@ -19,8 +19,8 @@ class TwitterHandler(SiteHandler):
     name = "twitter"
     gallery_dl_extractor = "twitter"
     credentials = [
-        CredentialSpec("username", "gallery_dl_twitter_username"),
-        CredentialSpec("password", "gallery_dl_twitter_password"),
+        CredentialSpec("username"),
+        CredentialSpec("password"),
     ]
 
     def __init__(self, settings: Settings, user_config: Optional[Dict[str, Dict[str, str]]] = None):
@@ -60,10 +60,10 @@ class TwitterHandler(SiteHandler):
         return None
 
     def gallery_dl_options(self) -> List[str]:
-        """Override to add cookie temp file handling."""
+        """Override to add cookie temp file handling (cookies from user config only)."""
         opts = super().gallery_dl_options()
-
-        cookies_content = (self.settings.gallery_dl_twitter_cookies or "").strip()
+        site_creds = self.user_config.get(self.name, {})
+        cookies_content = (site_creds.get("cookies") or "").strip()
         if cookies_content:
             try:
                 fd = tempfile.NamedTemporaryFile(
