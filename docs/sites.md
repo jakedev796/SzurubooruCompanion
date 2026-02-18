@@ -55,7 +55,7 @@ These sites work without credentials but may have rate limits or restricted cont
 | Danbooru | API key, User ID | Avoid rate limits, access restricted content |
 | Gelbooru | API key, User ID | Avoid rate limits |
 | Rule34.xxx | API key, User ID | Avoid rate limits |
-| Misskey | Username, Password | Access private posts |
+| Misskey | Username, Password, Access Key (Required) | Access private posts |
 | Reddit | Client ID, Client Secret, Username | Access private subreddits/posts |
 
 ---

@@ -695,7 +695,9 @@ async def _complete_job(
         j = result.scalar_one()
         j.status = JobStatus.MERGED if was_merge else JobStatus.COMPLETED
         j.szuru_post_id = szuru_post_id
-        j.related_post_ids = related_post_ids or []
+        # Exclude primary post from relations so a post is never its own relation
+        raw = related_post_ids or []
+        j.related_post_ids = [pid for pid in raw if pid != szuru_post_id]
         j.was_merge = 1 if was_merge else 0
         j.tags_applied = json.dumps(tags)
         j.tags_from_source = json.dumps(tags_from_source)

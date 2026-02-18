@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CredentialSpec:
-    """One credential option to inject into gallery-dl."""
-    gallery_dl_key: str   # e.g. "username", "api-key"
-    settings_attr: str    # e.g. "gallery_dl_sankaku_username"
+    """One credential option to inject into gallery-dl (from user config only)."""
+    gallery_dl_key: str  # e.g. "username", "api-key"
 
 
 class SiteHandler:
@@ -84,8 +83,7 @@ class SiteHandler:
     def gallery_dl_options(self) -> List[str]:
         """
         Extra -o flags for gallery-dl.
-        Built from `credentials` and `gallery_dl_tag_options` declarations.
-        Prioritizes user_config over ENV settings.
+        Built from `credentials` and `gallery_dl_tag_options`; credentials from user config (dashboard) only.
         """
         opts: List[str] = []
         ext = self.gallery_dl_extractor
@@ -96,10 +94,8 @@ class SiteHandler:
             opts.extend(["-o", f"extractor.{ext}.{opt_key}={opt_value}"])
 
         for spec in self.credentials:
-            # Get credentials from user config (from database) only
             site_creds = self.user_config.get(self.name, {})
             value = site_creds.get(spec.gallery_dl_key)
-
             if value and (cleaned := (value or "").strip()):
                 opts.extend(["-o", f"extractor.{ext}.{spec.gallery_dl_key}={cleaned}"])
 

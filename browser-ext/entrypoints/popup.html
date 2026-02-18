@@ -49,6 +49,25 @@
       .msg { font-size: 12px; margin-top: 8px; }
       .msg.ok { color: #22c55e; }
       .msg.err { color: #ef4444; }
+      .row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+      .row input[type="checkbox"] { width: auto; margin: 0; }
+      .row label { margin: 0; display: inline; }
+      .safety-row { display: flex; gap: 6px; margin-bottom: 12px; }
+      .safety-btn {
+        flex: 1;
+        padding: 6px 8px;
+        border: 2px solid transparent;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        background: #2a2d36;
+        color: #d4d4d8;
+      }
+      .safety-btn.selected { border-color: #6366f1; }
+      .safety-btn[data-safety="safe"] { background: #88D488; color: #1a1a1a; }
+      .safety-btn[data-safety="sketchy"] { background: #F3D75F; color: #1a1a1a; }
+      .safety-btn[data-safety="unsafe"] { background: #F3985F; color: #1a1a1a; }
     </style>
   </head>
   <body>
@@ -56,6 +75,18 @@
 
     <label for="baseUrl">CCC Base URL</label>
     <input id="baseUrl" type="text" placeholder="http://localhost:21425" />
+
+    <label style="margin-bottom: 6px;">Default safety</label>
+    <div class="safety-row" id="safetyRow">
+      <button type="button" class="safety-btn" data-safety="safe">Safe</button>
+      <button type="button" class="safety-btn" data-safety="sketchy">Sketchy</button>
+      <button type="button" class="safety-btn" data-safety="unsafe">Unsafe</button>
+    </div>
+
+    <div class="row">
+      <input id="notifications" type="checkbox" />
+      <label for="notifications">Push desktop notifications</label>
+    </div>
 
     <button id="save">Save</button>
     <div id="msg" class="msg"></div>

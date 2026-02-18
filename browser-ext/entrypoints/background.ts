@@ -5,7 +5,7 @@
  * 
  * Also handles messages from content scripts for DOM-level media extraction.
  */
-import { fetchJob, submitJob } from "../utils/api";
+import { fetchJob, submitJob, getNotificationsEnabled, getDefaultSafety } from "../utils/api";
 import type { MediaInfo, ContentScriptMessage, BackgroundScriptResponse } from "../utils/types";
 
 const POLL_INTERVAL_MS = 3000;
@@ -55,7 +55,8 @@ async function showToastAndNotification(
   type: "success" | "error",
   tabId?: number
 ): Promise<void> {
-  if (browser.notifications) {
+  const notificationsEnabled = await getNotificationsEnabled();
+  if (notificationsEnabled && browser.notifications) {
     browser.notifications.create({
       type: "basic",
       iconUrl: browser.runtime.getURL("icon/128.png"),
@@ -149,15 +150,17 @@ async function handleSubmitJob(
   tabId?: number
 ): Promise<BackgroundScriptResponse> {
   try {
+    const defaultSafety = await getDefaultSafety();
     const job = await submitJob(mediaInfo.url, {
       source: mediaInfo.source,
       tags: mediaInfo.tags,
-      safety: mediaInfo.safety,
+      safety: mediaInfo.safety ?? defaultSafety,
     });
     
     console.log("[CCC] Job created from content script:", job.id, mediaInfo);
     
-    if (browser.notifications) {
+    const notificationsEnabled = await getNotificationsEnabled();
+    if (notificationsEnabled && browser.notifications) {
       browser.notifications.create({
         type: "basic",
         iconUrl: browser.runtime.getURL("icon/128.png"),
@@ -165,7 +168,7 @@ async function handleSubmitJob(
         message: `Queued. You'll be notified when it finishes.`,
       });
     }
-    
+
     // Start polling
     pollUntilDone(job.id, tabId, Date.now());
     
@@ -228,10 +231,12 @@ export default defineBackground(() => {
     const tabId = tab?.id;
 
     try {
-      const job = await submitJob(url);
+      const defaultSafety = await getDefaultSafety();
+      const job = await submitJob(url, { safety: defaultSafety });
       console.log("[CCC] Job created:", job.id);
 
-      if (browser.notifications) {
+      const notificationsEnabled = await getNotificationsEnabled();
+      if (notificationsEnabled && browser.notifications) {
         browser.notifications.create({
           type: "basic",
           iconUrl: browser.runtime.getURL("icon/128.png"),

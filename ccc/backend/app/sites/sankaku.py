@@ -15,8 +15,8 @@ class SankakuHandler(SiteHandler):
     gallery_dl_extractor = "sankaku"
     gallery_dl_tag_options = [("tags", "standard")]
     credentials = [
-        CredentialSpec("username", "gallery_dl_sankaku_username"),
-        CredentialSpec("password", "gallery_dl_sankaku_password"),
+        CredentialSpec("username"),
+        CredentialSpec("password"),
     ]
 
     def matches_url(self, url: str) -> bool:

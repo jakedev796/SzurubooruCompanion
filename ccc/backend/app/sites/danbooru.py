@@ -7,8 +7,8 @@ class DanbooruHandler(SiteHandler):
     name = "danbooru"
     gallery_dl_extractor = "danbooru"
     credentials = [
-        CredentialSpec("api-key", "gallery_dl_danbooru_api_key"),
-        CredentialSpec("user-id", "gallery_dl_danbooru_user_id"),
+        CredentialSpec("api-key"),
+        CredentialSpec("user-id"),
     ]
 
     def matches_url(self, url: str) -> bool:

@@ -408,9 +408,10 @@ export default function Dashboard() {
               <tbody>
                 {recentJobs.results.map((j) => {
                   const sources = getJobSources(j);
-                  const maxVisible = 3;
+                  const maxVisible = 2;
                   const visible = sources.slice(0, maxVisible);
                   const extra = sources.length - maxVisible;
+                  const truncate = (s: string) => (s.length > 30 ? s.substring(0, 30) + "..." : s);
                   return (
                     <tr key={j.id}>
                       <td>
@@ -421,24 +422,33 @@ export default function Dashboard() {
                       <td>
                         {sources.length > 0 ? (
                           <div className="source-cell" title={sources.join("\n")}>
-                            <span className="multi-source">
-                              {visible.map((src, idx) => (
-                                <span key={idx}>
-                                  {idx > 0 && " "}
+                            <div className="multi-source">
+                              {visible[0] && (
+                                <a
+                                  href={visible[0]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="source-link"
+                                >
+                                  {truncate(visible[0])}
+                                </a>
+                              )}
+                              {visible.length > 1 ? (
+                                <span className="source-row">
                                   <a
-                                    href={src}
+                                    href={visible[1]}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="source-link"
                                   >
-                                    {src.length > 30 ? src.substring(0, 30) + "..." : src}
+                                    {truncate(visible[1])}
                                   </a>
+                                  {extra > 0 && <span className="source-count">+{extra}</span>}
                                 </span>
-                              ))}
-                              {extra > 0 && (
-                                <span className="source-count"> +{extra} more</span>
-                              )}
-                            </span>
+                              ) : extra > 0 ? (
+                                <span className="source-count">+{extra}</span>
+                              ) : null}
+                            </div>
                           </div>
                         ) : j.original_filename ? (
                           <span>{j.original_filename}</span>

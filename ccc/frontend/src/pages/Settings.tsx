@@ -448,7 +448,7 @@ function SiteCredentialsTab() {
     { name: "gelbooru", fields: ["api-key", "user-id"] },
     { name: "rule34", fields: ["api-key", "user-id"] },
     { name: "reddit", fields: ["client-id", "client-secret", "username"] },
-    { name: "misskey", fields: ["username", "password"] },
+    { name: "misskey", fields: ["access-token", "username", "password"] },
   ];
 
   useEffect(() => {
@@ -504,7 +504,7 @@ function SiteCredentialsTab() {
                 {site.fields.map((field) => (
                   <div key={field} className="form-group">
                     <label style={{ textTransform: "capitalize" }}>
-                      {field.replace(/_/g, " ")}
+                      {field.replace(/_/g, " ").replace(/-/g, " ")}
                     </label>
                     {field === "cookies" ? (
                       <textarea
@@ -519,6 +519,7 @@ function SiteCredentialsTab() {
                         type={field.includes("password") || field.includes("secret") || field.includes("token") ? "password" : "text"}
                         value={creds[site.name]?.[field] || ""}
                         onChange={(e) => updateCred(site.name, field, e.target.value)}
+                        placeholder={field === "access-token" ? "From instance Settings → API" : undefined}
                       />
                     )}
                   </div>

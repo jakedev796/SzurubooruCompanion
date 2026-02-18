@@ -160,12 +160,14 @@ def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
     tags_applied = _parse_json_tags(job.tags_applied)
     post = None
     if job.szuru_post_id is not None:
+        # Exclude primary post from relations so a post is never its own relation
+        relations = [pid for pid in (job.related_post_ids or []) if pid != job.szuru_post_id]
         post = SzuruPostMirror(
             id=job.szuru_post_id,
             tags=tags_applied or [],
             source=job.source_override,
             safety=job.safety,
-            relations=job.related_post_ids or [],
+            relations=relations,
         )
     return JobOut(
         id=str(job.id),
