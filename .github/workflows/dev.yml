@@ -21,6 +21,7 @@ on:
       - "Dockerfile"
       - ".dockerignore"
       - ".github/workflows/docker.yml"
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
