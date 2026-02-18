@@ -630,6 +630,7 @@ async def _fail_job(
 ) -> None:
     """
     Mark a job as failed and, if configured, schedule an automatic retry using the same job ID.
+    When retry_delay > 0, the job remains in FAILED status during the delay, then is set to PENDING.
     """
     expected_retry_count: int
     async with async_session() as db:
@@ -647,8 +648,11 @@ async def _fail_job(
         j.error_message = error[:4000]
         j.updated_at = datetime.now(timezone.utc)
 
-        if should_retry:
-            # Re-queue the same job ID by setting it back to pending
+        if should_retry and retry_delay > 0:
+            # Keep job as FAILED during delay - will be set to PENDING after delay
+            j.status = JobStatus.FAILED
+        elif should_retry:
+            # Immediate retry - set to PENDING now
             j.status = JobStatus.PENDING
         else:
             j.status = JobStatus.FAILED
@@ -656,22 +660,28 @@ async def _fail_job(
         await db.commit()
 
     if should_retry and retry_delay > 0:
-        async def _delayed_publish() -> None:
-            # Avoid spamming/out-of-order "pending" updates if the job was already claimed
-            # or changed status before the delay elapsed.
+        async def _delayed_retry() -> None:
+            # Wait for the delay, then set job to PENDING if it's still eligible
             await asyncio.sleep(retry_delay)
             async with async_session() as db:
                 result = await db.execute(select(Job).where(Job.id == job.id))
                 j = result.scalar_one_or_none()
                 if not j:
                     return
-                if j.status != JobStatus.PENDING:
+                # Only retry if still in FAILED status and retry count hasn't changed
+                if j.status != JobStatus.FAILED:
                     return
                 if (j.retry_count or 0) != expected_retry_count:
                     return
+                # Set to PENDING so worker can pick it up
+                j.status = JobStatus.PENDING
+                j.updated_at = datetime.now(timezone.utc)
+                await db.commit()
             await publish_job_update(job_id=job.id, status="pending", progress=0, error=error[:500])
 
-        asyncio.create_task(_delayed_publish())
+        asyncio.create_task(_delayed_retry())
+        # Publish FAILED status immediately so UI shows the error
+        await publish_job_update(job_id=job.id, status="failed", progress=0, error=error[:500])
     elif should_retry:
         # Immediate retry without delay
         await publish_job_update(job_id=job.id, status="pending", progress=0, error=error[:500])

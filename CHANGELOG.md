@@ -7,6 +7,8 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- Manual job retries now respect the global retry_delay setting.
+- Fix automatic retries to properly respect retry_delay by keeping jobs in FAILED status during delay period.
 
 ### Mobile App
 
