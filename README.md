@@ -334,15 +334,10 @@ flutter run
 
 ### In Progress
 - [ ] Finetune site extractors for edge cases
-- [ ] Performance optimizations for large batch jobs
 - [ ] Right-click individual images on Twitter/X (currently queues entire feed)
 
 ### Future Enhancements
 - [ ] Password reset via email
-- [ ] Two-factor authentication (2FA)
-- [ ] Session management (revoke tokens)
-- [ ] Encryption key rotation tool
-- [ ] Per-user WD14 settings
 - [ ] Audit log viewer in dashboard
 - [ ] iOS app (no current plans—contributions welcome)
 
