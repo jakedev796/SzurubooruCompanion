@@ -9,13 +9,19 @@ import 'src/screens/setup_screen.dart';
 import 'src/services/app_state.dart';
 import 'src/services/background_task.dart';
 import 'src/services/notification_service.dart';
-import 'src/services/sse_background_service.dart';
 import 'src/services/settings_model.dart';
+import 'src/services/update_service.dart';
 import 'src/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await NotificationService.instance.init();
+  await NotificationService.instance.init(
+    onNotificationResponse: (response) {
+      if (response.id == kUpdateNotificationId && response.payload != null) {
+        UpdateService.getInstance().then((s) => s.handleNotificationTap(response.payload));
+      }
+    },
+  );
   await initializeBackgroundTasks();
 
   runApp(
@@ -44,6 +50,47 @@ class _AppRootState extends State<_AppRoot> {
     _load();
   }
 
+  Future<void> _runUpdateCheckAndBackendNotice() async {
+    if (!mounted) return;
+    try {
+      final updateService = await UpdateService.getInstance();
+      await updateService.saveCurrentVersionToPrefs();
+      if (updateService.hasPendingUpdate) {
+        final pending = updateService.getPendingUpdate();
+        if (pending != null) {
+          await NotificationService.instance.showUpdateAvailable(
+            versionName: pending.versionName,
+            changelog: pending.changelog,
+          );
+        }
+      } else {
+        await updateService.checkAndNotifyUpdate(ignoreSkipped: false);
+      }
+      if (!mounted) return;
+      if (updateService.shouldShowBackendUpdateNotice) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Backend update'),
+            content: const Text(
+              'You may need to run updates against the backend infrastructure to keep everything working.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        if (mounted) updateService.markBackendUpdateNoticeShown();
+      }
+    } catch (e) {
+      debugPrint('[AppRoot] Update check error: $e');
+    }
+  }
+
   Future<void> _load() async {
     try {
       final settingsModel = SettingsModel();
@@ -64,22 +111,7 @@ class _AppRootState extends State<_AppRoot> {
             debugPrint('[AppRoot] Error scheduling folder scan: $e');
           });
         }
-        
-        // Restart SSE service if foreground service should be running
-        // This handles the case where the app process was killed and restarted
-        // (e.g., when app was fully closed/swiped away)
-        final hasFoldersEnabled = folders.any((f) => f.enabled);
-        final shouldHaveForegroundService = hasFoldersEnabled || settingsModel.showFloatingBubble;
-        if (shouldHaveForegroundService && settingsModel.isConfigured && settingsModel.canMakeApiCalls) {
-          // Restart SSE service if it's not already running
-          // The foreground service keeps the process alive, but if Android killed it,
-          // we need to restart SSE when the app process comes back
-          if (!SseBackgroundService.instance.isRunning) {
-            SseBackgroundService.instance.start().catchError((e) {
-              debugPrint('[AppRoot] Error restarting SSE service: $e');
-            });
-          }
-        }
+        if (mounted) _runUpdateCheckAndBackendNotice();
       }
     } catch (e, stackTrace) {
       debugPrint('[AppRoot] Error loading settings: $e');

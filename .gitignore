@@ -88,3 +88,8 @@ mobile-app/android/szuruqueue_android.iml
 
 # Claude
 .claude/
+
+/mobile-app/docs
+
+builds/
+docs/release-workflow.md

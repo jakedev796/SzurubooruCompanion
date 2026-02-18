@@ -73,17 +73,3 @@ dependencies {
 flutter {
     source = "../.."
 }
-
-val buildsDir = rootProject.file("../../builds/mobile-app")
-tasks.whenTaskAdded {
-    if (name == "assembleRelease") {
-        finalizedBy(
-            tasks.register("copyReleaseApkToBuilds", Copy::class) {
-                from(layout.buildDirectory.dir("outputs/apk/release"))
-                into(buildsDir)
-                include("*.apk")
-                rename(".*\\.apk", "SzuruCompanion.apk")
-            }
-        )
-    }
-}
