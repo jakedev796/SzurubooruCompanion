@@ -64,11 +64,36 @@ jobs:
           ' CHANGELOG.md > release-notes.md
           [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
 
+      - name: Build component list and title
+        id: title
+        run: |
+          COMPONENTS=()
+          [ "${{ needs.scope.outputs.scope_ccc }}" = "1" ] && COMPONENTS+=("CCC")
+          [ "${{ needs.scope.outputs.scope_ext }}" = "1" ] && COMPONENTS+=("Extensions")
+          [ "${{ needs.scope.outputs.scope_mobile }}" = "1" ] && COMPONENTS+=("Mobile App")
+          if [ ${#COMPONENTS[@]} -eq 0 ]; then
+            COMPONENT_SUFFIX=""
+          elif [ ${#COMPONENTS[@]} -eq 3 ]; then
+            COMPONENT_SUFFIX=" (All Components)"
+          else
+            COMPONENT_SUFFIX=" ($(IFS=', '; echo "${COMPONENTS[*]}"))"
+          fi
+          echo "title=SzuruCompanion ${{ needs.scope.outputs.version_name }}$COMPONENT_SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "has_ccc=${{ needs.scope.outputs.scope_ccc }}" >> "$GITHUB_OUTPUT"
+
+      - name: Append CCC note if needed
+        if: needs.scope.outputs.scope_ccc == '1'
+        run: |
+          echo "" >> release-notes.md
+          echo "---" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "**Note:** Be sure to update your local Docker images. Docker builds should be live." >> release-notes.md
+
       - name: Create release (draft)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: SzuruCompanion ${{ needs.scope.outputs.version_name }}
+          name: ${{ steps.title.outputs.title }}
           body_path: release-notes.md
           draft: true
         env:
@@ -300,11 +325,35 @@ jobs:
           ' CHANGELOG.md > release-notes.md
           [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
 
+      - name: Build component list and title
+        id: title
+        run: |
+          COMPONENTS=()
+          [ "${{ needs.scope.outputs.scope_ccc }}" = "1" ] && COMPONENTS+=("CCC")
+          [ "${{ needs.scope.outputs.scope_ext }}" = "1" ] && COMPONENTS+=("Extensions")
+          [ "${{ needs.scope.outputs.scope_mobile }}" = "1" ] && COMPONENTS+=("Mobile App")
+          if [ ${#COMPONENTS[@]} -eq 0 ]; then
+            COMPONENT_SUFFIX=""
+          elif [ ${#COMPONENTS[@]} -eq 3 ]; then
+            COMPONENT_SUFFIX=" (All Components)"
+          else
+            COMPONENT_SUFFIX=" ($(IFS=', '; echo "${COMPONENTS[*]}"))"
+          fi
+          echo "title=SzuruCompanion ${{ needs.scope.outputs.version_name }}$COMPONENT_SUFFIX" >> "$GITHUB_OUTPUT"
+
+      - name: Append CCC note if needed
+        if: needs.scope.outputs.scope_ccc == '1'
+        run: |
+          echo "" >> release-notes.md
+          echo "---" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "**Note:** Be sure to update your local Docker images. Docker builds should be live." >> release-notes.md
+
       - name: Publish release (set draft to false)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: SzuruCompanion ${{ needs.scope.outputs.version_name }}
+          name: ${{ steps.title.outputs.title }}
           body_path: release-notes.md
           draft: false
         env:
