@@ -13,7 +13,13 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### Browser Extension
 
 
-## [1.0.2] - 2026-02-19
+## [1.0.3] - 2026-02-18
+
+### Mobile App
+
+- Fix false "update available" after installing an update and restarting the app: pending update is validated against current version and cleared when launching install.
+
+## [1.0.2] - 2026-02-18
 
 ### Mobile App
 

@@ -65,6 +65,10 @@ class _AppRootState extends State<_AppRoot> {
           );
         }
       } else {
+        final pending = updateService.getPendingUpdate();
+        if (pending != null) {
+          updateService.clearPendingUpdate();
+        }
         await updateService.checkAndNotifyUpdate(ignoreSkipped: false);
       }
       if (!mounted) return;

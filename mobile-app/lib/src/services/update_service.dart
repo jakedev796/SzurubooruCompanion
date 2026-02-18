@@ -244,9 +244,17 @@ class UpdateService {
     _prefs.setString(_pendingUpdateDownloadUrlKey, downloadUrl);
   }
 
-  bool get hasPendingUpdate =>
-      _prefs.containsKey(_pendingUpdateVersionCodeKey) &&
-      _prefs.containsKey(_pendingUpdateDownloadUrlKey);
+  bool get hasPendingUpdate {
+    if (!_prefs.containsKey(_pendingUpdateVersionCodeKey) ||
+        !_prefs.containsKey(_pendingUpdateDownloadUrlKey)) {
+      return false;
+    }
+    final pendingCode = _prefs.getInt(_pendingUpdateVersionCodeKey);
+    if (pendingCode == null) return false;
+    final currentCode = _prefs.getInt(_currentVersionCodeKey);
+    if (currentCode == null) return true;
+    return pendingCode > currentCode;
+  }
 
   RemoteVersion? getPendingUpdate() {
     final code = _prefs.getInt(_pendingUpdateVersionCodeKey);
@@ -382,6 +390,7 @@ class UpdateService {
     setShowBackendUpdateNotice(true);
     try {
       await _updaterChannel.invokeMethod<void>('installApk', path);
+      clearPendingUpdate();
     } on PlatformException catch (_) {
       setShowBackendUpdateNotice(false);
     } finally {
