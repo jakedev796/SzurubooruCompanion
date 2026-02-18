@@ -191,6 +191,29 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            mobile-app/.dart_tool
+            mobile-app/workmanager_patch/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('mobile-app/pubspec.lock', 'mobile-app/workmanager_patch/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            mobile-app/android/.gradle
+            mobile-app/workmanager_patch/android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('mobile-app/android/gradle/wrapper/gradle-wrapper.properties', 'mobile-app/workmanager_patch/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Inject version from VERSION into pubspec
         run: |
           LINE=$(cat VERSION | tr -d ' \n')

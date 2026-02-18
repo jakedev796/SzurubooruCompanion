@@ -17,8 +17,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.init(
     onNotificationResponse: (response) {
-      if (response.id == kUpdateNotificationId && response.payload != null) {
-        UpdateService.getInstance().then((s) => s.handleNotificationTap(response.payload));
+      final payload = response.payload;
+      if (payload == 'update_available' || payload == 'ready_to_install') {
+        UpdateService.getInstance().then((s) => s.handleNotificationTap(payload));
       }
     },
   );

@@ -12,6 +12,7 @@ import '../models/auth.dart';
 import '../services/backend_client.dart';
 import '../services/background_task.dart';
 import '../services/companion_foreground_service.dart';
+import '../utils/markdown_plain_text.dart';
 import '../services/floating_bubble_service.dart';
 import '../services/notification_service.dart';
 import '../services/settings_model.dart';
@@ -507,7 +508,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => AlertDialog(
         title: Text('Update ${remote.versionName} available'),
         content: SingleChildScrollView(
-          child: Text(remote.changelog.isNotEmpty ? remote.changelog : 'Tap Download to get the update.'),
+          child: Text(
+            remote.changelog.isNotEmpty
+                ? markdownToPlainText(remote.changelog)
+                : 'Tap Download to get the update.',
+          ),
         ),
         actions: [
           TextButton(

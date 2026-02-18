@@ -1,7 +1,11 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-/// Notification ID for the single in-app update flow (updated in place).
-const int kUpdateNotificationId = 100;
+import '../utils/markdown_plain_text.dart';
+
+/// Notification IDs for the update flow (separate from persistent companion notification ID 100).
+const int kUpdateAvailableNotificationId = 101;
+const int kUpdateDownloadingNotificationId = 102;
+const int kUpdateReadyToInstallNotificationId = 103;
 
 /// Service for showing local notifications
 class NotificationService {
@@ -128,13 +132,14 @@ class NotificationService {
   static const _updateChannelDescription =
       'Update available and download progress';
 
-  /// Update available: tap to start download. Uses BigText for changelog.
+  /// Update available: tap to start download. Uses BigText for changelog (markdown stripped to plain text).
   Future<void> showUpdateAvailable({
     required String versionName,
     required String changelog,
   }) async {
+    final plain = changelog.isNotEmpty ? markdownToPlainText(changelog) : 'Tap to download.';
     final style = BigTextStyleInformation(
-      changelog.isNotEmpty ? changelog : 'Tap to download.',
+      plain,
       contentTitle: 'Update available: $versionName',
     );
     final androidDetails = AndroidNotificationDetails(
@@ -147,9 +152,9 @@ class NotificationService {
     );
     final details = NotificationDetails(android: androidDetails);
     await _notifications.show(
-      id: kUpdateNotificationId,
+      id: kUpdateAvailableNotificationId,
       title: 'Update available: $versionName',
-      body: changelog.isNotEmpty ? changelog : 'Tap to download.',
+      body: plain,
       notificationDetails: details,
       payload: 'update_available',
     );
@@ -169,7 +174,7 @@ class NotificationService {
     );
     final details = NotificationDetails(android: androidDetails);
     await _notifications.show(
-      id: kUpdateNotificationId,
+      id: kUpdateDownloadingNotificationId,
       title: 'Downloading update',
       body: '$progressPercent%',
       notificationDetails: details,
@@ -192,7 +197,7 @@ class NotificationService {
       ),
     );
     await _notifications.show(
-      id: kUpdateNotificationId,
+      id: kUpdateDownloadingNotificationId,
       title: 'Downloading update',
       body: '$progressPercent%',
       notificationDetails: details,
@@ -200,8 +205,9 @@ class NotificationService {
     );
   }
 
-  /// Download complete; tap to install.
+  /// Download complete; tap to install. Cancels the downloading notification.
   Future<void> showUpdateReadyToInstall() async {
+    await _notifications.cancel(id: kUpdateDownloadingNotificationId);
     const androidDetails = AndroidNotificationDetails(
       _updateChannelId,
       _updateChannelName,
@@ -211,7 +217,7 @@ class NotificationService {
     );
     const details = NotificationDetails(android: androidDetails);
     await _notifications.show(
-      id: kUpdateNotificationId,
+      id: kUpdateReadyToInstallNotificationId,
       title: 'Update ready',
       body: 'Tap to install',
       notificationDetails: details,
@@ -219,8 +225,10 @@ class NotificationService {
     );
   }
 
-  /// Dismiss the update notification.
+  /// Dismiss all update flow notifications.
   Future<void> dismissUpdateNotification() async {
-    await _notifications.cancel(id: kUpdateNotificationId);
+    await _notifications.cancel(id: kUpdateAvailableNotificationId);
+    await _notifications.cancel(id: kUpdateDownloadingNotificationId);
+    await _notifications.cancel(id: kUpdateReadyToInstallNotificationId);
   }
 }

@@ -12,7 +12,13 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ### Browser Extension
 
----
+
+## [1.0.2] - 2026-02-19
+
+### Mobile App
+
+- Update dialog and notification: show changelog as plain text (markdown stripped).
+- Update flow notifications use separate IDs from the persistent status notification so "Downloading" and "Update ready" are no longer replaced by it.
 
 ## [1.0.1] - 2026-02-18
 
@@ -20,7 +26,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 - Fix in-app update check when GitHub returns version.json as raw JSON string (parse via jsonDecode when response is not already a map).
 
----
 
 ## [1.0.0] - 2026-02-17
 
