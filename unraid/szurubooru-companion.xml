@@ -17,7 +17,7 @@
   <Category>MediaApp:Other</Category>
   <WebUI>http://[IP]:[PORT:21425]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/unraid/szurubooru-companion.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/ccc/frontend/public/reimu.jpg</Icon>
+  <Icon>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/misc/styling/reimu.jpg</Icon>
   <ExtraParams/>
   <Description>
     Szurubooru Companion (CCC) - A multi-component workflow for uploading media to Szurubooru with AI tagging.
