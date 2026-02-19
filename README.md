@@ -8,7 +8,7 @@ _Artwork: Hakurei Reimu by [kageharu](https://twitter.com/kageharu) - [Source](h
 
 [![Version](https://img.shields.io/badge/version-1.0.3-blue)](https://github.com/jakedev796/SzurubooruCompanion) [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![Flutter](https://img.shields.io/badge/Flutter-3.41.1-02569B?logo=flutter&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/jakedev796/SzurubooruCompanion/blob/main/LICENSE)
 
-**A complete workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) from anywhere—browser or mobile—with automatic AI tagging, metadata extraction, and intelligent processing.**
+**A complete workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) (or [Oxibooru](https://github.com/liamw1/oxibooru)) from anywhere—browser or mobile—with automatic AI tagging, metadata extraction, and intelligent processing.**
 
 Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URLs from your phone, right-click images in Chrome, or tap the floating bubble. The CCC backend handles everything: downloading with gallery-dl/yt-dlp, AI tagging with WD14, and uploading to your Szurubooru instance.
 
@@ -97,7 +97,7 @@ flowchart LR
         H[WD14 Tagger]
     end
 
-    K[Szurubooru]
+    K[Szurubooru / Oxibooru]
 
     A --> E
     B --> E
@@ -131,7 +131,7 @@ flowchart LR
 
 ### Prerequisites
 - Docker (and Docker Compose if using compose)
-- Szurubooru instance (URL + API token)
+- [Szurubooru](https://github.com/rr-/szurubooru) or [Oxibooru](https://github.com/liamw1/oxibooru) instance (URL + API token)
 
 ### Setup
 
@@ -281,5 +281,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **gallery-dl:** [mikf/gallery-dl](https://github.com/mikf/gallery-dl)
 - **yt-dlp:** [yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - **Szurubooru:** [rr-/szurubooru](https://github.com/rr-/szurubooru)
+- **Oxibooru:** [liamw1/oxibooru](https://github.com/liamw1/oxibooru)
 
 Banner artwork: Hakurei Reimu by [kageharu](https://twitter.com/kageharu)

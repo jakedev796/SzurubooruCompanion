@@ -7,13 +7,22 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
-- Manual job retries now respect the global retry_delay setting.
-- Fix automatic retries to properly respect retry_delay by keeping jobs in FAILED status during delay period.
 
 ### Mobile App
 
 ### Browser Extension
 
+
+## [1.0.4] - 2026-02-18
+
+### CCC - Backend
+- Add Oxibooru compatibility — works as a drop-in replacement for Szurubooru.
+- Fix missing `fetch_tag_categories` function (removed in refactor).
+- Manual job retries now respect the global retry_delay setting.
+- Fix automatic retries to properly respect retry_delay by keeping jobs in FAILED status during delay period.
+
+### Docs
+- Update README to mention Oxibooru support with links.
 
 ## [1.0.3] - 2026-02-18
 
