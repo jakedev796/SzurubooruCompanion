@@ -71,6 +71,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     try {
       final settings = context.read<SettingsModel>();
+      
+      // Early return if backend is not configured or user is not authenticated
+      // This prevents services from starting on first launch before setup/login
+      if (!settings.isConfigured || !settings.isAuthenticated) {
+        debugPrint('[Main] Backend not configured or user not authenticated, stopping services');
+        await stopCompanionForegroundService();
+        await stopFloatingBubbleService();
+        return;
+      }
+      
       final folders = await settings.getScheduledFolders();
       if (!mounted) return;
       final hasFoldersEnabled = folders.any((f) => f.enabled == true);
@@ -156,6 +166,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     AppState appState,
   ) async {
     try {
+      // Don't update notification if backend is not configured or user is not authenticated
+      if (!settings.isConfigured || !settings.isAuthenticated) return;
+      
       final folders = await settings.getScheduledFolders();
       final folderSyncOn = folders.where((f) => f.enabled).isNotEmpty &&
           settings.showPersistentNotification;

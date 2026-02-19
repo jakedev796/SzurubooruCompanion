@@ -97,6 +97,7 @@ class JobSummaryOut(BaseModel):
     job_type: str
     url: Optional[str] = None
     original_filename: Optional[str] = None
+    source_override: Optional[str] = None
     safety: Optional[str] = None
     szuru_user: Optional[str] = None
     dashboard_username: Optional[str] = None
@@ -148,6 +149,7 @@ def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSu
         job_type=job.job_type.value if isinstance(job.job_type, JobType) else job.job_type,
         url=job.url,
         original_filename=job.original_filename,
+        source_override=job.source_override,
         safety=job.safety,
         szuru_user=job.szuru_user,
         dashboard_username=dashboard_username,

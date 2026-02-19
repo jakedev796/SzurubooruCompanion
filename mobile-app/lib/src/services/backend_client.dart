@@ -76,6 +76,8 @@ class JobUpdate {
   final List<int>? relatedPostIds;
   final List<String>? tags;
   final DateTime timestamp;
+  final bool? retriesExhausted;
+  final int? retryCount;
 
   JobUpdate({
     required this.jobId,
@@ -86,6 +88,8 @@ class JobUpdate {
     this.relatedPostIds,
     this.tags,
     required this.timestamp,
+    this.retriesExhausted,
+    this.retryCount,
   });
 
   factory JobUpdate.fromSseData(Map<String, dynamic> data) {
@@ -103,6 +107,8 @@ class JobUpdate {
       relatedPostIds: (relatedIds == null || relatedIds.isEmpty) ? null : relatedIds,
       tags: (data['tags'] as List<dynamic>?)?.cast<String>(),
       timestamp: DateTime.parse(data['timestamp'] as String),
+      retriesExhausted: data['retries_exhausted'] as bool?,
+      retryCount: data['retry_count'] as int?,
     );
   }
 }

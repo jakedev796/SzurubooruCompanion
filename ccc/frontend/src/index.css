@@ -162,13 +162,13 @@ header nav .user-select {
 /* Colored stat cards (dashboard overview) */
 .stat-grid--primary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 1rem;
   margin-bottom: 1rem;
 }
 .stat-grid--secondary {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 0.75rem;
   margin-bottom: 1.5rem;
   max-width: 50%;
@@ -189,43 +189,57 @@ header nav .user-select {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-top: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+.stat-label-icon {
+  flex-shrink: 0;
+  opacity: 0.9;
 }
 .stat-card--pending {
-  background: rgba(251, 146, 60, 0.10);
-  border-color: rgba(251, 146, 60, 0.25);
+  background: rgba(251, 146, 60, 0.12);
+  border-color: rgba(251, 146, 60, 0.3);
 }
 .stat-card--pending .value,
 .stat-card--pending .label { color: var(--orange); }
 .stat-card--active {
-  background: rgba(196, 30, 58, 0.10);
-  border-color: rgba(196, 30, 58, 0.25);
+  background: rgba(196, 30, 58, 0.12);
+  border-color: rgba(196, 30, 58, 0.3);
 }
 .stat-card--active .value,
 .stat-card--active .label { color: var(--accent); }
 .stat-card--completed {
-  background: rgba(74, 222, 128, 0.10);
-  border-color: rgba(74, 222, 128, 0.25);
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.3);
 }
 .stat-card--completed .value,
 .stat-card--completed .label { color: var(--green); }
-.stat-card--failed {
-  background: rgba(248, 113, 113, 0.10);
-  border-color: rgba(248, 113, 113, 0.25);
+.stat-card--merged {
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.3);
 }
-.stat-card--failed .value,
-.stat-card--failed .label { color: var(--red); }
+.stat-card--merged .value,
+.stat-card--merged .label { color: #c4b5fd; }
 .stat-card--paused {
-  background: rgba(250, 204, 21, 0.08);
-  border-color: rgba(250, 204, 21, 0.20);
+  background: rgba(250, 204, 21, 0.12);
+  border-color: rgba(250, 204, 21, 0.28);
 }
 .stat-card--paused .value,
 .stat-card--paused .label { color: var(--yellow); }
 .stat-card--stopped {
-  background: rgba(248, 113, 113, 0.08);
-  border-color: rgba(248, 113, 113, 0.20);
+  background: rgba(100, 116, 139, 0.2);
+  border-color: rgba(100, 116, 139, 0.4);
 }
 .stat-card--stopped .value,
-.stat-card--stopped .label { color: var(--red); }
+.stat-card--stopped .label { color: #94a3b8; }
+.stat-card--failed {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+.stat-card--failed .value,
+.stat-card--failed .label { color: var(--red); }
 .stat-grid--secondary .stat-card--colored {
   padding: 0.75rem 1rem;
 }
@@ -265,43 +279,50 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* Status badges */
+/* Status badges – distinct colors by meaning (waiting / active / success / merged / paused / stopped / error) */
 .badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.15rem 0.5rem;
   border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
 }
-.badge.completed {
-  background: rgba(74, 222, 128, 0.15);
-  color: var(--green);
-}
-.badge.merged {
-  background: rgba(168, 85, 247, 0.15);
-  color: #c4b5fd;
-}
-.badge.failed {
-  background: rgba(248, 113, 113, 0.15);
-  color: var(--red);
+.badge-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.95;
 }
 .badge.pending {
-  background: rgba(250, 204, 21, 0.15);
-  color: var(--yellow);
+  background: rgba(251, 146, 60, 0.18);
+  color: var(--orange);
 }
 .badge.downloading,
 .badge.tagging,
 .badge.uploading {
-  background: rgba(196, 30, 58, 0.2);
+  background: rgba(196, 30, 58, 0.22);
   color: #f0a0a8;
 }
 .badge.paused {
-  background: rgba(250, 204, 21, 0.15);
+  background: rgba(250, 204, 21, 0.18);
   color: var(--yellow);
 }
+.badge.completed {
+  background: rgba(74, 222, 128, 0.18);
+  color: var(--green);
+}
+.badge.merged {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c4b5fd;
+}
 .badge.stopped {
-  background: rgba(248, 113, 113, 0.15);
+  background: rgba(100, 116, 139, 0.25);
+  color: #94a3b8;
+}
+.badge.failed {
+  background: rgba(248, 113, 113, 0.2);
   color: var(--red);
 }
 

@@ -677,17 +677,46 @@ async def _fail_job(
                 j.status = JobStatus.PENDING
                 j.updated_at = datetime.now(timezone.utc)
                 await db.commit()
-            await publish_job_update(job_id=job.id, status="pending", progress=0, error=error[:500])
+            # Set retries_exhausted=False since we're retrying
+            await publish_job_update(
+                job_id=job.id, 
+                status="pending", 
+                progress=0, 
+                error=error[:500],
+                retries_exhausted=False
+            )
 
         asyncio.create_task(_delayed_retry())
         # Publish FAILED status immediately so UI shows the error
-        await publish_job_update(job_id=job.id, status="failed", progress=0, error=error[:500])
+        # Set retries_exhausted=False since we're retrying
+        await publish_job_update(
+            job_id=job.id, 
+            status="failed", 
+            progress=0, 
+            error=error[:500],
+            retries_exhausted=False
+        )
     elif should_retry:
         # Immediate retry without delay
-        await publish_job_update(job_id=job.id, status="pending", progress=0, error=error[:500])
+        # Set retries_exhausted=False since we're retrying
+        await publish_job_update(
+            job_id=job.id, 
+            status="pending", 
+            progress=0, 
+            error=error[:500],
+            retries_exhausted=False
+        )
     else:
         logger.error("Job %s failed: %s", job.id, error[:200])
-        await publish_job_update(job_id=job.id, status="failed", progress=0, error=error[:500])
+        # All retries exhausted - set retries_exhausted=True and include retry_count
+        await publish_job_update(
+            job_id=job.id, 
+            status="failed", 
+            progress=0, 
+            error=error[:500],
+            retries_exhausted=True,
+            retry_count=current_retries
+        )
 
 
 async def _complete_job(

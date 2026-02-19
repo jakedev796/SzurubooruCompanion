@@ -16,29 +16,34 @@ class AppColors {
   static const Color yellow = Color(0xFFFACC15);
   static const Color orange = Color(0xFFFB923C);
   static const Color purple = Color(0xFFC4B5FD);
+  /// Slate for stopped (distinct from failed red); matches frontend #94a3b8
+  static const Color slate = Color(0xFF94A3B8);
 }
 
 /// Status colors for job badges and indicators.
+/// Matches frontend: pending=orange, active=accent, paused=yellow, completed=green,
+/// merged=purple, stopped=slate, failed=red.
 class AppStatusColors {
   AppStatusColors._();
 
   static Color forStatus(String status) {
     switch (status.toLowerCase()) {
       case 'pending':
-        return AppColors.yellow;
+        return AppColors.orange;
       case 'downloading':
       case 'tagging':
       case 'uploading':
         return AppColors.accent;
+      case 'paused':
+        return AppColors.yellow;
       case 'completed':
         return AppColors.green;
       case 'merged':
         return AppColors.purple;
-      case 'failed':
       case 'stopped':
+        return AppColors.slate;
+      case 'failed':
         return AppColors.red;
-      case 'paused':
-        return AppColors.yellow;
       default:
         return AppColors.textMuted;
     }
