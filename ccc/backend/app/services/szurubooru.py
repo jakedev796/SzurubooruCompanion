@@ -464,3 +464,40 @@ async def search_by_checksum(checksum: str) -> List[dict]:
     if "error" in result:
         return [result]
     return result.get("results", [])
+
+
+# ---------------------------------------------------------------------------
+# Tag categories
+# ---------------------------------------------------------------------------
+
+
+async def fetch_tag_categories(szuru_url: str, username: str, token: str) -> dict:
+    """
+    Fetch tag categories from a Szurubooru/Oxibooru instance.
+
+    Uses the provided credentials directly (not the per-job context vars),
+    since this is called from the settings endpoint with user-supplied creds.
+
+    Returns {"results": [...]} with the category list, or {"error": ...} on failure.
+    """
+    global _session
+    if _session is None or _session.closed:
+        await init_session()
+
+    raw = f"{username}:{token}"
+    encoded = base64.b64encode(raw.encode()).decode()
+    headers = {"Authorization": f"Token {encoded}", "Accept": "application/json"}
+
+    try:
+        url = f"{szuru_url}/api/tag-categories"
+        async with _session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            data = await resp.json()
+            if resp.status == 200:
+                return data
+            return {"error": f"HTTP {resp.status}", "details": data}
+    except asyncio.TimeoutError:
+        logger.error("Timeout fetching tag categories from %s", szuru_url)
+        return {"error": "Timeout"}
+    except Exception as exc:
+        logger.exception("Error fetching tag categories from %s", szuru_url)
+        return {"error": str(exc)}
