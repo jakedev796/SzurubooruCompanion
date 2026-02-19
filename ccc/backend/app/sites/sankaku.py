@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from app.sites.base import CredentialSpec, SiteHandler
 
 # Domains that should all normalise to www.sankakucomplex.com
-_SANKAKU_DOMAINS = {"sankakucomplex.com", "www.sankakucomplex.com", "sankaku.app", "www.sankaku.app"}
+_SANKAKU_DOMAINS = {"sankakucomplex.com", "www.sankakucomplex.com", "chan.sankakucomplex.com", "sankaku.app", "www.sankaku.app"}
 
 
 class SankakuHandler(SiteHandler):

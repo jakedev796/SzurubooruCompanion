@@ -541,11 +541,12 @@ def _extract_filename_from_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 def normalize_sankaku_url(url: str) -> str:
-    """Use www.sankakucomplex.com so gallery-dl and credential logic work (apex domain is unsupported)."""
+    """Use www.sankakucomplex.com so gallery-dl and credential logic work (apex domain and chan subdomain are unsupported)."""
     if not url or not url.strip():
         return url
     parsed = urlparse(url.strip())
-    if parsed.netloc.lower() == "sankakucomplex.com":
+    netloc_lower = parsed.netloc.lower()
+    if netloc_lower in ("sankakucomplex.com", "chan.sankakucomplex.com"):
         return parsed._replace(netloc="www.sankakucomplex.com").geturl()
     return url
 
