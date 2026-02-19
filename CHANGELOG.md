@@ -7,12 +7,30 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
-- Fix chan.sankakucomplex.com handling: do not normalize to www.sankakucomplex.com (uses different post ID format).
-- Note: gallery-dl may report "'invalid id'" errors for chan.sankakucomplex.com numeric post IDs due to API limitations.
 
 ### Mobile App
 
 ### Browser Extension
+
+
+## [1.0.5] - 2026-02-19
+
+### Mobile App
+- Fix first-launch UX: only start bubble/notification when backend is configured and user is authenticated; stop services when not configured so the app stays on SetupScreen instead of closing.
+- Match frontend design for setup and login screens (hero image, quote, card layout). Add reimu.jpg asset; remove AppBar; add "Auth details are not stored in backups." note on login restore.
+- Fix CompanionForegroundService build by hoisting backendUrl into scope for the catch block; only run health check when URL is not blank.
+- Align status colors with frontend (pending=orange, stopped=slate, failed=red). Add AppColors.slate and update AppStatusColors.forStatus().
+
+### CCC - Frontend
+- Dashboard: add failed count to 30-day chart (secondary series/gradient). Refactor status colors (stopped=slate vs failed=red). Add Lucide icons to stat cards and status badges; reorder stats to Pending → Active → Completed → Merged → Stopped → Failed.
+- Job list/detail: add status icons and reorder pill order; filter pills show icons.
+- Source URLs on reload: include source_override in list API so SOURCE column stays populated after refresh. Add source_override to JobSummary type.
+
+### CCC - Backend
+- Fix chan.sankakucomplex.com handling: do not normalize to www.sankakucomplex.com (uses different post ID format).
+- Note: gallery-dl may report "'invalid id'" errors for chan.sankakucomplex.com numeric post IDs due to API limitations.
+- Stats: daily_uploads returns per-day failed count; by_status keeps completed and merged separate for dashboard cards.
+- Jobs list: return source_override in job summary for list/dashboard. Add source_override to JobSummaryOut.
 
 
 ## [1.0.4] - 2026-02-18
