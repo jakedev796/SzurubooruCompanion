@@ -67,7 +67,7 @@ class ClipboardReaderActivity : Activity() {
         val url = BackendHelper.normalizeUrl(text)
 
         if (url.isNullOrBlank()) {
-            showToast("No URL in clipboard")
+            showToast("No valid URL in clipboard")
             BubbleOverlayHelper.triggerResult(false)
             finish()
             return
@@ -75,14 +75,17 @@ class ClipboardReaderActivity : Activity() {
 
         Log.d(TAG, "URL from clipboard: $url")
 
-        val settings = BackendHelper.readSettings(this)
-
-        if (settings.backendUrl.isNullOrBlank()) {
-            showToast("Configure backend URL in SzuruCompanion settings first")
+        // Pre-flight health check
+        val healthStatus = HealthMonitor.validateBasicHealth(this)
+        if (healthStatus != HealthMonitor.HealthStatus.HEALTHY) {
+            val errorMessage = HealthMonitor.getErrorMessage(healthStatus)
+            showToast(errorMessage)
             BubbleOverlayHelper.triggerResult(false)
             finish()
             return
         }
+
+        val settings = BackendHelper.readSettings(this)
 
         val tags = BackendHelper.parseTags(settings.defaultTags)
         val payload = BackendHelper.buildPayload(
@@ -94,7 +97,12 @@ class ClipboardReaderActivity : Activity() {
 
         scope.launch {
             val success = withContext(Dispatchers.IO) {
-                BackendHelper.sendJobToBackend(settings.backendUrl, settings.accessToken, payload)
+                BackendHelper.sendJobToBackend(
+                    baseUrl = settings.backendUrl!!,
+                    accessToken = settings.accessToken,
+                    payload = payload,
+                    context = this@ClipboardReaderActivity
+                )
             }
             withContext(Dispatchers.Main) {
                 showToast(if (success) "Share queued" else "Failed to queue share")

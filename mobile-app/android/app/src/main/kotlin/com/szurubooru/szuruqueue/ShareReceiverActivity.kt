@@ -50,16 +50,19 @@ class ShareReceiverActivity : Activity() {
 
         Log.d(TAG, "Handling share intent with action: $action, type: ${intent.type}")
 
+        // Pre-flight health check
+        val healthStatus = HealthMonitor.validateBasicHealth(this)
+        if (healthStatus != HealthMonitor.HealthStatus.HEALTHY) {
+            val errorMessage = HealthMonitor.getErrorMessage(healthStatus)
+            showToast(errorMessage)
+            finish()
+            return
+        }
+
         val settings = BackendHelper.readSettings(this)
 
         Log.d(TAG, "Settings loaded - backendUrl: ${settings.backendUrl}, accessToken: ${if (settings.accessToken.isNullOrBlank()) "not set" else "present"}")
         Log.d(TAG, "Default settings - tags: ${settings.defaultTags}, safety: ${settings.defaultSafety}, skipTagging: ${settings.skipTagging}")
-
-        if (settings.backendUrl.isNullOrBlank()) {
-            showToast("Configure backend URL in SzuruCompanion settings first")
-            finish()
-            return
-        }
 
         val tags = BackendHelper.parseTags(settings.defaultTags)
         val extractedUrls = extractUrlsFromIntent(intent)
@@ -85,7 +88,12 @@ class ShareReceiverActivity : Activity() {
                     mimeType = urlData.mimeType,
                 )
                 val success = withContext(Dispatchers.IO) {
-                    BackendHelper.sendJobToBackend(settings.backendUrl, settings.accessToken, payload)
+                    BackendHelper.sendJobToBackend(
+                        baseUrl = settings.backendUrl!!,
+                        accessToken = settings.accessToken,
+                        payload = payload,
+                        context = this@ShareReceiverActivity
+                    )
                 }
                 if (success) successCount++ else failCount++
             }
@@ -118,6 +126,7 @@ class ShareReceiverActivity : Activity() {
                 if (mimeType?.startsWith("text/") == true) {
                     val text = intent.getStringExtra(Intent.EXTRA_TEXT)
                     val url = BackendHelper.normalizeUrl(text)
+                    // normalizeUrl now includes validation, so we can trust it
                     if (!url.isNullOrBlank()) {
                         urls.add(UrlData(url))
                     }

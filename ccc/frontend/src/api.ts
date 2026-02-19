@@ -122,6 +122,7 @@ export interface JobSummary {
   job_type: string;
   url?: string;
   original_filename?: string;
+  source_override?: string;
   safety?: string;
   szuru_user?: string;
   dashboard_username?: string;
@@ -147,7 +148,7 @@ export interface Job extends JobSummary {
 
 export interface StatsResponse {
   by_status: Record<string, number>;
-  daily_uploads?: { date: string; count: number }[];
+  daily_uploads?: { date: string; count: number; failed?: number }[];
 }
 
 export interface ConfigResponse {

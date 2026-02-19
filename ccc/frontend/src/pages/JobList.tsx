@@ -1,6 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Play, Pause, Square, Trash2, RefreshCcw } from "lucide-react";
+import {
+  Play,
+  Pause,
+  Square,
+  Trash2,
+  RefreshCcw,
+  Clock,
+  Download,
+  Tag,
+  Upload,
+  CheckCircle2,
+  GitMerge,
+  XCircle,
+  Ban,
+} from "lucide-react";
 import {
   fetchJobs,
   fetchJob,
@@ -26,9 +40,41 @@ import { useJobUpdates } from "../hooks/useJobUpdates";
 
 const PAGE_SIZE = 20;
 
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  pending: <Clock size={12} />,
+  downloading: <Download size={12} />,
+  tagging: <Tag size={12} />,
+  uploading: <Upload size={12} />,
+  paused: <Pause size={12} />,
+  completed: <CheckCircle2 size={12} />,
+  merged: <GitMerge size={12} />,
+  stopped: <Ban size={12} />,
+  failed: <XCircle size={12} />,
+};
+
 function StatusBadge({ status }: { status: string }) {
-  return <span className={`badge ${status}`}>{status}</span>;
+  const key = status.toLowerCase();
+  const icon = STATUS_ICONS[key];
+  return (
+    <span className={`badge ${key}`}>
+      {icon && <span className="badge-icon">{icon}</span>}
+      {status}
+    </span>
+  );
 }
+
+const STATUS_FILTER_ORDER: { value: string; label: string; icon: React.ReactNode }[] = [
+  { value: "", label: "All statuses", icon: null },
+  { value: "pending", label: "Pending", icon: <Clock size={12} /> },
+  { value: "downloading", label: "Downloading", icon: <Download size={12} /> },
+  { value: "tagging", label: "Tagging", icon: <Tag size={12} /> },
+  { value: "uploading", label: "Uploading", icon: <Upload size={12} /> },
+  { value: "paused", label: "Paused", icon: <Pause size={12} /> },
+  { value: "completed", label: "Completed", icon: <CheckCircle2 size={12} /> },
+  { value: "merged", label: "Merged", icon: <GitMerge size={12} /> },
+  { value: "stopped", label: "Stopped", icon: <Ban size={12} /> },
+  { value: "failed", label: "Failed", icon: <XCircle size={12} /> },
+];
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return "-";
@@ -431,18 +477,7 @@ export default function JobList() {
         </div>
       )}
       <div className="filters filter-pills">
-        {[
-          { value: "", label: "All statuses" },
-          { value: "pending", label: "Pending" },
-          { value: "downloading", label: "Downloading" },
-          { value: "tagging", label: "Tagging" },
-          { value: "uploading", label: "Uploading" },
-          { value: "paused", label: "Paused" },
-          { value: "stopped", label: "Stopped" },
-          { value: "completed", label: "Completed" },
-          { value: "merged", label: "Merged" },
-          { value: "failed", label: "Failed" },
-        ].map(({ value, label }) => {
+        {STATUS_FILTER_ORDER.map(({ value, label, icon }) => {
           const isActive = statusFilter === value;
           return (
             <button
@@ -451,6 +486,7 @@ export default function JobList() {
               className={`filter-pill badge ${value ? value : "all"} ${isActive ? "active" : ""}`}
               onClick={() => setFilter(value)}
             >
+              {icon && <span className="badge-icon">{icon}</span>}
               {label}
             </button>
           );

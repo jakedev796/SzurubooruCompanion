@@ -327,6 +327,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Apply bubble/notification state using the single companion foreground service.
   /// Do not start the standalone FloatingBubbleService or we get a duplicate bubble.
   Future<void> _applyBubbleAndNotificationFromState() async {
+    final settings = context.read<SettingsModel>();
+    
+    // Early return if backend is not configured or user is not authenticated
+    if (!settings.isConfigured || !settings.isAuthenticated) {
+      await stopCompanionForegroundService();
+      await stopFloatingBubbleService();
+      return;
+    }
+    
     if (!_showFloatingBubble) {
       await stopFloatingBubbleService();
       return;
@@ -338,7 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
-    final folders = await context.read<SettingsModel>().getScheduledFolders();
+    final folders = await settings.getScheduledFolders();
     if (!mounted) return;
     final hasFoldersEnabled = folders.any((f) => f.enabled == true);
     final folderSyncEnabled = hasFoldersEnabled && _showPersistentNotification;
