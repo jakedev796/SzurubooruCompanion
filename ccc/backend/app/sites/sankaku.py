@@ -30,12 +30,17 @@ class SankakuHandler(SiteHandler):
         
         Note: chan.sankakucomplex.com uses numeric post IDs and should NOT be normalized,
         as it uses a different ID format than www.sankakucomplex.com (hash-like IDs).
+        
+        Known issue: gallery-dl may fail with "'invalid id'" errors for chan.sankakucomplex.com
+        numeric post IDs due to API query format limitations. This is a gallery-dl issue, not CCC.
+        Ensure gallery-dl is updated to v1.29.0+ for best compatibility.
         """
         if not url or not url.strip():
             return url
         parsed = urlparse(url.strip())
         netloc_lower = parsed.netloc.lower()
         # Don't normalize chan.sankakucomplex.com - it uses different post ID format
+        # gallery-dl handles it directly, though numeric IDs may have API compatibility issues
         if netloc_lower == "chan.sankakucomplex.com":
             return url
         if netloc_lower in _SANKAKU_DOMAINS and netloc_lower != "www.sankakucomplex.com":

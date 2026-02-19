@@ -7,7 +7,8 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
-- Fix chan.sankakucomplex.com handling
+- Fix chan.sankakucomplex.com handling: do not normalize to www.sankakucomplex.com (uses different post ID format).
+- Note: gallery-dl may report "'invalid id'" errors for chan.sankakucomplex.com numeric post IDs due to API limitations.
 
 ### Mobile App
 
