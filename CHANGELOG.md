@@ -7,7 +7,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
-- Normalize chan.sankakucomplex.com URLs to www.sankakucomplex.com for gallery-dl compatibility.
+- Fix chan.sankakucomplex.com handling
 
 ### Mobile App
 

@@ -541,12 +541,21 @@ def _extract_filename_from_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 def normalize_sankaku_url(url: str) -> str:
-    """Use www.sankakucomplex.com so gallery-dl and credential logic work (apex domain and chan subdomain are unsupported)."""
+    """
+    Normalize Sankaku URLs for gallery-dl compatibility.
+    
+    Normalizes apex domain (sankakucomplex.com) to www.sankakucomplex.com.
+    Does NOT normalize chan.sankakucomplex.com as it uses different post ID format
+    (numeric IDs vs hash-like IDs) and gallery-dl handles it directly.
+    """
     if not url or not url.strip():
         return url
     parsed = urlparse(url.strip())
     netloc_lower = parsed.netloc.lower()
-    if netloc_lower in ("sankakucomplex.com", "chan.sankakucomplex.com"):
+    # Don't normalize chan.sankakucomplex.com - it uses different post ID format
+    if netloc_lower == "chan.sankakucomplex.com":
+        return url
+    if netloc_lower == "sankakucomplex.com":
         return parsed._replace(netloc="www.sankakucomplex.com").geturl()
     return url
 
