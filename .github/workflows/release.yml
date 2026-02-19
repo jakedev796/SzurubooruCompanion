@@ -314,9 +314,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
+      - name: Checkout main branch
         uses: actions/checkout@v4
         with:
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract release notes
@@ -356,7 +357,6 @@ jobs:
       - name: Update README version badge
         run: |
           VN="${{ needs.scope.outputs.version_name }}"
-          git checkout main || git checkout master
           sed -i "s|badge/version-[0-9.]*-blue|badge/version-$VN-blue|g" README.md
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
