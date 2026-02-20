@@ -1,6 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Play, Pause, Square, Trash2, RefreshCcw } from "lucide-react";
+import {
+  Play,
+  Pause,
+  Square,
+  Trash2,
+  RefreshCcw,
+  Clock,
+  Download,
+  Tag,
+  Upload,
+  CheckCircle2,
+  GitMerge,
+  XCircle,
+  Ban,
+} from "lucide-react";
 import {
   fetchStats,
   fetchJobs,
@@ -32,13 +46,33 @@ import {
 
 const ACTIVITY_LIMIT = 10;
 const CHART_ACCENT = "#C41E3A";
+const CHART_FAIL = "#f87171";
 const CHART_GRID = "rgba(255, 255, 255, 0.06)";
 const CHART_TOOLTIP_BG = "#252220";
 const CHART_TOOLTIP_BORDER = "#3d3632";
 const CHART_TICK = "#a39d93";
 
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  pending: <Clock size={12} />,
+  downloading: <Download size={12} />,
+  tagging: <Tag size={12} />,
+  uploading: <Upload size={12} />,
+  paused: <Pause size={12} />,
+  completed: <CheckCircle2 size={12} />,
+  merged: <GitMerge size={12} />,
+  stopped: <Ban size={12} />,
+  failed: <XCircle size={12} />,
+};
+
 function StatusBadge({ status }: { status: string }) {
-  return <span className={`badge ${status}`}>{status}</span>;
+  const key = status.toLowerCase();
+  const icon = STATUS_ICONS[key];
+  return (
+    <span className={`badge ${key}`}>
+      {icon && <span className="badge-icon">{icon}</span>}
+      {status}
+    </span>
+  );
 }
 
 function formatDate(iso: string | undefined): string {
@@ -296,43 +330,57 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* Primary stat cards */}
+      {/* Primary stat cards – order: in-progress, then completed/merged, then terminal (stopped/failed) */}
       <div className="stat-grid--primary">
         <div className="stat-card--colored stat-card--pending">
           <div className="value">{by_status.pending ?? 0}</div>
-          <div className="label">Pending</div>
+          <div className="label">
+            <Clock size={14} className="stat-label-icon" /> Pending
+          </div>
         </div>
         <div className="stat-card--colored stat-card--active">
           <div className="value">
             {(by_status.downloading ?? 0) + (by_status.tagging ?? 0) + (by_status.uploading ?? 0)}
           </div>
-          <div className="label">Active</div>
+          <div className="label">
+            <Download size={14} className="stat-label-icon" /> Active
+          </div>
         </div>
         <div className="stat-card--colored stat-card--completed">
           <div className="value">{by_status.completed ?? 0}</div>
-          <div className="label">Completed</div>
+          <div className="label">
+            <CheckCircle2 size={14} className="stat-label-icon" /> Completed
+          </div>
+        </div>
+        <div className="stat-card--colored stat-card--merged">
+          <div className="value">{by_status.merged ?? 0}</div>
+          <div className="label">
+            <GitMerge size={14} className="stat-label-icon" /> Merged
+          </div>
+        </div>
+        <div className="stat-card--colored stat-card--stopped">
+          <div className="value">{by_status.stopped ?? 0}</div>
+          <div className="label">
+            <Ban size={14} className="stat-label-icon" /> Stopped
+          </div>
         </div>
         <div className="stat-card--colored stat-card--failed">
           <div className="value">{by_status.failed ?? 0}</div>
-          <div className="label">Failed</div>
+          <div className="label">
+            <XCircle size={14} className="stat-label-icon" /> Failed
+          </div>
         </div>
       </div>
 
       {/* Secondary stat cards (only when non-zero) */}
-      {((by_status.paused ?? 0) > 0 || (by_status.stopped ?? 0) > 0) && (
+      {(by_status.paused ?? 0) > 0 && (
         <div className="stat-grid--secondary">
-          {(by_status.paused ?? 0) > 0 && (
-            <div className="stat-card--colored stat-card--paused">
-              <div className="value">{by_status.paused}</div>
-              <div className="label">Paused</div>
+          <div className="stat-card--colored stat-card--paused">
+            <div className="value">{by_status.paused}</div>
+            <div className="label">
+              <Pause size={14} className="stat-label-icon" /> Paused
             </div>
-          )}
-          {(by_status.stopped ?? 0) > 0 && (
-            <div className="stat-card--colored stat-card--stopped">
-              <div className="value">{by_status.stopped}</div>
-              <div className="label">Stopped</div>
-            </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -347,6 +395,10 @@ export default function Dashboard() {
                   <linearGradient id="uploadGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={CHART_ACCENT} stopOpacity={0.3} />
                     <stop offset="95%" stopColor={CHART_ACCENT} stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="failedGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_FAIL} stopOpacity={0.35} />
+                    <stop offset="95%" stopColor={CHART_FAIL} stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
@@ -367,9 +419,18 @@ export default function Dashboard() {
                 <Area
                   type="monotone"
                   dataKey="count"
+                  name="Jobs"
                   stroke={CHART_ACCENT}
                   strokeWidth={2}
                   fill="url(#uploadGradient)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="failed"
+                  name="Failed"
+                  stroke={CHART_FAIL}
+                  strokeWidth={2}
+                  fill="url(#failedGradient)"
                 />
               </AreaChart>
             </ResponsiveContainer>

@@ -39,6 +39,8 @@ class CompanionForegroundService : Service() {
     private val stopSse = AtomicBoolean(false)
     private val notifiedFailedJobs =
         Collections.synchronizedSet(mutableSetOf<String>())
+    private var healthCheckThread: Thread? = null
+    private val healthCheckLock = Any()
 
     override fun onCreate() {
         super.onCreate()
@@ -88,6 +90,13 @@ class CompanionForegroundService : Service() {
         stopSse.set(true)
         sseThread?.interrupt()
         sseThread = null
+        
+        // Clean up health check thread
+        synchronized(healthCheckLock) {
+            healthCheckThread?.interrupt()
+            healthCheckThread = null
+        }
+        
         super.onDestroy()
     }
 
@@ -175,10 +184,15 @@ class CompanionForegroundService : Service() {
     }
 
     private fun sseLoop() {
+        var lastHealthCheck = 0L
+        val healthCheckIntervalMs = 5 * 60 * 1000L // 5 minutes
+        var sseConnected = false
+        
         while (!stopSse.get()) {
+            var backendUrl = ""
             try {
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                val backendUrl = prefs.getString("flutter.backendUrl", "") ?: ""
+                backendUrl = prefs.getString("flutter.backendUrl", "") ?: ""
                 val authJson = prefs.getString("flutter.auth_tokens", null)
                 val username = prefs.getString("flutter.username", null)
 
@@ -214,10 +228,16 @@ class CompanionForegroundService : Service() {
                     conn.connect()
                     if (conn.responseCode != HttpURLConnection.HTTP_OK) {
                         Log.w(TAG, "SSE connection failed: ${conn.responseCode}")
+                        sseConnected = false
+                        // SSE disconnected - perform health check
+                        performHealthCheck(backendUrl)
                         conn.disconnect()
                         Thread.sleep(5_000)
                         continue
                     }
+                    
+                    // SSE connected successfully
+                    sseConnected = true
 
                     val reader = BufferedReader(InputStreamReader(conn.inputStream))
                     var line: String? = null
@@ -241,17 +261,91 @@ class CompanionForegroundService : Service() {
                 } finally {
                     conn.disconnect()
                 }
+                
+                // Periodic health check: only if interval elapsed (SSE connection state already checked above)
+                val now = System.currentTimeMillis()
+                if (now - lastHealthCheck > healthCheckIntervalMs) {
+                    performHealthCheck(backendUrl)
+                    lastHealthCheck = now
+                }
             } catch (e: InterruptedException) {
                 // Thread interrupted during sleep or read; exit if stopping
                 if (stopSse.get()) return
             } catch (e: Exception) {
                 Log.w(TAG, "Error in SSE loop", e)
+                sseConnected = false
+                // Error occurred - perform health check if we have a valid URL
+                val now = System.currentTimeMillis()
+                if (backendUrl.isNotBlank() && now - lastHealthCheck > healthCheckIntervalMs) {
+                    performHealthCheck(backendUrl)
+                    lastHealthCheck = now
+                }
             }
 
             try {
                 Thread.sleep(3_000)
             } catch (e: InterruptedException) {
                 if (stopSse.get()) return
+            }
+        }
+    }
+    
+    /**
+     * Perform a health check on the backend.
+     * Uses the /api/health endpoint (no auth required).
+     * Runs in a separate thread to avoid blocking SSE loop.
+     * 
+     * Thread-safe: Only allows one concurrent health check to prevent thread leaks.
+     * Tracks failures in HealthMonitor for consistency.
+     */
+    private fun performHealthCheck(backendUrl: String) {
+        synchronized(healthCheckLock) {
+            // If a health check is already running, skip this one
+            if (healthCheckThread?.isAlive == true) {
+                Log.d(TAG, "Health check already in progress, skipping")
+                return
+            }
+            
+            healthCheckThread = Thread {
+                try {
+                    // testBackendConnectivity is blocking, safe to call directly from thread
+                    val isHealthy = BackendHelper.testBackendConnectivity(backendUrl, timeoutSeconds = 5)
+                    if (!isHealthy) {
+                        Log.w(TAG, "Backend health check failed")
+                        // Track failure in HealthMonitor for consistency
+                        try {
+                            HealthMonitor.recordFailureSync(this@CompanionForegroundService, "health_check_failed")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to record health check failure", e)
+                        }
+                    } else {
+                        // Track success to reset failure count if backend is healthy
+                        try {
+                            HealthMonitor.recordSuccessSync(this@CompanionForegroundService)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to record health check success", e)
+                        }
+                    }
+                } catch (e: InterruptedException) {
+                    // Thread interrupted, exit gracefully
+                    Log.d(TAG, "Health check interrupted")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to perform health check", e)
+                    // Track failure
+                    try {
+                        HealthMonitor.recordFailureSync(this@CompanionForegroundService, "health_check_error")
+                    } catch (ex: Exception) {
+                        Log.w(TAG, "Failed to record health check error", ex)
+                    }
+                } finally {
+                    synchronized(healthCheckLock) {
+                        healthCheckThread = null
+                    }
+                }
+            }.apply {
+                name = "CCC-HealthCheck"
+                isDaemon = true
+                start()
             }
         }
     }
@@ -266,7 +360,10 @@ class CompanionForegroundService : Service() {
             val json = JSONObject(payload)
             val status = json.optString("status", "").lowercase(Locale.ROOT)
             val jobId = json.optString("job_id", "")
-            if (status != "failed" || jobId.isBlank()) return
+            val retriesExhausted = json.optBoolean("retries_exhausted", false)
+            
+            // Only process failed jobs where retries are exhausted
+            if (status != "failed" || jobId.isBlank() || !retriesExhausted) return
 
             synchronized(notifiedFailedJobs) {
                 if (notifiedFailedJobs.contains(jobId)) {

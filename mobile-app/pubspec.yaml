@@ -2,7 +2,7 @@ name: szuruqueue
 description: "Szurubooru queue uploader - Share media to your szurubooru instance"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.5+5
 
 environment:
   sdk: ^3.10.8
@@ -49,6 +49,9 @@ dependencies:
   # App restart (e.g. after settings restore)
   flutter_phoenix: ^1.1.0
 
+  # Current app version for update check
+  package_info_plus: ^8.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -58,3 +61,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icons/
+    - assets/images/

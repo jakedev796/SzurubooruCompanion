@@ -176,9 +176,18 @@ function showButton(media: HTMLElement): void {
  * Check if an element is grabbable media.
  */
 export function isGrabbableMedia(element: HTMLElement): boolean {
+  if (!element || !element.tagName) {
+    return false;
+  }
+  
   if (element.tagName === 'IMG') {
     const img = element as HTMLImageElement;
     const src = img.src;
+    
+    // Skip if no src or invalid URL
+    if (!src || src === 'data:' || src.startsWith('blob:')) {
+      return false;
+    }
     
     // Skip if not loaded or too small
     if (!img.complete || img.naturalWidth < 50 || img.naturalHeight < 50) {
@@ -209,6 +218,10 @@ export function isGrabbableMedia(element: HTMLElement): boolean {
   
   if (element.tagName === 'VIDEO') {
     const video = element as HTMLVideoElement;
+    // Check if video has a valid source
+    if (!video.src && (!video.srcObject || !video.currentSrc)) {
+      return false;
+    }
     return video.readyState >= 1; // HAVE_METADATA
   }
   
@@ -230,7 +243,12 @@ export function initFloatingButton(
     e.preventDefault();
     e.stopPropagation();
     
-    if (state.currentMedia) {
+    if (!state.currentMedia) {
+      console.warn('[CCC] Button clicked but no media element available');
+      return;
+    }
+    
+    try {
       // Visual feedback
       button.style.background = '#22c55e';
       setTimeout(() => {
@@ -238,6 +256,12 @@ export function initFloatingButton(
       }, 200);
       
       onGrab(state.currentMedia);
+    } catch (error) {
+      console.error('[CCC] Error in button click handler:', error);
+      showToast(
+        error instanceof Error ? error.message : 'Failed to process media',
+        'error'
+      );
     }
   };
   

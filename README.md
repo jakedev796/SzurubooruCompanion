@@ -6,9 +6,9 @@ _Artwork: Hakurei Reimu by [kageharu](https://twitter.com/kageharu) - [Source](h
 
 # Szurubooru Companion
 
-[![Status: WIP](https://img.shields.io/badge/status-WIP-orange)](https://github.com/jakedev796/SzurubooruCompanion) [![Python 3.11](https://img.shields.io/badge/python-3.11-blue)](https://github.com/jakedev796/SzurubooruCompanion) [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/jakedev796/SzurubooruCompanion/blob/main/LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.5-blue)](https://github.com/jakedev796/SzurubooruCompanion) [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![Flutter](https://img.shields.io/badge/Flutter-3.41.1-02569B?logo=flutter&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![Docker](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](https://github.com/jakedev796/SzurubooruCompanion) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/jakedev796/SzurubooruCompanion/blob/main/LICENSE)
 
-**A complete workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) from anywhere—browser or mobile—with automatic AI tagging, metadata extraction, and intelligent processing.**
+**A complete workflow for uploading media to [Szurubooru](https://github.com/rr-/szurubooru) (or [Oxibooru](https://github.com/liamw1/oxibooru)) from anywhere—browser or mobile—with automatic AI tagging, metadata extraction, and intelligent processing.**
 
 Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URLs from your phone, right-click images in Chrome, or tap the floating bubble. The CCC backend handles everything: downloading with gallery-dl/yt-dlp, AI tagging with WD14, and uploading to your Szurubooru instance.
 
@@ -36,9 +36,9 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 - **Background Sync** — Optional folder monitoring for automated uploads from camera/downloads
 
 ### **User Management & Security**
-- **Database-Backed User System** — Create and manage users through the dashboard with JWT authentication
+- **Multi-User Support** — Create and manage users through the dashboard with JWT authentication
 - **Per-User Credentials** — Each user configures their own Szurubooru and site credentials (Twitter, Sankaku, etc.)
-- **Encrypted Storage** — All credentials encrypted in database using Fernet
+- **Encrypted Storage** — All credentials encrypted at rest in the database
 - **Role-Based Access** — Admin and user roles with granular permissions
 - **Category Mappings** — Map WD14 tag categories to your Szurubooru instance's custom categories
 
@@ -54,63 +54,84 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
 
 ---
 
+## Screenshots
+
+### Dashboard
+<p align="center">
+  <img src="misc/screenshots/dashboard.png" alt="Dashboard" width="700"/>
+</p>
+
+### Browser Extension
+<p align="center">
+  <img src="misc/screenshots/extension.png" alt="Browser Extension" width="350"/>
+</p>
+
+### Mobile App
+<p align="center">
+  <img src="misc/screenshots/mobile-app.jpg" alt="Mobile App" width="300"/>
+</p>
+
+---
+
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                          INPUT SOURCES                          │
-├─────────────────────┬──────────────────────┬────────────────────┤
-│  Browser Extension  │    Mobile App        │   Web Dashboard    │
-│  (Chrome/FF/Edge)   │    (Android)         │   (React + Vite)   │
-│                     │                      │                    │
-│  • Right-click      │  • Share sheet       │  • Queue monitor   │
-│  • Popup submit     │  • Floating bubble   │  • Job history     │
-│  • Context menu     │  • Job status viewer │  • Real-time logs  │
-└──────────┬──────────┴──────────┬───────────┴──────────┬─────────┘
-           │                     │                      │
-           └─────────────────────┴──────────────────────┘
-                                 ▼
-              ┌─────────────────────────────────────┐
-              │       CCC Backend (FastAPI)         │
-              │   • Job queue (Redis + Postgres)    │
-              │   • Background worker (sync/async)  │
-              │   • WD14 Tagger (in-process)        │
-              └──────────────┬──────────────────────┘
-                             ▼
-           ┌─────────────────────────────────────────┐
-           │         DOWNLOAD & PROCESS              │
-           ├──────────────────┬──────────────────────┤
-           │   gallery-dl     │      yt-dlp          │
-           │   • Metadata     │      • Videos        │
-           │   • Multi-image  │      • Audio         │
-           │   • Pagination   │      • Live streams  │
-           └──────────────────┴──────────────────────┘
-                             ▼
-           ┌─────────────────────────────────────────┐
-           │          AI TAGGING (WD14)              │
-           │   • Character recognition               │
-           │   • Object/scene detection              │
-           │   • Style classification                │
-           │   • Automatic threshold filtering       │
-           └─────────────────┬───────────────────────┘
-                             ▼
-              ┌─────────────────────────────────────┐
-              │       Szurubooru Instance           │
-              │   • Upload media + metadata         │
-              │   • Merge tags (AI + manual)        │
-              │   • Multi-user attribution          │
-              └─────────────────────────────────────┘
-```
+```mermaid
+flowchart LR
+    subgraph Clients
+        direction TB
+        A[Browser Extension<br/>Chrome · FF · Edge]
+        B[Mobile App<br/>Android]
+        C[Web Dashboard<br/>React]
+    end
 
-**Data Flow:** All clients send URLs to the CCC backend → Backend downloads, tags, and uploads → Szurubooru receives fully processed posts.
+    subgraph Core
+        E[CCC Backend<br/>FastAPI]
+        F[Job Queue<br/>Redis + Postgres]
+        G[Background Worker]
+    end
+
+    subgraph Pipeline
+        direction TB
+        I[gallery-dl<br/>Images]
+        J[yt-dlp<br/>Videos · Audio]
+        H[WD14 Tagger]
+    end
+
+    K[Szurubooru / Oxibooru]
+
+    A --> E
+    B --> E
+    C --> E
+
+    E --> F --> G
+
+    G --> I
+    G --> J
+
+    I --> H
+    J --> K
+
+    H --> K
+
+    style E fill:#1e88e5,color:#fff,stroke:#1565c0
+    style F fill:#1e88e5,color:#fff,stroke:#1565c0
+    style G fill:#1e88e5,color:#fff,stroke:#1565c0
+    style H fill:#fb8c00,color:#fff,stroke:#ef6c00
+    style K fill:#43a047,color:#fff,stroke:#2e7d32
+    style A fill:#78909c,color:#fff,stroke:#546e6a
+    style B fill:#78909c,color:#fff,stroke:#546e6a
+    style C fill:#78909c,color:#fff,stroke:#546e6a
+    style I fill:#7e57c2,color:#fff,stroke:#5e35b1
+    style J fill:#7e57c2,color:#fff,stroke:#5e35b1
+```
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-- Docker + Docker Compose
-- Szurubooru instance (URL + API token)
+- Docker (and Docker Compose if using compose)
+- [Szurubooru](https://github.com/rr-/szurubooru) or [Oxibooru](https://github.com/liamw1/oxibooru) instance (URL + API token)
 
 ### Setup
 
@@ -127,20 +148,33 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
    ADMIN_USER=admin
    ADMIN_PASSWORD=your-secure-password
 
-   # Encryption key for credentials (required - generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+   # Encryption key for credentials (required)
    ENCRYPTION_KEY=your-generated-encryption-key
+   ```
+
+   Generate the encryption key:
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 
    > **Note:** Szurubooru credentials are configured per-user through the dashboard. The browser extension and mobile app use **JWT login** (username/password) to authenticate with the CCC backend; no API key is used.
 
-3. **Start the stack:**
+3. **Start CCC (single s6 image from GHCR):**
    ```bash
    docker compose up -d
    ```
+   Or without compose:
+   ```bash
+   docker run -d --name szurubooru-companion \
+     -p 21425:21425 \
+     --env-file ccc/backend/.env \
+     -v szurubooru-companion-data:/data \
+     -v szurubooru-companion-config:/config \
+     ghcr.io/jakedev796/szuruboorucompanion:latest
+   ```
 
-4. **Access services:**
-   - **CCC Backend API:** `http://localhost:21425`
-   - **CCC Dashboard:** `http://localhost:21430` (login with admin credentials)
+4. **Access:**
+   - **CCC API and Dashboard:** `http://localhost:21425` (login with admin credentials)
    - Configure reverse proxy (optional but recommended): [docs/reverse-proxy.md](docs/reverse-proxy.md)
 
 5. **Configure through dashboard:**
@@ -149,119 +183,33 @@ Save media from Twitter, Pixiv, Danbooru, 4chan, and 100+ other sites. Share URL
    - Enter your Szurubooru URL, username, and API token
    - Configure site credentials if needed (Settings → Site Credentials)
 
+**Development:** For local development with separate backend, frontend, Postgres, and Redis, use the dev compose:
+`docker compose -f docker-compose.dev.yml up -d`. Backend at 21425, dashboard at 21430.
+
 ---
 
 ## Components
 
-### **CCC Backend**
-FastAPI service that handles all processing. Includes background worker, job queue (Redis), database (Postgres), and WD14 tagger.
-- **Port:** 21425
-- **Config:** [ccc/backend/.env.example](ccc/backend/.env.example)
-- **Tech:** Python, FastAPI, gallery-dl, yt-dlp, wdtagger
+| Component | Tech | Port | Docs |
+|-----------|------|------|------|
+| **CCC Backend** | Python, FastAPI, gallery-dl, yt-dlp, wdtagger | 21425 | [.env.example](ccc/backend/.env.example) |
+| **CCC Dashboard** | React, Vite | 21430 (dev) / 21425 (prod) | — |
+| **Browser Extension** | WXT (Chrome MV3, Firefox MV2) | — | [docs/browser-extension.md](docs/browser-extension.md) |
+| **Mobile App** | Flutter (Android) | — | [docs/mobile-app.md](docs/mobile-app.md) |
 
-### **CCC Dashboard**
-React web interface with user management, settings, and job monitoring.
-- **Port:** 21430
-- **Features:**
-  - User authentication with JWT tokens
-  - User management (admin only) — Create, edit, deactivate users
-  - Personal settings — Configure Szurubooru credentials and site authentication
-  - Global settings (admin only) — WD14 tagger, worker concurrency, timeouts
-  - Category mappings — Map internal tag categories to Szurubooru categories
-  - Real-time job monitoring and queue management
-- **Tech:** React, Vite
-
-### **Browser Extension**
-WXT-based extension for Chrome, Firefox, and Edge.
-- **Install:** See [docs/browser-extension.md](docs/browser-extension.md)
-- **Location:** Pre-built in [`builds/`](builds/)
-- **Features:** Right-click context menu, popup submit, automatic URL detection
-
-### **Mobile App**
-Flutter Android app with share sheet integration, floating bubble overlay, and job monitoring.
-- **Install:** See [docs/mobile-app.md](docs/mobile-app.md)
-- **Location:** APK in [`builds/`](builds/)
-- **Features:**
-  - System share sheet integration
-  - **Floating bubble overlay** — Tap to queue clipboard URLs from any app
-  - Visual feedback (green glow = success, red pulse = failure)
-  - Built-in job status viewer
-  - Optional background folder sync
-
----
-
-## Configuration
-
-### Initial Setup
-
-1. **Generate encryption key:**
-   ```bash
-   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-   ```
-
-2. **Configure environment variables** in `ccc/backend/.env`:
-   ```env
-   ADMIN_USER=admin
-   ADMIN_PASSWORD=your-secure-password
-   ENCRYPTION_KEY=<key-from-step-1>
-   ```
-
-3. **Start the stack:**
-   ```bash
-   docker compose up -d
-   ```
-
-4. **Login to dashboard** at `http://localhost:21430` with your admin credentials
-
-### Dashboard Configuration
-
-After logging in, configure settings through the dashboard:
-
-#### **My Profile** (Settings → My Profile)
-- Szurubooru URL, username, and API token
-- Test connection to verify credentials
-- Fetch and map tag categories from your Szurubooru instance
-
-#### **Site Credentials** (Settings → Site Credentials)
-Configure authentication for sites that require login credentials (Twitter, Sankaku, Danbooru, Reddit, etc.). All credentials are encrypted in the database and never stored in plain text.
-
-#### **Global Settings** (Settings → Global Settings - Admin only)
-- **WD14 Tagger:** Enable/disable, model selection, confidence threshold, max tags
-- **Worker Settings:** Concurrency, timeouts, retry configuration
-- Container restart required for WD14 changes to take effect
-
-#### **User Management** (Settings → Users - Admin only)
-- Create new users with username, password, and role (admin/user)
-- Edit users: Reset password, promote/demote admin, activate/deactivate
-- Each user configures their own Szurubooru and site credentials
-
-#### **Category Mappings** (Settings → My Profile)
-Map internal tag categories to your Szurubooru instance's custom categories:
-- **general** → Default category for general tags
-- **artist** → Artist/creator tags
-- **character** → Character name tags
-- **copyright** → Series/franchise tags
-- **meta** → Meta information tags
-
-Fetch categories directly from Szurubooru using "Fetch Tag Categories" button.
-
-### Environment Variables Reference
-See [ccc/backend/.env.example](ccc/backend/.env.example) for all available options. .
-
-### Site-Specific Configuration
-Some sites require cookies or special handling. See [docs/sites.md](docs/sites.md) for:
-- Confirmed working sites
-- Cookie/authentication setup
-- Special cases (Moeview, 4chan, etc.)
+Pre-built releases for the browser extension and mobile app are available on [GitHub Releases](https://github.com/jakedev796/SzurubooruCompanion/releases).
 
 ---
 
 ## Documentation
 
-- **[Browser Extension Guide](docs/browser-extension.md)** — Build, install, and usage
-- **[Mobile App Guide](docs/mobile-app.md)** — Build, install, floating bubble setup
-- **[Reverse Proxy Setup](docs/reverse-proxy.md)** — Nginx Proxy Manager configuration
+**Quick Links:**
+- **[Configuration Guide](docs/configuration.md)** — Setup, dashboard settings, environment variables
+- **[Browser Extension](docs/browser-extension.md)** — Installation and usage
+- **[Mobile App](docs/mobile-app.md)** — Installation and features
+- **[Reverse Proxy Setup](docs/reverse-proxy.md)** — Nginx Proxy Manager and other proxies
 - **[Supported Sites](docs/sites.md)** — Confirmed sites and special configurations
+- **[Changelog](CHANGELOG.md)** — Version history for all components
 
 ---
 
@@ -274,14 +222,19 @@ SzurubooruCompanion/
 │   └── frontend/           # React dashboard
 ├── browser-ext/            # WXT browser extension
 ├── mobile-app/             # Flutter Android app
-├── builds/                 # Pre-built releases (extension, APK)
+├── builds/                 # Local use only (only for local dev); distribution via GitHub Releases
 ├── docs/                   # Detailed guides
-└── docker-compose.yml      # Full stack orchestration
+├── VERSION                 # Single version for releases (versionName+versionCode)
+├── CHANGELOG.md            # Changelog for all components
+├── docker-compose.yml      # Production: s6 image from GHCR
+└── docker-compose.dev.yml  # Development: backend, frontend, postgres, redis
 ```
 
 ---
 
 ## Development
+
+> **Note:** Local development requires Postgres and Redis. The easiest way is to use the dev compose (`docker compose -f docker-compose.dev.yml up -d`) which starts both alongside the backend and frontend. The commands below are for running individual components outside of Docker.
 
 ### Backend
 ```bash
@@ -316,24 +269,6 @@ flutter run
 
 ---
 
-## Known Issues & TODO
-
-### In Progress
-- [ ] Finetune site extractors for edge cases
-- [ ] Performance optimizations for large batch jobs
-- [ ] Right-click individual images on Twitter/X (currently queues entire feed)
-
-### Future Enhancements
-- [ ] Password reset via email
-- [ ] Two-factor authentication (2FA)
-- [ ] Session management (revoke tokens)
-- [ ] Encryption key rotation tool
-- [ ] Per-user WD14 settings
-- [ ] Audit log viewer in dashboard
-- [ ] iOS app (no current plans—contributions welcome)
-
----
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
@@ -346,5 +281,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **gallery-dl:** [mikf/gallery-dl](https://github.com/mikf/gallery-dl)
 - **yt-dlp:** [yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - **Szurubooru:** [rr-/szurubooru](https://github.com/rr-/szurubooru)
+- **Oxibooru:** [liamw1/oxibooru](https://github.com/liamw1/oxibooru)
 
 Banner artwork: Hakurei Reimu by [kageharu](https://twitter.com/kageharu)

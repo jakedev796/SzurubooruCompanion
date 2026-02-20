@@ -182,6 +182,8 @@ async def publish_job_update(
     related_post_ids: Optional[List[int]] = None,
     tags: Optional[list] = None,
     was_merge: Optional[bool] = None,
+    retries_exhausted: Optional[bool] = None,
+    retry_count: Optional[int] = None,
 ) -> None:
     """
     Publish a job update to Redis for SSE distribution.
@@ -198,6 +200,8 @@ async def publish_job_update(
         related_post_ids: Optional list of related Szurubooru post IDs (multi-file jobs)
         tags: Optional list of applied tags for completed jobs
         was_merge: Optional; True if job was merged into an existing post
+        retries_exhausted: Optional; True if all retries have been exhausted (only set when True)
+        retry_count: Optional; Current retry count (included when retries_exhausted is True)
     """
     redis = get_redis_client()
 
@@ -225,6 +229,10 @@ async def publish_job_update(
             data["tags"] = tags
         if was_merge is not None:
             data["was_merge"] = was_merge
+        if retries_exhausted is not None:
+            data["retries_exhausted"] = retries_exhausted
+        if retry_count is not None:
+            data["retry_count"] = retry_count
 
         await redis.publish(JOB_UPDATES_CHANNEL, json.dumps(data))
         logger.debug("Published job update: %s", data)

@@ -46,18 +46,35 @@ function findExtractor(): SiteExtractor | null {
 }
 
 /**
+ * Validate URL format.
+ * Returns true if URL is valid (has http/https scheme and host), false otherwise.
+ */
+function validateUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  
+  try {
+    const urlObj = new URL(url);
+    // Check for valid scheme (http/https) and host
+    return (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') && 
+           urlObj.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Get the media URL from an element.
  */
 function getElementMediaUrl(element: HTMLElement): string | null {
   // First try the common utility
   const url = getMediaUrl(element);
-  if (url) return url;
+  if (url && validateUrl(url)) return url;
   
   // Try background-image for divs
   if (element.tagName !== 'IMG' && element.tagName !== 'VIDEO') {
     const bgImage = window.getComputedStyle(element).backgroundImage;
     const match = bgImage.match(/url\(['"]?([^'")]+)['"]?\)/);
-    if (match) return match[1];
+    if (match && validateUrl(match[1])) return match[1];
   }
   
   return null;
@@ -91,6 +108,12 @@ async function handleMediaGrab(mediaElement: HTMLElement): Promise<void> {
     }
     
     console.log('[CCC] Extracted media info:', mediaInfo);
+    
+    // Validate URL before submitting
+    if (!validateUrl(mediaInfo.url)) {
+      showToast('Invalid URL format', 'error');
+      return;
+    }
     
     // Send to background script
     const message: ContentScriptMessage = {

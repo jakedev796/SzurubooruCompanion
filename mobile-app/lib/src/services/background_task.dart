@@ -11,6 +11,7 @@ import '../models/scheduled_folder.dart';
 import 'companion_foreground_service.dart';
 import 'notification_service.dart';
 import 'settings_model.dart';
+import 'update_service.dart';
 
 const _channel = MethodChannel('com.szurubooru.szuruqueue/share');
 
@@ -22,6 +23,9 @@ const int kMaxSyncIntervalSeconds = 604800;
 
 /// Task name for background uploads from share intents
 const String kUploadTask = 'upload-task';
+
+/// Task name for periodic update check (writes pending update to prefs; notification shown on next app open)
+const String kUpdateCheckTask = 'update_check_task';
 
 /// Next run at clock-aligned boundary for [intervalSeconds].
 /// E.g. 30 min -> next :00 or :30; 15 min -> next :00, :15, :30, :45.
@@ -141,6 +145,18 @@ void callbackDispatcher() {
         }
       }
 
+      if (task == kUpdateCheckTask) {
+        try {
+          final wrote = await checkForUpdateInBackground();
+          debugPrint('[BackgroundIsolate] Update check complete: pendingUpdate=$wrote');
+          return Future.value(true);
+        } catch (e, st) {
+          debugPrint('[BackgroundIsolate] Update check error: $e');
+          debugPrint('[BackgroundIsolate] $st');
+          return Future.value(false);
+        }
+      }
+
       // Handle folder scan (triggered by AlarmManager)
       final outcome = await processScheduledFolders();
       debugPrint(
@@ -189,19 +205,19 @@ typedef FolderScanOutcome = ({bool success, int uploaded});
 Future<FolderScanOutcome> processScheduledFolders() async {
   try {
     debugPrint('[FolderSync] processScheduledFolders() started');
-  final settings = SettingsModel();
-  await settings.loadSettings();
+    final settings = SettingsModel();
+    await settings.loadSettings();
 
-  final serverUrl = settings.backendUrl;
+    final serverUrl = settings.backendUrl;
 
-  if (serverUrl.isEmpty) {
-    debugPrint(
-      '[FolderSync] Server URL not configured, skipping folder scan',
-    );
-    return (success: true, uploaded: 0);
-  }
+    if (serverUrl.isEmpty) {
+      debugPrint(
+        '[FolderSync] Server URL not configured, skipping folder scan',
+      );
+      return (success: true, uploaded: 0);
+    }
 
-  final intervalSeconds = settings.folderSyncIntervalSeconds.clamp(
+    final intervalSeconds = settings.folderSyncIntervalSeconds.clamp(
       900,
       604800,
     );
@@ -315,8 +331,15 @@ Future<FolderScanOutcome> processScheduledFolders() async {
 /// Registers the callback dispatcher for WorkManager isolate execution
 Future<void> initializeBackgroundTasks() async {
   await Workmanager().initialize(callbackDispatcher, isInDebugMode: kDebugMode);
+  await Workmanager().registerPeriodicTask(
+    'szurucompanion_update_check',
+    kUpdateCheckTask,
+    frequency: const Duration(hours: 24),
+    initialDelay: const Duration(minutes: 5),
+  );
   debugPrint('[BackgroundTask] WorkManager callback dispatcher initialized');
   debugPrint('[BackgroundTask] Using AlarmManager for scheduling');
+  debugPrint('[BackgroundTask] Update check task registered (every 24h)');
 }
 
 /// Check if we have exact alarm permission (Android 12+)
@@ -425,7 +448,6 @@ Future<void> cancelFolderScanTask() async {
   await stopCompanionForegroundService();
   debugPrint('[BackgroundTask] AlarmManager sync cancelled');
 }
-
 
 /// Debug: Print detailed status of background sync
 Future<void> debugBackgroundSyncStatus() async {

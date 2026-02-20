@@ -1,0 +1,376 @@
+# Unified release: on tag v* (optional suffix -ccc, -ext, -mobile) create GitHub Release,
+# build and push CCC image (scope all/ccc), browser extension zips (scope all/ext), mobile APK + version.json (scope all/mobile).
+# Version and changelog come from root VERSION and CHANGELOG.md.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      scope_ccc: ${{ steps.scope.outputs.scope_ccc }}
+      scope_ext: ${{ steps.scope.outputs.scope_ext }}
+      scope_mobile: ${{ steps.scope.outputs.scope_mobile }}
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse scope from tag
+        id: scope
+        run: |
+          TAG="${{ github.ref_name }}"
+          case "$TAG" in
+            *-ccc)  C=1; E=0; M=0 ;;
+            *-ext)  C=0; E=1; M=0 ;;
+            *-mobile) C=0; E=0; M=1 ;;
+            *)      C=1; E=1; M=1 ;;
+          esac
+          echo "scope_ccc=$C" >> "$GITHUB_OUTPUT"
+          echo "scope_ext=$E" >> "$GITHUB_OUTPUT"
+          echo "scope_mobile=$M" >> "$GITHUB_OUTPUT"
+
+      - name: Parse VERSION
+        id: version
+        run: |
+          LINE=$(cat VERSION | tr -d ' \n')
+          VN=$(echo "$LINE" | sed -n 's/^\([^+]*\)+.*/\1/p')
+          VC=$(echo "$LINE" | sed -n 's/^[^+]*+ *\([0-9]*\).*/\1/p')
+          echo "version_name=${VN:-0.0.0}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VC:-0}" >> "$GITHUB_OUTPUT"
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: scope
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract release notes for this version
+        run: |
+          VN="${{ needs.scope.outputs.version_name }}"
+          awk -v ver="$VN" '
+            BEGIN { gsub(/\./, "\\.", ver); re = "^## \\[" ver "\\]" }
+            $0 ~ re { found=1; print; next }
+            found { if ($0 ~ /^## \[/) exit; print }
+          ' CHANGELOG.md > release-notes.md
+          [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
+
+      - name: Build component list and title
+        id: title
+        run: |
+          COMPONENTS=()
+          [ "${{ needs.scope.outputs.scope_ccc }}" = "1" ] && COMPONENTS+=("CCC")
+          [ "${{ needs.scope.outputs.scope_ext }}" = "1" ] && COMPONENTS+=("Extensions")
+          [ "${{ needs.scope.outputs.scope_mobile }}" = "1" ] && COMPONENTS+=("Mobile App")
+          if [ ${#COMPONENTS[@]} -eq 0 ]; then
+            COMPONENT_SUFFIX=""
+          elif [ ${#COMPONENTS[@]} -eq 3 ]; then
+            COMPONENT_SUFFIX=" (All Components)"
+          else
+            COMPONENT_SUFFIX=" ($(IFS=', '; echo "${COMPONENTS[*]}"))"
+          fi
+          echo "title=SzuruCompanion ${{ needs.scope.outputs.version_name }}$COMPONENT_SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "has_ccc=${{ needs.scope.outputs.scope_ccc }}" >> "$GITHUB_OUTPUT"
+
+      - name: Append CCC note if needed
+        if: needs.scope.outputs.scope_ccc == '1'
+        run: |
+          echo "" >> release-notes.md
+          echo "---" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "**Note:** Be sure to update your local Docker images. Docker builds should be live." >> release-notes.md
+
+      - name: Create release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ steps.title.outputs.title }}
+          body_path: release-notes.md
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ccc:
+    needs: scope
+    if: needs.scope.outputs.scope_ccc == '1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  browser:
+    needs: [scope, create-release]
+    if: needs.scope.outputs.scope_ext == '1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: browser-ext/package-lock.json
+
+      - name: Inject version from VERSION
+        run: |
+          VN=$(cat VERSION | tr -d ' \n' | sed -n 's/^\([^+]*\)+.*/\1/p')
+          [ -n "$VN" ] || VN="0.0.0"
+          cd browser-ext && npm pkg set version="$VN"
+
+      - name: Install and build
+        run: |
+          cd browser-ext
+          npm ci
+          npm run build
+          npm run build:firefox
+
+      - name: Zip artifacts
+        run: |
+          (cd builds/browser-ext/chrome-mv3 && zip -r ../../../browser-ext/chrome-mv3.zip .)
+          (cd builds/browser-ext/firefox-mv2 && zip -r ../../../browser-ext/firefox-mv2.zip .)
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: |
+            browser-ext/chrome-mv3.zip
+            browser-ext/firefox-mv2.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  mobile:
+    needs: [scope, create-release]
+    if: needs.scope.outputs.scope_mobile == '1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.1'
+          channel: 'stable'
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            mobile-app/.dart_tool
+            mobile-app/workmanager_patch/.dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('mobile-app/pubspec.lock', 'mobile-app/workmanager_patch/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            mobile-app/android/.gradle
+            mobile-app/workmanager_patch/android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('mobile-app/android/gradle/wrapper/gradle-wrapper.properties', 'mobile-app/workmanager_patch/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Inject version from VERSION into pubspec
+        run: |
+          LINE=$(cat VERSION | tr -d ' \n')
+          sed -i "s/^version: .*/version: $LINE/" mobile-app/pubspec.yaml
+
+      - name: Install Flutter dependencies
+        run: cd mobile-app && flutter pub get
+
+      - name: Create signing files from secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 not set. See mobile-app/docs/android-release-signing.md"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > mobile-app/android/app/upload-keystore.jks
+          cat > mobile-app/android/key.properties << EOF
+          storePassword=$ANDROID_STORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Build APK
+        run: cd mobile-app && flutter build apk --release
+
+      - name: Extract release notes for version.json
+        run: |
+          VN="${{ needs.scope.outputs.version_name }}"
+          awk -v ver="$VN" '
+            BEGIN { gsub(/\./, "\\.", ver); re = "^## \\[" ver "\\]" }
+            $0 ~ re { found=1; print; next }
+            found { if ($0 ~ /^## \[/) exit; print }
+          ' CHANGELOG.md > release-notes.md
+          [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
+
+      - name: Create version.json
+        run: |
+          VN=${{ needs.scope.outputs.version_name }}
+          VC=${{ needs.scope.outputs.version_code }}
+          jq -n \
+            --arg vc "$VC" \
+            --arg vn "$VN" \
+            --rawfile ch release-notes.md \
+            '{versionCode: ($vc | tonumber), versionName: $vn, changelog: $ch}' \
+            > mobile-app/build/version.json
+
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p release-artifacts
+          cp mobile-app/build/app/outputs/flutter-apk/app-release.apk release-artifacts/SzuruCompanion.apk
+          cp mobile-app/build/version.json release-artifacts/
+
+      - name: Attach assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: |
+            release-artifacts/SzuruCompanion.apk
+            release-artifacts/version.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs: [scope, create-release, ccc, browser, mobile]
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract release notes
+        run: |
+          VN="${{ needs.scope.outputs.version_name }}"
+          awk -v ver="$VN" '
+            BEGIN { gsub(/\./, "\\.", ver); re = "^## \\[" ver "\\]" }
+            $0 ~ re { found=1; print; next }
+            found { if ($0 ~ /^## \[/) exit; print }
+          ' CHANGELOG.md > release-notes.md
+          [ -s release-notes.md ] || cp CHANGELOG.md release-notes.md
+
+      - name: Build component list and title
+        id: title
+        run: |
+          COMPONENTS=()
+          [ "${{ needs.scope.outputs.scope_ccc }}" = "1" ] && COMPONENTS+=("CCC")
+          [ "${{ needs.scope.outputs.scope_ext }}" = "1" ] && COMPONENTS+=("Extensions")
+          [ "${{ needs.scope.outputs.scope_mobile }}" = "1" ] && COMPONENTS+=("Mobile App")
+          if [ ${#COMPONENTS[@]} -eq 0 ]; then
+            COMPONENT_SUFFIX=""
+          elif [ ${#COMPONENTS[@]} -eq 3 ]; then
+            COMPONENT_SUFFIX=" (All Components)"
+          else
+            COMPONENT_SUFFIX=" ($(IFS=', '; echo "${COMPONENTS[*]}"))"
+          fi
+          echo "title=SzuruCompanion ${{ needs.scope.outputs.version_name }}$COMPONENT_SUFFIX" >> "$GITHUB_OUTPUT"
+
+      - name: Append CCC note if needed
+        if: needs.scope.outputs.scope_ccc == '1'
+        run: |
+          echo "" >> release-notes.md
+          echo "---" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "**Note:** Be sure to update your local Docker images. Docker builds should be live." >> release-notes.md
+
+      - name: Update README version badge
+        run: |
+          VN="${{ needs.scope.outputs.version_name }}"
+          sed -i "s|badge/version-[0-9.]*-blue|badge/version-$VN-blue|g" README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update version badge to ${{ needs.scope.outputs.version_name }}"
+            git push
+          fi
+
+      - name: Publish release (set draft to false)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ steps.title.outputs.title }}
+          body_path: release-notes.md
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

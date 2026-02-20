@@ -133,7 +133,8 @@ class SseBackgroundService {
           job.errorMessage!.isNotEmpty;
 
       // Check if this is a newly failed job (updated recently)
-      if (isFailed) {
+      // Only notify if retries are exhausted (retriesExhausted == true)
+      if (isFailed && update.retriesExhausted == true) {
         final now = DateTime.now();
         final shouldNotify = _lastFailedJobCheck == null ||
             job.updatedAt.isAfter(_lastFailedJobCheck!);

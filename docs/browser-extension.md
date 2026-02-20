@@ -6,20 +6,25 @@ WXT-based extension for Chrome, Firefox, and Edge. Provides right-click context 
 
 ## Installation
 
-### Pre-built Extension
+### Official releases (GitHub)
 
-Pre-built unpacked extensions are available in [`builds/`](../builds/).
+Download the latest [chrome-mv3.zip](https://github.com/jakedev796/SzurubooruCompanion/releases) or [firefox-mv2.zip](https://github.com/jakedev796/SzurubooruCompanion/releases), unzip, then load the unpacked folder in your browser.
 
 **Chrome / Edge:**
-1. Navigate to `chrome://extensions`
-2. Enable "Developer mode" (toggle in top-right)
-3. Click "Load unpacked"
-4. Select the Chrome build folder: `builds/chrome-mv3/`
+1. Unzip `chrome-mv3.zip` to a folder
+2. Navigate to `chrome://extensions`
+3. Enable "Developer mode" (toggle in top-right)
+4. Click "Load unpacked" and select the unzipped folder
 
 **Firefox:**
-1. Navigate to `about:debugging#/runtime/this-firefox`
-2. Click "Load Temporary Add-on"
-3. Select any file inside the Firefox build folder: `builds/firefox-mv2/`
+1. Unzip `firefox-mv2.zip` to a folder
+2. Navigate to `about:debugging#/runtime/this-firefox`
+3. Click "Load Temporary Add-on"
+4. Select any file inside the unzipped folder (e.g. `manifest.json`)
+
+### Local builds
+
+If you [build from source](#building-from-source), output is in `browser-ext/.output/chrome-mv3/` and `browser-ext/.output/firefox-mv2/`. You can load those folders directly, or copy them into `builds/` for local use (that directory is not used for distribution).
 
 ### Configuration
 
@@ -86,7 +91,7 @@ npm run dev
 npm run dev:firefox
 ```
 
-Load the `.output/` folder in your browser following the installation instructions above.
+Load the `.output/` folder in your browser using the same steps as in [Installation](#installation) (Load unpacked / Load Temporary Add-on).
 
 ---
 

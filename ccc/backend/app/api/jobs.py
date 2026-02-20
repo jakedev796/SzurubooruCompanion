@@ -6,6 +6,7 @@ GET  /api/jobs         – list jobs (paginated, filterable)
 GET  /api/jobs/{id}    – get single job details
 """
 
+import asyncio
 import json
 import os
 import shutil
@@ -22,6 +23,7 @@ from sqlalchemy.orm import load_only
 from app.config import get_settings
 from app.database import Job, JobStatus, JobType, User, async_session, get_db
 from app.api.deps import get_current_user
+from app.services.config import load_global_config
 from app.sites import normalize_url
 
 router = APIRouter()
@@ -95,6 +97,7 @@ class JobSummaryOut(BaseModel):
     job_type: str
     url: Optional[str] = None
     original_filename: Optional[str] = None
+    source_override: Optional[str] = None
     safety: Optional[str] = None
     szuru_user: Optional[str] = None
     dashboard_username: Optional[str] = None
@@ -146,6 +149,7 @@ def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSu
         job_type=job.job_type.value if isinstance(job.job_type, JobType) else job.job_type,
         url=job.url,
         original_filename=job.original_filename,
+        source_override=job.source_override,
         safety=job.safety,
         szuru_user=job.szuru_user,
         dashboard_username=dashboard_username,
@@ -294,6 +298,7 @@ async def list_jobs(
                 Job.job_type,
                 Job.url,
                 Job.original_filename,
+                Job.source_override,
                 Job.safety,
                 Job.szuru_user,
                 Job.szuru_post_id,
@@ -398,19 +403,47 @@ def _user_ctx_can_access_job(job: Job, ctx: _BulkUserContext) -> bool:
 async def _bg_bulk_retry(job_ids: List[str], user_ctx: _BulkUserContext) -> None:
     from app.api.events import publish_job_update
     async with async_session() as db:
+        global_config = await load_global_config(db)
+        retry_delay = global_config.retry_delay
+        
         for job_id in job_ids:
             try:
                 result = await db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
                 job = result.scalar_one_or_none()
                 if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status != JobStatus.FAILED:
                     continue
-                job.status = JobStatus.PENDING
+                
                 job.error_message = None
                 job.retry_count = 0
                 job.updated_at = datetime.now(timezone.utc)
-                await db.commit()
-                await db.refresh(job)
-                await publish_job_update(job_id=job.id, status="pending", progress=0)
+                
+                if retry_delay > 0:
+                    # Keep job in FAILED status during delay, will be set to PENDING after delay
+                    job.status = JobStatus.FAILED
+                    await db.commit()
+                    await db.refresh(job)
+                    
+                    async def _delayed_retry() -> None:
+                        await asyncio.sleep(retry_delay)
+                        async with async_session() as check_db:
+                            result = await check_db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                            j = result.scalar_one_or_none()
+                            if not j or j.status != JobStatus.FAILED:
+                                return
+                            # Set to PENDING so worker can pick it up
+                            j.status = JobStatus.PENDING
+                            j.updated_at = datetime.now(timezone.utc)
+                            await check_db.commit()
+                        await publish_job_update(job_id=job.id, status="pending", progress=0)
+                    
+                    asyncio.create_task(_delayed_retry())
+                    await publish_job_update(job_id=job.id, status="failed", progress=0)
+                else:
+                    # Immediate retry - set to PENDING now
+                    job.status = JobStatus.PENDING
+                    await db.commit()
+                    await db.refresh(job)
+                    await publish_job_update(job_id=job.id, status="pending", progress=0)
             except (ValueError, Exception):
                 await db.rollback()
 
@@ -740,6 +773,7 @@ async def retry_job(
 
     - Only allowed when status is 'failed'.
     - Resets status to 'pending', clears the error message, and resets retry_count to 0.
+    - Respects the global retry_delay setting before making the job available for processing.
     - The worker will pick it up again and run the full pipeline.
     """
     from app.api.events import publish_job_update
@@ -759,14 +793,42 @@ async def retry_job(
     if current_user.szuru_username and job.szuru_user != current_user.szuru_username:
         raise HTTPException(status_code=403, detail="Not authorized to retry this job.")
 
-    job.status = JobStatus.PENDING
+    global_config = await load_global_config(db)
+    retry_delay = global_config.retry_delay
+
     job.error_message = None
     job.retry_count = 0
     job.updated_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(job)
-
-    await publish_job_update(job_id=job.id, status="pending", progress=0)
+    
+    if retry_delay > 0:
+        # Keep job in FAILED status during delay, will be set to PENDING after delay
+        job.status = JobStatus.FAILED
+        await db.commit()
+        await db.refresh(job)
+        
+        async def _delayed_retry() -> None:
+            await asyncio.sleep(retry_delay)
+            async with async_session() as check_db:
+                result = await check_db.execute(select(Job).where(Job.id == uuid.UUID(job_id)))
+                j = result.scalar_one_or_none()
+                if not j or j.status != JobStatus.FAILED:
+                    return
+                # Set to PENDING so worker can pick it up
+                j.status = JobStatus.PENDING
+                j.updated_at = datetime.now(timezone.utc)
+                await check_db.commit()
+            await publish_job_update(job_id=job.id, status="pending", progress=0)
+        
+        asyncio.create_task(_delayed_retry())
+        # Return FAILED status immediately so UI shows it's queued for retry
+        await publish_job_update(job_id=job.id, status="failed", progress=0)
+    else:
+        # Immediate retry - set to PENDING now
+        job.status = JobStatus.PENDING
+        await db.commit()
+        await db.refresh(job)
+        await publish_job_update(job_id=job.id, status="pending", progress=0)
+    
     return _job_to_out(job)
 
 @router.post("/jobs/{job_id}/resume", response_model=JobOut)

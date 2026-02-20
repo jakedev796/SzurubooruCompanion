@@ -8,8 +8,10 @@
   <Support>https://github.com/jakedev796/SzurubooruCompanion/issues</Support>
   <Project>https://github.com/jakedev796/SzurubooruCompanion</Project>
   <Overview>
-    Szurubooru Companion (CCC) - Upload and auto-tag media to Szurubooru with AI tagging (WD14), gallery-dl, and yt-dlp.
+    Szurubooru Companion (CCC) - Upload and auto-tag media to Szurubooru or Oxibooru with AI tagging (WD14), gallery-dl, and yt-dlp.
     Includes FastAPI backend, React dashboard, PostgreSQL, and Redis in a single container via s6-overlay.
+
+    Compatible with both Szurubooru (https://github.com/rr-/szurubooru) and Oxibooru (https://github.com/liamw1/oxibooru).
 
     NEW: Database-backed multi-user system. All configuration done via dashboard UI at http://[IP]:21425/settings.
     Only ADMIN_USER, ADMIN_PASSWORD, and ENCRYPTION_KEY are needed - everything else configured after login!
@@ -17,13 +19,13 @@
   <Category>MediaApp:Other</Category>
   <WebUI>http://[IP]:[PORT:21425]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/unraid/szurubooru-companion.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/ccc/frontend/public/reimu.jpg</Icon>
+  <Icon>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/misc/styling/reimu.jpg</Icon>
   <ExtraParams/>
   <Description>
-    Szurubooru Companion (CCC) - A multi-component workflow for uploading media to Szurubooru with AI tagging.
+    Szurubooru Companion (CCC) - A multi-component workflow for uploading media to Szurubooru or Oxibooru with AI tagging.
     Includes: FastAPI backend, React dashboard, PostgreSQL, Redis (all in one container via s6-overlay).
 
-    After first startup, login at /login with ADMIN_USER/ADMIN_PASSWORD, then configure your Szurubooru + site credentials in Settings.
+    After first startup, login at /login with ADMIN_USER/ADMIN_PASSWORD, then configure your Szurubooru/Oxibooru + site credentials in Settings.
   </Description>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->

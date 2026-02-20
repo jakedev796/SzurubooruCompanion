@@ -1,0 +1,75 @@
+# Development only: separate backend, frontend, postgres, redis for local dev.
+# Use: docker compose -f docker-compose.dev.yml up -d
+# For production/quick start use the main docker-compose.yml (s6 single image from GHCR).
+
+services:
+  # -----------------------------------------------------------------------
+  # CCC Backend (FastAPI + worker)
+  # -----------------------------------------------------------------------
+  ccc-backend:
+    build: ./ccc/backend
+    container_name: ccc-backend
+    restart: unless-stopped
+    ports:
+      - "21425:21425"
+    env_file:
+      - ./ccc/backend/.env
+    volumes:
+      - ./local-dev/jobs:/data/jobs
+      - ./config.json:/config.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - ccc-net
+
+  # -----------------------------------------------------------------------
+  # PostgreSQL
+  # -----------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: ccc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ccc
+      POSTGRES_PASSWORD: ccc
+      POSTGRES_DB: ccc
+    volumes:
+      - ./local-dev/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ccc"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ccc-net
+
+  # -----------------------------------------------------------------------
+  # Redis (job queue / caching)
+  # -----------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: ccc-redis
+    restart: unless-stopped
+    networks:
+      - ccc-net
+
+  # -----------------------------------------------------------------------
+  # CCC Frontend (React dashboard)
+  # -----------------------------------------------------------------------
+  ccc-frontend:
+    build: ./ccc/frontend
+    container_name: ccc-frontend
+    restart: unless-stopped
+    ports:
+      - "21430:21430"
+    depends_on:
+      - ccc-backend
+    networks:
+      - ccc-net
+
+networks:
+  ccc-net:
+    driver: bridge

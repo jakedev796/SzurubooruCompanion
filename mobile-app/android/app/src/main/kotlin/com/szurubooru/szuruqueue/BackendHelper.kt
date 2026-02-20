@@ -1,6 +1,7 @@
 package com.szurubooru.szuruqueue
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -67,7 +68,69 @@ object BackendHelper {
 
         val urlRegex = Regex("https?://[^\\s,]+")
         val match = urlRegex.find(normalized)
-        return match?.value?.trimEnd('.', ',', ')', ']', '}')
+        val urlCandidate = match?.value?.trimEnd('.', ',', ')', ']', '}') ?: return null
+        
+        // Validate URL format using Uri.parse()
+        return validateUrl(urlCandidate)
+    }
+
+    /**
+     * Validate URL format using Uri.parse().
+     * Returns the URL if valid, null otherwise.
+     */
+    fun validateUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        
+        return try {
+            val uri = Uri.parse(url)
+            // Check for valid scheme (http/https) and host
+            if (uri.scheme != null && (uri.scheme == "http" || uri.scheme == "https") && 
+                !uri.host.isNullOrBlank()) {
+                url
+            } else {
+                Log.w(TAG, "Invalid URL format: missing scheme or host - $url")
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse URL: $url", e)
+            null
+        }
+    }
+
+    /**
+     * Test backend connectivity using the /api/health endpoint (no auth required).
+     * Mirrors the Dart BackendClient.checkConnection() pattern.
+     * 
+     * Note: This is a blocking function. Use from background thread or coroutine context.
+     * Uses the singleton httpClient with custom timeout via newBuilder() to reuse connection pool.
+     * 
+     * @param backendUrl The backend base URL
+     * @param timeoutSeconds Timeout in seconds (default: 5)
+     * @return true if backend is reachable and healthy, false otherwise
+     */
+    fun testBackendConnectivity(backendUrl: String, timeoutSeconds: Int = 5): Boolean {
+        return try {
+            val healthUrl = "${backendUrl.trimEnd('/')}/api/health"
+            val request = Request.Builder()
+                .url(healthUrl)
+                .get()
+                .build()
+            
+            // Reuse singleton client with custom timeout via newBuilder()
+            // This maintains the connection pool while allowing per-call timeout customization
+            val clientWithTimeout = httpClient.newBuilder()
+                .connectTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+                .readTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+                .build()
+            
+            val response = clientWithTimeout.newCall(request).execute()
+            val isHealthy = response.isSuccessful && response.code == 200
+            response.close()
+            isHealthy
+        } catch (e: Exception) {
+            Log.d(TAG, "Backend connectivity test failed: ${e.message}")
+            false
+        }
     }
 
     /** Split a tag string (space/comma separated) into a list. */
@@ -97,8 +160,22 @@ object BackendHelper {
         }
     }
 
-    /** POST a job payload to the CCC backend. Returns true on success. */
-    fun sendJobToBackend(baseUrl: String, accessToken: String?, payload: JSONObject): Boolean {
+    /**
+     * POST a job payload to the CCC backend. Returns true on success.
+     * Automatically tracks failures/successes for health monitoring.
+     * 
+     * @param context Context for health tracking (can be null if tracking not needed)
+     * @param baseUrl Backend base URL
+     * @param accessToken Access token (can be null)
+     * @param payload Job payload JSON
+     * @return true on success, false on failure
+     */
+    fun sendJobToBackend(
+        baseUrl: String, 
+        accessToken: String?, 
+        payload: JSONObject,
+        context: Context? = null
+    ): Boolean {
         return try {
             val endpoint = "${baseUrl.trimEnd('/')}/api/jobs"
             Log.d(TAG, "Sending job to: $endpoint")
@@ -118,19 +195,52 @@ object BackendHelper {
 
             val response = httpClient.newCall(requestBuilder.build()).execute()
             val success = response.isSuccessful
+            val statusCode = response.code
             val responseBody = response.body?.string()
 
             if (success) {
                 Log.d(TAG, "Job queued successfully: $responseBody")
+                // Track success (using sync version since we're in blocking context)
+                context?.let { HealthMonitor.recordSuccessSync(it) }
             } else {
-                Log.e(TAG, "Job queue failed: ${response.code} - $responseBody")
+                // Determine error type for better tracking
+                val errorType = when (statusCode) {
+                    401 -> "auth_error"
+                    400 -> "validation_error"
+                    in 500..599 -> "backend_error"
+                    else -> "http_error_$statusCode"
+                }
+                val errorMessage = getErrorMessageForStatusCode(statusCode)
+                Log.e(TAG, "Job queue failed: $statusCode - $errorMessage - $responseBody")
+                // Track failure (using sync version since we're in blocking context)
+                context?.let { HealthMonitor.recordFailureSync(it, errorType) }
             }
 
             response.close()
             success
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send job to backend", e)
+            // Track network error (using sync version since we're in blocking context)
+            context?.let { HealthMonitor.recordFailureSync(it, "network_error") }
             false
+        }
+    }
+
+    /**
+     * Get user-friendly error message for HTTP status code.
+     */
+    private fun getErrorMessageForStatusCode(statusCode: Int): String {
+        return when (statusCode) {
+            401 -> "Login required"
+            400 -> "Invalid request"
+            403 -> "Forbidden"
+            404 -> "Not found"
+            500 -> "Backend error"
+            502 -> "Bad gateway"
+            503 -> "Service unavailable"
+            in 400..499 -> "Client error ($statusCode)"
+            in 500..599 -> "Server error ($statusCode)"
+            else -> "Error ($statusCode)"
         }
     }
 }

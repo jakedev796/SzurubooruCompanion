@@ -5,10 +5,8 @@ enum or schema diverges from the app (e.g. old status values in the DB).
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import String, func, select, cast, text
+from fastapi import APIRouter, Depends
+from sqlalchemy import String, func, select, cast, text, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import Job, JobStatus, User, get_db
@@ -54,18 +52,19 @@ async def get_stats(
             if key in status_counts:
                 status_counts[key] = cnt
 
-    # Combine completed and merged into a single completed count for display
-    # Keep merged separate for internal tracking but add it to completed for stats
-    status_counts["completed"] = status_counts.get("completed", 0) + status_counts.get("merged", 0)
+    # Keep completed and merged separate so the dashboard can show both.
 
-    # Uploads per day for the last 30 days. Group by UTC date so labels match
-    # stored timestamps regardless of DB session timezone. text() has no .label(),
-    # so alias in SQL and use raw expression for group_by/order_by.
+    # Uploads per day for the last 30 days (count and failed). Group by UTC date.
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     day_utc_expr = text("(jobs.created_at AT TIME ZONE 'UTC')::date")
     day_utc_select = text("(jobs.created_at AT TIME ZONE 'UTC')::date AS day")
+    failed_case = case((cast(Job.status, String) == "failed", 1), else_=0)
     daily_q = _apply_user_filter(
-        select(day_utc_select, func.count(Job.id).label("count"))
+        select(
+            day_utc_select,
+            func.count(Job.id).label("count"),
+            func.sum(failed_case).label("failed"),
+        )
         .select_from(Job)
         .where(Job.created_at >= thirty_days_ago)
         .group_by(day_utc_expr)
@@ -73,7 +72,10 @@ async def get_stats(
     )
     daily_result = await db.execute(daily_q)
     rows = daily_result.all()
-    daily = [{"date": str(row[0]), "count": row[1]} for row in rows]
+    daily = [
+        {"date": str(row[0]), "count": row[1], "failed": int(row[2] or 0)}
+        for row in rows
+    ]
 
     return {
         "total_jobs": total,

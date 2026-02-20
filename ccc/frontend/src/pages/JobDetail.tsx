@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { RefreshCcw } from "lucide-react";
+import {
+  RefreshCcw,
+  Clock,
+  Download,
+  Tag,
+  Upload,
+  Pause,
+  CheckCircle2,
+  GitMerge,
+  XCircle,
+  Ban,
+} from "lucide-react";
 import {
   fetchJob,
   fetchConfig,
@@ -15,6 +26,29 @@ import {
   type Job,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
+
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  pending: <Clock size={12} />,
+  downloading: <Download size={12} />,
+  tagging: <Tag size={12} />,
+  uploading: <Upload size={12} />,
+  paused: <Pause size={12} />,
+  completed: <CheckCircle2 size={12} />,
+  merged: <GitMerge size={12} />,
+  stopped: <Ban size={12} />,
+  failed: <XCircle size={12} />,
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const key = status.toLowerCase();
+  const icon = STATUS_ICONS[key];
+  return (
+    <span className={`badge ${key}`}>
+      {icon && <span className="badge-icon">{icon}</span>}
+      {status}
+    </span>
+  );
+}
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return "-";
@@ -230,7 +264,7 @@ export default function JobDetail() {
         <dl className="detail-grid">
           <dt>Status</dt>
           <dd>
-            <span className={`badge ${job.status}`}>{job.status}</span>
+            <StatusBadge status={job.status} />
           </dd>
 
           <dt>Type</dt>
