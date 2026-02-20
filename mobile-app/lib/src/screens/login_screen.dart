@@ -484,6 +484,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () async {
+                        final settings = context.read<SettingsModel>();
+                        await settings.saveSettings(backendUrl: '');
+                        if (!mounted) return;
+                        Navigator.of(context).pushReplacementNamed('/setup');
+                      },
+                      child: Text(
+                        'Change backend URL',
+                        style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 24),
                   ],
                 ),

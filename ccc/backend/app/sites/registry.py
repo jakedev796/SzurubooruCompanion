@@ -66,6 +66,31 @@ def get_handler(url: str, user_config: Optional[Dict[str, Dict[str, str]]] = Non
     return None
 
 
+def get_handler_by_name(name: str, user_config: Optional[Dict[str, Dict[str, str]]] = None) -> Optional[SiteHandler]:
+    """Get a specific handler by its site name (e.g. 'danbooru', 'gelbooru')."""
+    settings = get_settings()
+    _init_handler_classes()
+
+    for handler_cls in _HANDLER_CLASSES:
+        handler = handler_cls(settings, user_config)
+        if handler.name == name:
+            return handler
+    return None
+
+
+def get_browsable_handlers(user_config: Optional[Dict[str, Dict[str, str]]] = None) -> List[SiteHandler]:
+    """Return all handler instances that support browsing."""
+    settings = get_settings()
+    _init_handler_classes()
+
+    handlers = []
+    for handler_cls in _HANDLER_CLASSES:
+        handler = handler_cls(settings, user_config)
+        if handler.supports_browse:
+            handlers.append(handler)
+    return handlers
+
+
 def normalize_url(url: str) -> str:
     """Run site-specific URL normalization. Falls through to identity if no handler matches."""
     handler = get_handler(url)

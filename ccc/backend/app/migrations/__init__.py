@@ -173,6 +173,41 @@ MIGRATIONS: List[Tuple[str, str]] = [
         ALTER TABLE users ADD COLUMN IF NOT EXISTS szuru_category_mappings JSONB DEFAULT '{}';
         """,
     ),
+    (
+        "013_create_swiper_tables",
+        """
+        CREATE TABLE IF NOT EXISTS swiper_seen_items (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL,
+            site_name VARCHAR(50) NOT NULL,
+            external_id VARCHAR(255) NOT NULL,
+            action VARCHAR(10) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_swiper_seen UNIQUE(user_id, site_name, external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_swiper_seen_user ON swiper_seen_items(user_id);
+        CREATE INDEX IF NOT EXISTS idx_swiper_seen_lookup ON swiper_seen_items(user_id, site_name);
+
+        CREATE TABLE IF NOT EXISTS swiper_presets (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL,
+            name VARCHAR(100) NOT NULL,
+            sites JSONB NOT NULL DEFAULT '[]',
+            tags TEXT NOT NULL DEFAULT '',
+            rating VARCHAR(20) NOT NULL DEFAULT 'all',
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_swiper_presets_user ON swiper_presets(user_id);
+        """,
+    ),
+    (
+        "014_add_sort_to_swiper_presets",
+        """
+        ALTER TABLE swiper_presets ADD COLUMN IF NOT EXISTS sort VARCHAR(20) NOT NULL DEFAULT 'newest';
+        """,
+    ),
 ]
 
 async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:

@@ -8,6 +8,7 @@ import 'src/screens/main_screen.dart';
 import 'src/screens/setup_screen.dart';
 import 'src/services/app_state.dart';
 import 'src/services/background_task.dart';
+import 'src/services/discover_state.dart';
 import 'src/services/notification_service.dart';
 import 'src/services/settings_model.dart';
 import 'src/services/update_service.dart';
@@ -163,6 +164,17 @@ class _AppRootState extends State<_AppRoot> {
           create: (context) => AppState(_settings!),
           update: (context, settings, previous) =>
               previous ?? AppState(settings),
+        ),
+        ChangeNotifierProxyProvider<AppState, DiscoverState>(
+          create: (_) => DiscoverState(),
+          update: (_, appState, previous) {
+            final state = previous ?? DiscoverState();
+            if (appState.settings.isConfigured &&
+                appState.settings.isAuthenticated) {
+              state.updateClient(appState.backendClient);
+            }
+            return state;
+          },
         ),
       ],
       child: const SzuruCompanionApp(),
