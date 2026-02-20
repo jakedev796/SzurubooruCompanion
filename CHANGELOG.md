@@ -13,6 +13,18 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### Browser Extension
 
 
+## [1.0.7] - 2026-02-19
+
+### Mobile App
+- Add sort selector (Newest/Top/Random) to Discover filter sheet
+- Sort option saved with presets
+- Yandere random sort greyed out when only Yandere selected; warning shown in multi-site mode
+- Filter sheet preserves unsaved changes on dismiss (no longer resets to preset values)
+- Show loading spinner when swiped through current batch while next page loads
+- Differentiate "No results found" vs "No more results" messaging
+- Re-added full post search to initial load
+
+
 ## [1.0.6] - 2026-02-19
 
 ### Major App Feature: Discover
@@ -25,14 +37,13 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Swipe-right creates a job automatically (download, tag, upload pipeline)
 - Redis caching for browse results (5-minute TTL)
 - Add endpoint to toggle default preset per user
-- Add sort option (newest/top/random) with per-site metatag mapping
 
 ### Mobile App
 - Add Discover tab: Tinder-style card swiping UI for browsing booru content
 - Swipe right to like (creates upload job), swipe left to skip
-- Filter sheet with multi-site selection, tag search, exclude tags, rating filter, sort order, and saved presets
+- Filter sheet with multi-site selection, tag search, exclude tags, rating filter, and saved presets
 - Card stack with drag gestures, rotation, and LIKE/SKIP indicators
-- Smaller initial fetch for fast first-load with background prefetch of next batch
+- Automatic prefetch when running low on cards
 - Comma-separated tag input with automatic underscore normalization for booru compatibility
 - Default preset support: star a preset to auto-load it on startup
 - Clickable post IDs link to source booru page

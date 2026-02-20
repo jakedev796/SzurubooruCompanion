@@ -177,7 +177,6 @@ class DiscoverState extends ChangeNotifier {
   }
 
   /// Browse with current filters (reset).
-  /// Fetches a small initial batch for fast first-load, then prefetches more.
   Future<void> browse() async {
     if (_client == null || _selectedSites.isEmpty) return;
     if (_isLoading) return;
@@ -196,7 +195,7 @@ class DiscoverState extends ChangeNotifier {
         rating: _rating,
         sort: _sort,
         page: _page,
-        limit: 8,
+        limit: 20,
       );
 
       _items = response.items;
@@ -208,11 +207,6 @@ class DiscoverState extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
-    }
-
-    // Prefetch next batch in background
-    if (_hasMore && _items.isNotEmpty) {
-      loadMore();
     }
   }
 
