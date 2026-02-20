@@ -185,6 +185,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          draft: true
           files: |
             browser-ext/chrome-mv3.zip
             browser-ext/firefox-mv2.zip
@@ -298,6 +299,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          draft: true
           files: |
             release-artifacts/SzuruCompanion.apk
             release-artifacts/version.json
