@@ -230,6 +230,49 @@ class ClientPreference(Base):
     )
 
 
+class SwiperSeenItem(Base):
+    """Tracks items a user has seen in the swiper to avoid re-showing."""
+
+    __tablename__ = "swiper_seen_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    site_name = Column(String(50), nullable=False)  # "danbooru", "gelbooru", etc.
+    external_id = Column(String(255), nullable=False)  # Post ID on source site
+    action = Column(String(10), nullable=False)  # "liked" or "skipped"
+
+    # Timestamps (always UTC)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'site_name', 'external_id', name='uq_swiper_seen'),
+    )
+
+
+class SwiperPreset(Base):
+    """Saved swiper filter presets per user."""
+
+    __tablename__ = "swiper_presets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    sites = Column(JSONB, nullable=False, default=list)  # ["danbooru", "gelbooru"]
+    tags = Column(Text, nullable=False, default="")  # Space-separated tag query
+    rating = Column(String(20), nullable=False, default="all")  # "safe"/"sketchy"/"unsafe"/"all"
+    sort = Column(String(20), nullable=False, default="newest")  # "newest"/"score"/"random"
+    is_default = Column(Integer, nullable=False, default=0)
+
+    # Timestamps (always UTC)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

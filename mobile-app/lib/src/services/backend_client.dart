@@ -7,8 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/job.dart';
 import '../models/auth.dart';
+import '../models/browse_item.dart';
+import '../models/job.dart';
 
 /// SSE event types received from the backend
 enum SseEventType {
@@ -251,6 +252,12 @@ class BackendClient {
     } else {
       _dio.options.headers.remove('Authorization');
     }
+  }
+
+  /// Get auth headers for use with non-Dio HTTP clients (e.g. Image.network).
+  Map<String, String>? get authHeaders {
+    if (_accessToken == null) return null;
+    return {'Authorization': 'Bearer $_accessToken'};
   }
 
   /// Fetch client preferences from backend
@@ -739,13 +746,179 @@ class BackendClient {
     }
   }
 
+  // -----------------------------------------------------------------------
+  // Discover API
+  // -----------------------------------------------------------------------
+
+  /// Fetch available browsable sites with credential status.
+  Future<List<DiscoverSite>> fetchDiscoverSites() async {
+    try {
+      final response = await _dio.get('/api/discover/sites');
+      final list = response.data as List<dynamic>;
+      return list
+          .cast<Map<String, dynamic>>()
+          .map(DiscoverSite.fromJson)
+          .toList();
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Browse a site with tag filters.
+  Future<BrowseResponse> discoverBrowse({
+    required List<String> sites,
+    String tags = '',
+    String rating = 'all',
+    String sort = 'newest',
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/discover/browse',
+        data: {
+          'sites': sites,
+          'tags': tags,
+          'rating': rating,
+          'sort': sort,
+          'page': page,
+          'limit': limit,
+        },
+        options: Options(
+          receiveTimeout: const Duration(minutes: 3),
+        ),
+      );
+      return BrowseResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Mark an item as seen (liked or skipped).
+  /// Returns job ID if action was "liked".
+  Future<String?> discoverMarkSeen({
+    required String siteName,
+    required String externalId,
+    required String action,
+    String? postUrl,
+  }) async {
+    try {
+      final response = await _dio.post('/api/discover/seen', data: {
+        'site_name': siteName,
+        'external_id': externalId,
+        'action': action,
+        if (postUrl != null) 'post_url': postUrl,
+      });
+      final data = response.data as Map<String, dynamic>;
+      return data['job_id'] as String?;
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Fetch user's discover presets.
+  Future<List<DiscoverPreset>> fetchDiscoverPresets() async {
+    try {
+      final response = await _dio.get('/api/discover/presets');
+      final list = response.data as List<dynamic>;
+      return list
+          .cast<Map<String, dynamic>>()
+          .map(DiscoverPreset.fromJson)
+          .toList();
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Save a discover preset.
+  Future<DiscoverPreset> saveDiscoverPreset(DiscoverPreset preset) async {
+    try {
+      final response = await _dio.post(
+        '/api/discover/presets',
+        data: preset.toJson(),
+      );
+      return DiscoverPreset.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Toggle a discover preset as the default.
+  Future<DiscoverPreset> togglePresetDefault(String presetId) async {
+    try {
+      final response =
+          await _dio.post('/api/discover/presets/$presetId/default');
+      return DiscoverPreset.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Update an existing discover preset.
+  Future<DiscoverPreset> updateDiscoverPreset(
+      String presetId, DiscoverPreset preset) async {
+    try {
+      final response = await _dio.put(
+        '/api/discover/presets/$presetId',
+        data: preset.toJson(),
+      );
+      return DiscoverPreset.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Delete a discover preset.
+  Future<void> deleteDiscoverPreset(String presetId) async {
+    try {
+      await _dio.delete('/api/discover/presets/$presetId');
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Build image proxy URL for a source image URL.
+  String buildImageProxyUrl(String sourceUrl) {
+    return '$baseUrl/api/discover/image?url=${Uri.encodeComponent(sourceUrl)}';
+  }
+
   /// Check if the backend is reachable (no auth required).
   ///
-  /// Uses the public health endpoint.
+  /// Uses the public health endpoint. Validates the response body to ensure
+  /// we're actually talking to the CCC backend (not the frontend or another
+  /// server that happens to return 200).
   Future<bool> checkConnection() async {
     try {
-      await _dio.get('/api/health', options: Options(headers: {}));
-      return true;
+      final response =
+          await _dio.get('/api/health', options: Options(headers: {}));
+      if (response.data is Map && response.data['status'] == 'ok') {
+        return true;
+      }
+      return false;
     } catch (_) {
       return false;
     }

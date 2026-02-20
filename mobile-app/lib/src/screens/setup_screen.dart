@@ -60,7 +60,11 @@ class _SetupScreenState extends State<SetupScreen> {
       final success = await client.checkConnection();
 
       if (!success) {
-        throw Exception('Unable to reach backend');
+        throw Exception(
+          'Server responded but does not appear to be the CCC backend. '
+          'Make sure the URL points to the backend API (default port 21425), '
+          'not the frontend dashboard.',
+        );
       }
 
       if (!mounted) return;

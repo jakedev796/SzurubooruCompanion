@@ -13,6 +13,31 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### Browser Extension
 
 
+## [1.0.6] - 2026-02-19
+
+### Major App Feature: Discover
+
+### CCC - Backend
+- Add Discover feature: browse booru sites (Danbooru, Gelbooru, Sankaku, Rule34, Yandere) with tag/rating filters via gallery-dl
+- Add image proxy endpoint with SSRF-safe domain allowlist for booru thumbnails/previews
+- Track seen items per user to prevent re-showing swiped content
+- Support filter presets (save/load/delete/update) for quick access to frequent searches
+- Swipe-right creates a job automatically (download, tag, upload pipeline)
+- Redis caching for browse results (5-minute TTL)
+- Add endpoint to toggle default preset per user
+- Add sort option (newest/top/random) with per-site metatag mapping
+
+### Mobile App
+- Add Discover tab: Tinder-style card swiping UI for browsing booru content
+- Swipe right to like (creates upload job), swipe left to skip
+- Filter sheet with multi-site selection, tag search, exclude tags, rating filter, sort order, and saved presets
+- Card stack with drag gestures, rotation, and LIKE/SKIP indicators
+- Smaller initial fetch for fast first-load with background prefetch of next batch
+- Comma-separated tag input with automatic underscore normalization for booru compatibility
+- Default preset support: star a preset to auto-load it on startup
+- Clickable post IDs link to source booru page
+
+
 ## [1.0.5] - 2026-02-19
 
 ### Mobile App
