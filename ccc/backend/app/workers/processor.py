@@ -389,6 +389,21 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
         all_tags.append("video")
         tags_from_source.append("video")
 
+        if _global_config and _global_config.video_tagging_enabled and not job.skip_tagging:
+            wd14 = await tagger.tag_video(
+                fp,
+                scene_threshold=_global_config.video_scene_threshold,
+                max_frames=_global_config.video_max_frames,
+                min_frame_ratio=_global_config.video_tag_min_frame_ratio,
+            )
+            for t in wd14.general_tags + wd14.character_tags:
+                if t.strip():
+                    all_tags.append(t.strip())
+                    tags_from_ai.append(t.strip())
+            wd14_character_tags.update(wd14.character_tags)
+            if wd14.safety:
+                safety = wd14.safety
+
     # Normalize category prefixes and deduplicate
     all_tags, client_tag_categories = tag_utils.normalize_category_prefixes(
         all_tags, client_tag_categories

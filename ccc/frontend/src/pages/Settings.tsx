@@ -660,6 +660,61 @@ function GlobalSettingsTab() {
           </>
         )}
 
+        <h4 style={{ fontSize: "1rem", marginTop: "1.5rem", marginBottom: "0.75rem", color: "var(--text)" }}>Video Tagging</h4>
+        <div className="form-group">
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <label style={{ marginBottom: 0 }}>Enable Video Frame Tagging</label>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={settings.video_tagging_enabled}
+                onChange={(e) => setSettings({ ...settings, video_tagging_enabled: e.target.checked })}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+          <small>Extract frames from videos using scene detection and tag them with WD14 (requires WD14 to be enabled)</small>
+        </div>
+        {settings.video_tagging_enabled && (
+          <>
+            <div className="form-group">
+              <label>Scene Detection Threshold</label>
+              <input
+                type="number"
+                step="0.05"
+                min="0.05"
+                max="1"
+                value={settings.video_scene_threshold}
+                onChange={(e) => setSettings({ ...settings, video_scene_threshold: parseFloat(e.target.value) })}
+              />
+              <small>FFmpeg scene change sensitivity (0.05 - 1.0, lower = more frames extracted, recommended: 0.3)</small>
+            </div>
+            <div className="form-group">
+              <label>Max Frames</label>
+              <input
+                type="number"
+                min="1"
+                max="50"
+                value={settings.video_max_frames}
+                onChange={(e) => setSettings({ ...settings, video_max_frames: parseInt(e.target.value) })}
+              />
+              <small>Maximum number of frames to extract per video</small>
+            </div>
+            <div className="form-group">
+              <label>Minimum Frame Ratio</label>
+              <input
+                type="number"
+                step="0.05"
+                min="0"
+                max="1"
+                value={settings.video_tag_min_frame_ratio}
+                onChange={(e) => setSettings({ ...settings, video_tag_min_frame_ratio: parseFloat(e.target.value) })}
+              />
+              <small>A tag must appear in this fraction of frames to be kept (0.0 - 1.0, recommended: 0.3). Character tags are always kept.</small>
+            </div>
+          </>
+        )}
+
         <h4 style={{ fontSize: "1rem", marginTop: "1.5rem", marginBottom: "0.75rem", color: "var(--text)" }}>Worker Settings</h4>
         <div className="form-group">
           <label>Worker Concurrency</label>

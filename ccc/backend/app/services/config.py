@@ -39,6 +39,11 @@ class GlobalConfig:
     ytdlp_timeout: int
     max_retries: int
     retry_delay: float
+    # Video tagging
+    video_tagging_enabled: bool
+    video_scene_threshold: float
+    video_max_frames: int
+    video_tag_min_frame_ratio: float
 
 
 async def load_user_config(db: AsyncSession, user_id: str) -> Optional[UserConfig]:
@@ -113,6 +118,10 @@ async def load_global_config(db: AsyncSession) -> GlobalConfig:
         "ytdlp_timeout": 300,
         "max_retries": 3,
         "retry_delay": 5.0,
+        "video_tagging_enabled": True,
+        "video_scene_threshold": 0.3,
+        "video_max_frames": 10,
+        "video_tag_min_frame_ratio": 0.3,
     }
 
     result = await db.execute(select(GlobalSetting))
@@ -145,4 +154,8 @@ async def load_global_config(db: AsyncSession) -> GlobalConfig:
         ytdlp_timeout=get_setting("ytdlp_timeout", DEFAULTS["ytdlp_timeout"], "int"),
         max_retries=get_setting("max_retries", DEFAULTS["max_retries"], "int"),
         retry_delay=get_setting("retry_delay", DEFAULTS["retry_delay"], "float"),
+        video_tagging_enabled=get_setting("video_tagging_enabled", DEFAULTS["video_tagging_enabled"], "bool"),
+        video_scene_threshold=get_setting("video_scene_threshold", DEFAULTS["video_scene_threshold"], "float"),
+        video_max_frames=get_setting("video_max_frames", DEFAULTS["video_max_frames"], "int"),
+        video_tag_min_frame_ratio=get_setting("video_tag_min_frame_ratio", DEFAULTS["video_tag_min_frame_ratio"], "float"),
     )
