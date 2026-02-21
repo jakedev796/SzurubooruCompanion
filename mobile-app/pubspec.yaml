@@ -2,7 +2,7 @@ name: szuruqueue
 description: "Szurubooru queue uploader - Share media to your szurubooru instance"
 publish_to: 'none'
 
-version: 1.0.9+8
+version: 1.0.9+9
 
 environment:
   sdk: ^3.10.8

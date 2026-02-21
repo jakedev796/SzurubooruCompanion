@@ -1,7 +1,7 @@
 {
   "name": "szurubooru-companion-ext",
   "private": true,
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Right-click to send media to the Szurubooru Companion CCC.",
   "scripts": {
     "dev": "wxt",
