@@ -54,7 +54,7 @@ export function hasDashboardAuth(): boolean {
   return !!sessionStorage.getItem("dashboard_basic") || !!localStorage.getItem("ccc_jwt_token");
 }
 
-async function parseJson(res: Response): Promise<unknown> {
+async function parseJson<T = unknown>(res: Response): Promise<T> {
   const text = await res.text();
   if (text.trimStart().startsWith("<")) {
     throw new Error(
@@ -200,13 +200,13 @@ export async function fetchJobs({
   if (szuru_user) params.set("szuru_user", szuru_user);
   const res = await apiFetch(`${BASE}/jobs?${params}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<JobsResponse>;
+  return parseJson<JobsResponse>(res);
 }
 
 export async function fetchJob(id: string): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${id}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<Job>;
+  return parseJson<Job>(res);
 }
 
 export async function fetchStats({ szuru_user }: { szuru_user?: string } = {}): Promise<StatsResponse> {
@@ -215,7 +215,7 @@ export async function fetchStats({ szuru_user }: { szuru_user?: string } = {}): 
   const qs = params.toString();
   const res = await apiFetch(`${BASE}/stats${qs ? `?${qs}` : ""}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<StatsResponse>;
+  return parseJson<StatsResponse>(res);
 }
 
 export async function createJobUrl(
@@ -228,7 +228,7 @@ export async function createJobUrl(
     body: JSON.stringify({ url, ...opts }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<Job>;
+  return parseJson<Job>(res);
 }
 
 export async function fetchHealth(): Promise<unknown> {
@@ -240,7 +240,7 @@ export async function fetchHealth(): Promise<unknown> {
 export async function fetchConfig(): Promise<ConfigResponse> {
   const res = await apiFetch(`${BASE}/config`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<ConfigResponse>;
+  return parseJson<ConfigResponse>(res);
 }
 
 export function getSSEUrl(_jobId: string | null = null): string {
@@ -254,7 +254,7 @@ export async function startJob(jobId: string): Promise<Job> {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<Job>;
+  return parseJson<Job>(res);
 }
 
 export async function pauseJob(jobId: string): Promise<Job> {
@@ -263,7 +263,7 @@ export async function pauseJob(jobId: string): Promise<Job> {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<Job>;
+  return parseJson<Job>(res);
 }
 
 export async function stopJob(jobId: string): Promise<Job> {
@@ -272,7 +272,7 @@ export async function stopJob(jobId: string): Promise<Job> {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<Job>;
+  return parseJson<Job>(res);
 }
 
 export async function deleteJob(jobId: string): Promise<void> {
@@ -289,7 +289,7 @@ export async function resumeJob(jobId: string): Promise<Job> {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<Job>;
+  return parseJson<Job>(res);
 }
 
 export async function retryJob(jobId: string): Promise<Job> {
@@ -298,7 +298,7 @@ export async function retryJob(jobId: string): Promise<Job> {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<Job>;
+  return parseJson<Job>(res);
 }
 
 export interface BulkJobAccepted {
@@ -314,7 +314,7 @@ export async function bulkRetryJobs(jobIds: string[]): Promise<BulkJobAccepted> 
     body: JSON.stringify({ job_ids: jobIds }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<BulkJobAccepted>;
+  return parseJson<BulkJobAccepted>(res);
 }
 
 export async function bulkDeleteJobs(jobIds: string[]): Promise<BulkJobAccepted> {
@@ -324,7 +324,7 @@ export async function bulkDeleteJobs(jobIds: string[]): Promise<BulkJobAccepted>
     body: JSON.stringify({ job_ids: jobIds }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<BulkJobAccepted>;
+  return parseJson<BulkJobAccepted>(res);
 }
 
 export async function bulkStartJobs(jobIds: string[]): Promise<BulkJobAccepted> {
@@ -334,7 +334,7 @@ export async function bulkStartJobs(jobIds: string[]): Promise<BulkJobAccepted> 
     body: JSON.stringify({ job_ids: jobIds }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<BulkJobAccepted>;
+  return parseJson<BulkJobAccepted>(res);
 }
 
 export async function bulkPauseJobs(jobIds: string[]): Promise<BulkJobAccepted> {
@@ -344,7 +344,7 @@ export async function bulkPauseJobs(jobIds: string[]): Promise<BulkJobAccepted> 
     body: JSON.stringify({ job_ids: jobIds }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<BulkJobAccepted>;
+  return parseJson<BulkJobAccepted>(res);
 }
 
 export async function bulkStopJobs(jobIds: string[]): Promise<BulkJobAccepted> {
@@ -354,7 +354,7 @@ export async function bulkStopJobs(jobIds: string[]): Promise<BulkJobAccepted> {
     body: JSON.stringify({ job_ids: jobIds }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<BulkJobAccepted>;
+  return parseJson<BulkJobAccepted>(res);
 }
 
 export async function bulkResumeJobs(jobIds: string[]): Promise<BulkJobAccepted> {
@@ -364,7 +364,7 @@ export async function bulkResumeJobs(jobIds: string[]): Promise<BulkJobAccepted>
     body: JSON.stringify({ job_ids: jobIds }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<BulkJobAccepted>;
+  return parseJson<BulkJobAccepted>(res);
 }
 
 // ============================================================================
@@ -388,13 +388,13 @@ export async function login(username: string, password: string): Promise<LoginRe
     body: JSON.stringify({ username, password }),
   });
   if (!res.ok) await handleError(res);
-  return parseJson(res) as Promise<LoginResponse>;
+  return parseJson<LoginResponse>(res);
 }
 
 export async function fetchMe(): Promise<{ id: string; username: string; role: string }> {
   const res = await apiFetch(`${BASE}/auth/me`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<{ id: string; username: string; role: string }>;
+  return parseJson<{ id: string; username: string; role: string }>(res);
 }
 
 // ============================================================================
@@ -415,7 +415,7 @@ export interface UserResponse {
 export async function fetchUsers(): Promise<UserResponse[]> {
   const res = await apiFetch(`${BASE}/users`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<UserResponse[]>;
+  return parseJson<UserResponse[]>(res);
 }
 
 export async function createUser(data: {
@@ -429,7 +429,7 @@ export async function createUser(data: {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<UserResponse>;
+  return parseJson<UserResponse>(res);
 }
 
 export async function updateUser(
@@ -446,7 +446,7 @@ export async function updateUser(
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<UserResponse>;
+  return parseJson<UserResponse>(res);
 }
 
 export async function deactivateUser(userId: string): Promise<{ message: string }> {
@@ -520,7 +520,7 @@ export interface UserConfig {
 export async function fetchMyConfig(): Promise<UserConfig> {
   const res = await apiFetch(`${BASE}/users/me/config`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<UserConfig>;
+  return parseJson<UserConfig>(res);
 }
 
 export async function updateMyConfig(data: UserConfig): Promise<void> {
@@ -546,12 +546,16 @@ export interface GlobalSettings {
   ytdlp_timeout: number;
   max_retries: number;
   retry_delay: number;
+  video_tagging_enabled: boolean;
+  video_scene_threshold: number;
+  video_max_frames: number;
+  video_tag_min_frame_ratio: number;
 }
 
 export async function fetchGlobalSettings(): Promise<GlobalSettings> {
   const res = await apiFetch(`${BASE}/settings/global`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return parseJson(res) as Promise<GlobalSettings>;
+  return parseJson<GlobalSettings>(res);
 }
 
 export async function updateGlobalSettings(data: Partial<GlobalSettings>): Promise<void> {

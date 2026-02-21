@@ -20,6 +20,7 @@ import '../widgets/connection_status_card.dart';
 import '../widgets/job_card.dart';
 import '../widgets/job_detail_sheet.dart';
 import '../widgets/stat_card.dart';
+import 'discover_screen.dart';
 import 'first_launch_permissions.dart';
 import 'settings_screen.dart';
 
@@ -44,7 +45,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final settings = context.read<SettingsModel>();
-    _selectedIndex = settings.isConfigured ? 0 : 2;
+    _selectedIndex = settings.isConfigured ? 0 : 3;
     ShareIntentService.setupMethodCallHandler(_handleShare);
     _checkInitialShare();
   }
@@ -221,7 +222,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final settings = context.read<SettingsModel>();
     final appState = context.read<AppState>();
     if (!settings.isConfigured) {
-      setState(() => _selectedIndex = 2);
+      setState(() => _selectedIndex = 3);
       return;
     }
 
@@ -334,6 +335,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         final screens = [
           _buildOverview(settings, appState),
           _buildQueueTab(appState),
+          const DiscoverScreen(),
           const SettingsScreen(),
         ];
 
@@ -353,7 +355,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               _buildConnectionStatusIndicator(appState),
               IconButton(
                 icon: const Icon(Icons.settings),
-                onPressed: () => setState(() => _selectedIndex = 2),
+                onPressed: () => setState(() => _selectedIndex = 3),
               ),
             ],
             bottom: _isProcessingShare
@@ -376,6 +378,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 icon: Icon(Icons.list_outlined),
                 selectedIcon: Icon(Icons.list),
                 label: 'Queue',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.explore_outlined),
+                selectedIcon: Icon(Icons.explore),
+                label: 'Discover',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined),
@@ -516,7 +523,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             Padding(
               padding: const EdgeInsets.only(top: 16),
               child: ElevatedButton(
-                onPressed: () => setState(() => _selectedIndex = 2),
+                onPressed: () => setState(() => _selectedIndex = 3),
                 child: const Text('Configure backend'),
               ),
             ),

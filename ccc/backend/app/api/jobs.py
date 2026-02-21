@@ -298,6 +298,7 @@ async def list_jobs(
                 Job.job_type,
                 Job.url,
                 Job.original_filename,
+                Job.source_override,
                 Job.safety,
                 Job.szuru_user,
                 Job.szuru_post_id,

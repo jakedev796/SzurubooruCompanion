@@ -104,3 +104,57 @@ class SiteHandler:
     def gallery_dl_cleanup_paths(self) -> List[Path]:
         """Temp files to clean up after gallery-dl. Default: none."""
         return []
+
+    # -- Browse / swiper support --
+
+    @property
+    def supports_browse(self) -> bool:
+        """Whether this site supports browsing/searching via tag queries."""
+        return False
+
+    def build_search_url(self, tags: str, rating: str = "all", page: int = 1, sort: str = "newest") -> Optional[str]:
+        """
+        Build a search URL for browsing. Override per-site.
+
+        Args:
+            tags: Space-separated tag query (e.g. "cat girl")
+            rating: "safe", "sketchy", "unsafe", or "all"
+            page: 1-indexed page number
+            sort: "newest", "score", or "random"
+        """
+        return None
+
+    def parse_browse_item(self, metadata: dict) -> Optional[dict]:
+        """
+        Parse gallery-dl JSON metadata into a standardized browse item.
+
+        Returns dict with keys:
+            external_id, post_url, thumbnail_url, preview_url, file_url,
+            tags, rating, width, height, source
+        Or None if the item cannot be parsed.
+        """
+        return None
+
+    @staticmethod
+    def _normalize_rating(raw: str) -> str:
+        """Map site-specific ratings to szurubooru terms."""
+        r = str(raw).lower().strip()
+        if r in ("s", "safe", "general", "g"):
+            return "safe"
+        if r in ("q", "questionable", "sensitive"):
+            return "sketchy"
+        if r in ("e", "explicit"):
+            return "unsafe"
+        return "unsafe"
+
+    @staticmethod
+    def _build_rating_tag(rating: str) -> str:
+        """Convert our rating filter to a booru search tag."""
+        mapping = {"safe": "rating:safe", "sketchy": "rating:questionable", "unsafe": "rating:explicit"}
+        return mapping.get(rating, "")
+
+    @staticmethod
+    def _build_sort_tag(sort: str) -> str:
+        """Convert our sort option to a booru search metatag. Default: order: prefix (Danbooru/Yandere)."""
+        mapping = {"score": "order:score", "random": "order:random"}
+        return mapping.get(sort, "")

@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import re
+import shutil
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -266,3 +267,183 @@ async def tag_images_batch(image_paths: List[Path]) -> List[TagResult]:
         else:
             out.append(r)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Video frame tagging
+# ---------------------------------------------------------------------------
+
+
+async def _extract_video_frames(
+    video_path: Path,
+    output_dir: Path,
+    scene_threshold: float = 0.3,
+    max_frames: int = 10,
+) -> List[Path]:
+    """
+    Extract key frames from a video using FFmpeg scene detection.
+    Falls back to a single middle frame if scene detection yields nothing.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_pattern = str(output_dir / "frame_%04d.png")
+
+    cmd = [
+        "ffmpeg", "-i", str(video_path),
+        "-vf", f"select='gt(scene,{scene_threshold})'",
+        "-vsync", "vfr",
+        "-frames:v", str(max_frames),
+        output_pattern,
+        "-y",
+    ]
+    logger.debug("Extracting video frames: %s", " ".join(cmd))
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+    if proc.returncode != 0:
+        logger.warning(
+            "FFmpeg scene detection failed (rc=%d) for %s: %s",
+            proc.returncode, video_path.name, stderr.decode(errors="replace")[:500],
+        )
+
+    frames = sorted(output_dir.glob("frame_*.png"))
+
+    # Fallback: extract one frame from the middle of the video
+    if not frames:
+        logger.debug("Scene detection yielded 0 frames for %s, extracting middle frame", video_path.name)
+        probe_cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(video_path),
+        ]
+        probe_proc = await asyncio.create_subprocess_exec(
+            *probe_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        probe_stdout, _ = await asyncio.wait_for(probe_proc.communicate(), timeout=30)
+        try:
+            duration = float(probe_stdout.decode().strip())
+        except (ValueError, AttributeError):
+            duration = 0.0
+        mid_time = max(duration / 2, 0.0)
+
+        mid_frame_path = str(output_dir / "frame_0001.png")
+        mid_cmd = [
+            "ffmpeg", "-ss", str(mid_time),
+            "-i", str(video_path),
+            "-frames:v", "1",
+            mid_frame_path,
+            "-y",
+        ]
+        mid_proc = await asyncio.create_subprocess_exec(
+            *mid_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await asyncio.wait_for(mid_proc.communicate(), timeout=30)
+        frames = sorted(output_dir.glob("frame_*.png"))
+
+    logger.info("Extracted %d frame(s) from %s", len(frames), video_path.name)
+    return frames
+
+
+def _aggregate_frame_tags(
+    frame_results: List[TagResult],
+    min_frame_ratio: float = 0.3,
+    max_tags: int = 30,
+) -> TagResult:
+    """
+    Aggregate tags from multiple video frames into a single TagResult.
+
+    General tags: kept if they appear in >= min_frame_ratio of frames.
+    Character tags: kept if they appear in any frame.
+    Safety: most restrictive rating wins (unsafe > sketchy > safe).
+    """
+    if not frame_results:
+        return TagResult()
+
+    total_frames = len(frame_results)
+    min_count = max(1, int(total_frames * min_frame_ratio))
+
+    general_counts: Dict[str, int] = {}
+    character_tags: set = set()
+
+    SAFETY_RANK = {"safe": 0, "sketchy": 1, "unsafe": 2}
+    SAFETY_NAME = {0: "safe", 1: "sketchy", 2: "unsafe"}
+    worst_safety = 0
+
+    for fr in frame_results:
+        for tag in fr.general_tags:
+            general_counts[tag] = general_counts.get(tag, 0) + 1
+
+        for tag in fr.character_tags:
+            character_tags.add(tag)
+
+        rank = SAFETY_RANK.get(fr.safety, 2)
+        if rank > worst_safety:
+            worst_safety = rank
+
+    qualified_general = [
+        (tag, count)
+        for tag, count in general_counts.items()
+        if count >= min_count
+    ]
+    qualified_general.sort(key=lambda tc: (-tc[1], tc[0]))
+    final_general = [tag for tag, _count in qualified_general[:max_tags]]
+
+    return TagResult(
+        general_tags=final_general,
+        character_tags=list(character_tags),
+        safety=SAFETY_NAME.get(worst_safety, "unsafe"),
+    )
+
+
+async def tag_video(
+    video_path: Path,
+    scene_threshold: float = 0.3,
+    max_frames: int = 10,
+    min_frame_ratio: float = 0.3,
+) -> TagResult:
+    """
+    Tag a video by extracting key frames, running WD14 on each, and aggregating.
+    Returns the same TagResult as tag_image() for seamless processor integration.
+    """
+    if not settings.wd14_enabled:
+        logger.debug("WD14 tagging disabled; skipping video %s", video_path.name)
+        return TagResult()
+
+    if not WD14_AVAILABLE:
+        logger.warning("WD14 Tagger not available; skipping video %s", video_path.name)
+        return TagResult()
+
+    frames_dir = video_path.parent / f"_frames_{video_path.stem}"
+    try:
+        frames = await _extract_video_frames(
+            video_path, frames_dir,
+            scene_threshold=scene_threshold,
+            max_frames=max_frames,
+        )
+        if not frames:
+            logger.warning("No frames extracted from %s", video_path.name)
+            return TagResult()
+
+        logger.info("Tagging %d frames from video %s", len(frames), video_path.name)
+        frame_results = await tag_images_batch(frames)
+
+        return _aggregate_frame_tags(
+            frame_results,
+            min_frame_ratio=min_frame_ratio,
+            max_tags=settings.wd14_max_tags,
+        )
+    except Exception as exc:
+        logger.warning("Video tagging failed for %s: %s", video_path.name, exc)
+        return TagResult()
+    finally:
+        if frames_dir.exists():
+            shutil.rmtree(frames_dir, ignore_errors=True)
