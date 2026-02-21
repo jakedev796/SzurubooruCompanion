@@ -12,6 +12,7 @@ from uuid import UUID
 from app.database import User, UserRole, SiteCredential, get_db
 from app.api.deps import require_admin, get_current_user
 from app.services.auth import hash_password, verify_password
+from app.services.config import invalidate_user_config_cache
 from app.services.encryption import encrypt, decrypt
 
 router = APIRouter()
@@ -413,4 +414,5 @@ async def update_my_config(
 
         await db.commit()
 
+    await invalidate_user_config_cache(str(current_user.id))
     return {"message": "Configuration updated"}

@@ -94,21 +94,24 @@ def _needs_resolve_urls(url: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_direct_media_urls(url: str, user_config: Optional[Dict] = None) -> List[str]:
+async def _resolve_direct_media_urls(
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+) -> List[str]:
     """
     Use gallery-dl --resolve-urls to get direct media URLs.
-    
+
     For Twitter/Misskey, this returns the original (best quality) media URLs.
     Output format from --resolve-urls:
         https://pbs.twimg.com/media/xxx?format=jpg&name=orig
         | https://pbs.twimg.com/media/xxx?format=jpg&name=4096x4096
         | ...
-    
+
     We only want the non-indented lines (the orig URLs).
-    
+
     Args:
         url: The URL to resolve
         user_config: Per-user credentials from database (optional)
+        gallery_dl_timeout: Subprocess timeout in seconds
     """
     try:
         opts, cleanup_paths = _gallery_dl_options(url, user_config)
@@ -126,7 +129,7 @@ async def _resolve_direct_media_urls(url: str, user_config: Optional[Dict] = Non
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=120  # Default from global config DB
+                proc.communicate(), timeout=gallery_dl_timeout
             )
         finally:
             for p in cleanup_paths:
@@ -159,7 +162,7 @@ async def _resolve_direct_media_urls(url: str, user_config: Optional[Dict] = Non
         return direct_urls
 
     except asyncio.TimeoutError:
-        logger.error("gallery-dl --resolve-urls timed out for %s", url)
+        logger.error("gallery-dl --resolve-urls timed out after %ds for %s", gallery_dl_timeout, url)
         return []
     except FileNotFoundError:
         logger.error("gallery-dl binary not found")
@@ -169,7 +172,14 @@ async def _resolve_direct_media_urls(url: str, user_config: Optional[Dict] = Non
         return []
 
 
-async def download_url(url: str, dest_dir: str, source_url: Optional[str] = None, user_config: Optional[Dict] = None) -> DownloadResult:
+async def download_url(
+    url: str,
+    dest_dir: str,
+    source_url: Optional[str] = None,
+    user_config: Optional[Dict] = None,
+    gallery_dl_timeout: int = 120,
+    ytdlp_timeout: int = 300,
+) -> DownloadResult:
     """
     Download media from *url* into *dest_dir*.
     1. Try gallery-dl (with JSON metadata output).
@@ -183,11 +193,13 @@ async def download_url(url: str, dest_dir: str, source_url: Optional[str] = None
                    The source_url should be the direct media link for proper source tracking.
         user_config: Per-user credentials from database (optional)
                     Format: {site_name: {credential_key: value}}
+        gallery_dl_timeout: gallery-dl subprocess timeout in seconds.
+        ytdlp_timeout: yt-dlp subprocess timeout in seconds.
     """
     url = normalize_sankaku_url(url)
     os.makedirs(dest_dir, exist_ok=True)
 
-    result = await _try_gallery_dl(url, dest_dir, user_config)
+    result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout)
     if result.files:
         # Override source_url if provided
         if source_url:
@@ -195,7 +207,7 @@ async def download_url(url: str, dest_dir: str, source_url: Optional[str] = None
         return result
 
     logger.info("gallery-dl produced no files for %s – falling back to yt-dlp", url)
-    result = await _try_ytdlp(url, dest_dir)
+    result = await _try_ytdlp(url, dest_dir, ytdlp_timeout)
     if source_url:
         result.source_url = source_url
     return result
@@ -317,18 +329,21 @@ def _extension_from_content_type(content_type: str) -> str:
     return mapping.get(content_type, "")
 
 
-async def extract_media_urls(url: str, user_config: Optional[Dict] = None) -> List[ExtractedMedia]:
+async def extract_media_urls(
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+) -> List[ExtractedMedia]:
     """
     Phase 1: Extract direct media URLs without downloading.
 
     For Twitter/Misskey: Uses --resolve-urls to get direct media URLs.
     For other sites: Uses --dump-json to get metadata.
-    
+
     Args:
         url: The URL to extract media from
         user_config: Per-user credentials from database (optional)
                     Format: {site_name: {credential_key: value}}
-    
+        gallery_dl_timeout: gallery-dl subprocess timeout in seconds.
+
     Returns list of ExtractedMedia objects with:
     - url: The original page URL (used for downloading)
     - source_url: The direct media URL (used for Szurubooru source field)
@@ -340,31 +355,34 @@ async def extract_media_urls(url: str, user_config: Optional[Dict] = None) -> Li
     """
     url = normalize_sankaku_url(url)
     if _is_sankaku_url(url):
-        return await _extract_generic_media(url, user_config)
+        return await _extract_generic_media(url, user_config, gallery_dl_timeout)
     # Twitter/Misskey: use --resolve-urls for direct media URLs
     if _needs_resolve_urls(url):
-        return await _extract_twitter_misskey_media(url, user_config)
+        return await _extract_twitter_misskey_media(url, user_config, gallery_dl_timeout)
     # All other sites: --dump-json for metadata
-    return await _extract_generic_media(url, user_config)
+    return await _extract_generic_media(url, user_config, gallery_dl_timeout)
 
 
-async def _extract_twitter_misskey_media(url: str, user_config: Optional[Dict] = None) -> List[ExtractedMedia]:
+async def _extract_twitter_misskey_media(
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+) -> List[ExtractedMedia]:
     """
     Extract media info for Twitter/Misskey URLs using --resolve-urls.
-    
+
     This approach:
     1. Uses --resolve-urls to get direct media URLs (for source tracking)
     2. Returns ExtractedMedia with the original URL for downloading
     3. The direct media URL is stored as source_url for Szurubooru
-    
+
     Args:
         url: The Twitter/Misskey URL to extract from
         user_config: Per-user credentials from database (optional)
+        gallery_dl_timeout: gallery-dl subprocess timeout in seconds.
     """
     results: List[ExtractedMedia] = []
-    
+
     # Get direct media URLs using --resolve-urls
-    direct_urls = await _resolve_direct_media_urls(url, user_config)
+    direct_urls = await _resolve_direct_media_urls(url, user_config, gallery_dl_timeout)
     
     if not direct_urls:
         # Fallback - return the original URL
@@ -401,15 +419,18 @@ async def _extract_twitter_misskey_media(url: str, user_config: Optional[Dict] =
     return results
 
 
-async def _extract_generic_media(url: str, user_config: Optional[Dict] = None) -> List[ExtractedMedia]:
+async def _extract_generic_media(
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+) -> List[ExtractedMedia]:
     """
     Extract media info for generic URLs using --dump-json.
-    
+
     This is the original extraction logic for non-Twitter/Misskey sites.
-    
+
     Args:
         url: The URL to extract media from
         user_config: Per-user credentials from database (optional)
+        gallery_dl_timeout: gallery-dl subprocess timeout in seconds.
     """
     results: List[ExtractedMedia] = []
 
@@ -429,7 +450,7 @@ async def _extract_generic_media(url: str, user_config: Optional[Dict] = None) -
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=120  # Default from global config DB
+                proc.communicate(), timeout=gallery_dl_timeout
             )
         finally:
             for p in cleanup_paths:
@@ -529,7 +550,7 @@ async def _extract_generic_media(url: str, user_config: Optional[Dict] = None) -
             ))
 
     except asyncio.TimeoutError:
-        logger.error("gallery-dl --dump-json timed out after 120s for %s", url)
+        logger.error("gallery-dl --dump-json timed out after %ds for %s", gallery_dl_timeout, url)
         results.append(ExtractedMedia(
             url=url,
             source_url=url,
@@ -724,7 +745,9 @@ def _gallery_dl_options(url: str, user_config: Optional[Dict] = None) -> Tuple[L
     return (opts, cleanup_paths)
 
 
-async def _try_gallery_dl(url: str, dest_dir: str, user_config: Optional[Dict] = None) -> DownloadResult:
+async def _try_gallery_dl(
+    url: str, dest_dir: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+) -> DownloadResult:
     result = DownloadResult(source_url=url, used_tool="gallery-dl")
     try:
         opts, cleanup_paths = _gallery_dl_options(url, user_config)
@@ -743,7 +766,7 @@ async def _try_gallery_dl(url: str, dest_dir: str, user_config: Optional[Dict] =
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=120  # Default from global config DB
+                proc.communicate(), timeout=gallery_dl_timeout
             )
         finally:
             for p in cleanup_paths:
@@ -789,7 +812,7 @@ async def _try_gallery_dl(url: str, dest_dir: str, user_config: Optional[Dict] =
             result.error = None  # Clear error if we got files anyway.
 
     except asyncio.TimeoutError:
-        result.error = "gallery-dl timed out after 120s"
+        result.error = f"gallery-dl timed out after {gallery_dl_timeout}s"
         logger.error(result.error)
     except FileNotFoundError:
         result.error = "gallery-dl binary not found"
@@ -805,7 +828,7 @@ async def _try_gallery_dl(url: str, dest_dir: str, user_config: Optional[Dict] =
 # yt-dlp
 # ---------------------------------------------------------------------------
 
-async def _try_ytdlp(url: str, dest_dir: str) -> DownloadResult:
+async def _try_ytdlp(url: str, dest_dir: str, ytdlp_timeout: int = 300) -> DownloadResult:
     result = DownloadResult(source_url=url, used_tool="yt-dlp")
     try:
         output_template = os.path.join(dest_dir, "%(title)s.%(ext)s")
@@ -822,7 +845,7 @@ async def _try_ytdlp(url: str, dest_dir: str) -> DownloadResult:
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=300  # Default from global config DB
+            proc.communicate(), timeout=ytdlp_timeout
         )
 
         if proc.returncode != 0:
@@ -849,7 +872,7 @@ async def _try_ytdlp(url: str, dest_dir: str) -> DownloadResult:
         result.metadata = metadata
 
     except asyncio.TimeoutError:
-        result.error = "yt-dlp timed out after 300s"
+        result.error = f"yt-dlp timed out after {ytdlp_timeout}s"
         logger.error(result.error)
     except FileNotFoundError:
         result.error = "yt-dlp binary not found"

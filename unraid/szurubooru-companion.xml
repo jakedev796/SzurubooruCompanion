@@ -49,11 +49,17 @@
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <!-- WD14 AI Tagger (ENV-based, requires restart to change)           -->
+  <!-- wd14_enabled, confidence threshold, and max tags are live        -->
+  <!-- settings in the dashboard (Settings > Global Settings).          -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="WD14 Enabled" Target="WD14_ENABLED" Default="true" Mode="" Description="Enable AI tagging via WD14 (downloads ~2GB model on first run)" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
-  <Config Name="WD14 Model" Target="WD14_MODEL" Default="SmilingWolf/wd-swinv2-tagger-v3" Mode="" Description="HuggingFace model name for WD14 tagger" Type="Variable" Display="advanced" Required="false" Mask="false">SmilingWolf/wd-swinv2-tagger-v3</Config>
-  <Config Name="WD14 Confidence Threshold" Target="WD14_CONFIDENCE_THRESHOLD" Default="0.35" Mode="" Description="Minimum confidence to include a tag (0.0-1.0)" Type="Variable" Display="advanced" Required="false" Mask="false">0.35</Config>
-  <Config Name="WD14 Max Tags" Target="WD14_MAX_TAGS" Default="30" Mode="" Description="Maximum number of AI tags per image" Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="WD14 Model" Target="WD14_MODEL" Default="SmilingWolf/wd-swinv2-tagger-v3" Mode="" Description="HuggingFace model name for WD14 tagger (requires restart to change)" Type="Variable" Display="advanced" Required="false" Mask="false">SmilingWolf/wd-swinv2-tagger-v3</Config>
+  <Config Name="WD14 Inference Threads" Target="WD14_NUM_WORKERS" Default="4" Mode="" Description="Number of threads for concurrent inference. Used when process pool is off (default) or GPU is active." Type="Variable" Display="advanced" Required="false" Mask="false">4</Config>
+  <Config Name="WD14 Use Process Pool" Target="WD14_USE_PROCESS_POOL" Default="false" Mode="" Description="Run inference in a dedicated subprocess (gives PyTorch exclusive access to all CPU cores). Only beneficial when WORKER_CONCURRENCY=1. With multiple workers, leave false so all workers run inference concurrently via the thread pool." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <!-- Worker Settings                                                  -->
+  <!-- ══════════════════════════════════════════════════════════════════ -->
+  <Config Name="Worker Concurrency" Target="WORKER_CONCURRENCY" Default="1" Mode="" Description="Number of background job workers to spawn (requires restart). Set higher to process multiple jobs in parallel. Disable WD14_USE_PROCESS_POOL when using more than 1 worker." Type="Variable" Display="always" Required="false" Mask="false">1</Config>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <!-- Server Settings                                                  -->

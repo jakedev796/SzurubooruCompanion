@@ -19,10 +19,8 @@ router = APIRouter()
 
 class GlobalSettingsResponse(BaseModel):
     wd14_enabled: bool
-    wd14_model: str
     wd14_confidence_threshold: float
     wd14_max_tags: int
-    worker_concurrency: int
     gallery_dl_timeout: int
     ytdlp_timeout: int
     max_retries: int
@@ -35,10 +33,8 @@ class GlobalSettingsResponse(BaseModel):
 
 class GlobalSettingsUpdateRequest(BaseModel):
     wd14_enabled: Optional[bool] = None
-    wd14_model: Optional[str] = None
     wd14_confidence_threshold: Optional[float] = None
     wd14_max_tags: Optional[int] = None
-    worker_concurrency: Optional[int] = None
     gallery_dl_timeout: Optional[int] = None
     ytdlp_timeout: Optional[int] = None
     max_retries: Optional[int] = None
@@ -61,10 +57,8 @@ async def get_global_settings(
 
     return GlobalSettingsResponse(
         wd14_enabled=config.wd14_enabled,
-        wd14_model=config.wd14_model,
         wd14_confidence_threshold=config.wd14_confidence_threshold,
         wd14_max_tags=config.wd14_max_tags,
-        worker_concurrency=config.worker_concurrency,
         gallery_dl_timeout=config.gallery_dl_timeout,
         ytdlp_timeout=config.ytdlp_timeout,
         max_retries=config.max_retries,
