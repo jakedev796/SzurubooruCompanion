@@ -106,6 +106,22 @@ function getPostId(): string | null {
   return null;
 }
 
+function getPostUrlFromThumbnail(mediaElement: HTMLElement): string | null {
+  const link = mediaElement.closest('a[href*="page=post"]');
+  if (!link) return null;
+  const href = (link as HTMLAnchorElement).href;
+  if (!href || (!href.includes('s=view') && !href.includes('id='))) return null;
+  return href;
+}
+
+function isListPage(): boolean {
+  return window.location.href.includes('page=post') && window.location.href.includes('s=list');
+}
+
+function isThumbnailElement(element: HTMLElement): boolean {
+  return element.closest('.thumb, .thumbnail, .post-preview') !== null;
+}
+
 /**
  * Rule34.xxx site extractor implementation.
  */
@@ -119,6 +135,27 @@ export const rule34Extractor: SiteExtractor = {
   async extract(mediaElement: HTMLElement, mediaUrl: string): Promise<MediaInfo | null> {
     const pageUrl = window.location.href;
 
+    // List page: only the hovered thumbnail's post URL; never use document-level data
+    if (isListPage()) {
+      if (isThumbnailElement(mediaElement)) {
+        const postUrl = getPostUrlFromThumbnail(mediaElement);
+        if (postUrl) {
+          return {
+            url: postUrl,
+            source: postUrl,
+            tags: ['tagme'],
+            safety: 'safe',
+            type: 'image',
+            filename: extractFilename(postUrl),
+            skipTagging: false,
+            metadata: {},
+          };
+        }
+      }
+      return null;
+    }
+
+    // Post view page: DOM extraction (single post)
     const originalUrl = getOriginalUrl();
     const downloadUrl = originalUrl || mediaUrl;
 

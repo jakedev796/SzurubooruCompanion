@@ -62,6 +62,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     await Future.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     try {
+      await context.read<SettingsModel>().loadSettings();
+      if (!mounted) return;
       await _applyBubbleAndNotificationFromState();
     } catch (e) {
       debugPrint('[Main] _checkOverlayPermissionOnResume error: $e');

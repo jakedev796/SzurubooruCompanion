@@ -63,6 +63,29 @@ export function extractHashtags(text: string): string[] {
 }
 
 /**
+ * Detect if a URL points to a thumbnail/sample/preview image rather than full-size media.
+ * We should never send these; use the post/source URL so the backend resolves full media.
+ */
+export function isThumbnailOrSampleMediaUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  const thumbnailPatterns = [
+    /\/sample\./i,
+    /\/preview\./i,
+    /\/thumb/i,
+    /_thumb/i,
+    /\/thumbnail/i,
+    /_small\./i,
+    /_medium\./i,
+    /\?name=(?:small|medium|thumb)/i,
+    /\/crop\/\d+/i,
+    /\/resize\//i,
+    /_sq\./i,
+    /_q\d+\./i,
+  ];
+  return thumbnailPatterns.some((p) => p.test(lower));
+}
+
+/**
  * Check if a URL is a valid media URL.
  */
 export function isValidMediaUrl(url: string): boolean {

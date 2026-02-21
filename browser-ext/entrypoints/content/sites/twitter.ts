@@ -15,34 +15,33 @@ export function isTwitterUrl(url: string): boolean {
 }
 
 /**
- * Extract tweet ID from Twitter DOM.
+ * Find the innermost tweet container that contains the given element.
+ * For retweets, this returns the original tweet's block (the one that has the media),
+ * not the outer retweet wrapper.
+ */
+function getTweetContainerForMedia(element: HTMLElement): HTMLElement | null {
+  const candidates = document.querySelectorAll('article, [data-testid="tweet"], [role="article"]');
+  let innermost: HTMLElement | null = null;
+  for (const node of candidates) {
+    const el = node as HTMLElement;
+    if (!el.contains(element)) continue;
+    // Prefer the smallest container that contains the media and has no nested tweet container with the media
+    const nested = el.querySelector('article, [data-testid="tweet"], [role="article"]');
+    if (nested && nested !== el && (nested as HTMLElement).contains(element)) continue;
+    innermost = el;
+    break;
+  }
+  return innermost;
+}
+
+/**
+ * Extract tweet ID from the tweet container that contains the media.
+ * For retweets, uses the original tweet's status ID.
  */
 function extractTweetId(element: HTMLElement): string | null {
-  // Look for status links
-  const tweetContainer = element.closest('article, [data-testid="tweet"], [role="article"]');
-  
+  const tweetContainer = getTweetContainerForMedia(element);
   if (tweetContainer) {
-    // Find status links
-    const statusLinks = tweetContainer.querySelectorAll('a[href*="/status/"]');
-    for (const link of statusLinks) {
-      const href = link.getAttribute('href');
-      if (href) {
-        const match = href.match(/\/status\/(\d+)/);
-        if (match) {
-          // Skip if this is just a mention link
-          const parentText = link.textContent || '';
-          if (!parentText.match(/^@\w+$/)) {
-            return match[1];
-          }
-        }
-      }
-    }
-    
-    // Try data-tweet-id attribute
-    const tweetId = tweetContainer.getAttribute('data-tweet-id');
-    if (tweetId) return tweetId;
-    
-    // Try finding the time element's parent link
+    // Prefer the time link (canonical status link for this tweet)
     const timeElement = tweetContainer.querySelector('time');
     if (timeElement) {
       const parentLink = timeElement.closest('a[href*="/status/"]');
@@ -54,81 +53,50 @@ function extractTweetId(element: HTMLElement): string | null {
         }
       }
     }
+    const statusLinks = tweetContainer.querySelectorAll('a[href*="/status/"]');
+    for (const link of statusLinks) {
+      const href = link.getAttribute('href');
+      if (href) {
+        const match = href.match(/\/status\/(\d+)/);
+        if (match) {
+          const parentText = link.textContent || '';
+          if (!parentText.match(/^@\w+$/)) return match[1];
+        }
+      }
+    }
+    const tweetId = tweetContainer.getAttribute('data-tweet-id');
+    if (tweetId) return tweetId;
   }
-  
-  // Check if page URL itself is a tweet
   const pageUrl = window.location.href;
   const pageMatch = pageUrl.match(/\/status\/(\d+)/);
-  if (pageMatch) {
-    return pageMatch[1];
-  }
-  
+  if (pageMatch) return pageMatch[1];
   return null;
 }
 
 /**
- * Extract the ORIGINAL author's username from Twitter DOM.
- * This handles retweets by finding the original tweet's author,
- * not the person who retweeted it.
+ * Extract the tweet author's username from the container that contains the media.
+ * getTweetContainerForMedia already gives us the original tweet for retweets.
  */
 function extractUsername(element: HTMLElement): string | null {
-  const tweetContainer = element.closest('article, [data-testid="tweet"], [role="article"]');
+  const tweetContainer = getTweetContainerForMedia(element);
   if (!tweetContainer) return null;
-  
-  // Check if this is a retweet - look for "Reposted" or similar indicators
-  // Twitter shows "User reposted" above the original tweet
-  const retweetHeader = tweetContainer.querySelector('[data-testid="socialContext"]');
-  if (retweetHeader) {
-    // This is a retweet, find the original author inside
-    // The original tweet content is below the retweet header
-    const originalContent = tweetContainer.querySelector('[data-testid="tweet"]') || tweetContainer;
-    
-    // Find the user link in the original content
-    const userLinks = originalContent.querySelectorAll('a[href^="/"]');
-    for (const link of userLinks) {
-      const href = link.getAttribute('href') || '';
-      const match = href.match(/^\/([a-zA-Z0-9_]+)(?:\/|$)/);
-      if (match && !['status', 'i', 'home', 'explore', 'notifications', 'messages'].includes(match[1])) {
-        // Verify this is the author link (usually has the avatar or display name)
-        const parent = link.closest('[data-testid="User-Name"], [class*="user"]');
-        if (parent) {
-          return match[1];
-        }
-      }
-    }
-  }
-  
-  // Not a retweet, or fallback: find the first user link
-  // Twitter's structure: the author's profile link appears before the tweet content
+
   const userLinks = tweetContainer.querySelectorAll('a[href^="/"]');
-  
-  // The author is typically the first user link that's not a status link
   for (const link of userLinks) {
     const href = link.getAttribute('href') || '';
-    // Match /username pattern (not /status/, /i/, etc.)
     const match = href.match(/^\/([a-zA-Z0-9_]+)(?:\/|$)/);
     if (match && !['status', 'i', 'home', 'explore', 'notifications', 'messages'].includes(match[1])) {
-      // Verify this is in the user name section (not a mention in the text)
       const parent = link.closest('[data-testid="User-Name"]');
-      if (parent) {
-        return match[1];
-      }
+      if (parent) return match[1];
     }
   }
-  
-  // Fallback: look for the first user link that's not in the tweet text
   for (const link of userLinks) {
     const href = link.getAttribute('href') || '';
     const match = href.match(/^\/([a-zA-Z0-9_]+)(?:\/|$)/);
     if (match && !['status', 'i', 'home', 'explore', 'notifications', 'messages'].includes(match[1])) {
-      // Check if this link is NOT in the tweet text area
-      const tweetText = link.closest('[data-testid="tweetText"]');
-      if (!tweetText) {
-        return match[1];
-      }
+      if (!link.closest('[data-testid="tweetText"]')) return match[1];
     }
   }
-  
   return null;
 }
 
@@ -157,31 +125,22 @@ function upgradeImageUrl(url: string): string {
 }
 
 /**
- * Extract hashtags from tweet.
+ * Extract hashtags from the tweet that contains the media.
  */
 function extractTwitterTags(element: HTMLElement): string[] {
-  const tweetContainer = element.closest('article, [data-testid="tweet"], [role="article"]');
+  const tweetContainer = getTweetContainerForMedia(element);
   if (!tweetContainer) return ['tagme'];
-  
-  // Look for hashtag links
+
   const hashtagLinks = tweetContainer.querySelectorAll('a[href*="/hashtag/"]');
   const tags: string[] = [];
-  
   for (const link of hashtagLinks) {
     const href = link.getAttribute('href') || '';
     const match = href.match(/\/hashtag\/([a-zA-Z0-9_]+)/);
-    if (match) {
-      tags.push(match[1].toLowerCase());
-    }
+    if (match) tags.push(match[1].toLowerCase());
   }
-  
-  // Also extract from tweet text
   const tweetText = tweetContainer.querySelector('[data-testid="tweetText"]')?.textContent || '';
   const textTags = extractHashtags(tweetText);
-  
-  // Combine and dedupe
   const allTags = [...new Set([...tags, ...textTags])];
-  
   return allTags.length > 0 ? allTags : ['tagme'];
 }
 
@@ -224,9 +183,7 @@ export const twitterExtractor: SiteExtractor = {
   },
   
   async extract(mediaElement: HTMLElement, mediaUrl: string): Promise<MediaInfo | null> {
-    const pageUrl = window.location.href;
-    
-    // Extract tweet ID
+    // Extract tweet ID (from innermost tweet container; for retweets, the original tweet)
     const tweetId = extractTweetId(mediaElement);
     if (!tweetId) {
       console.log('[CCC] Twitter: Could not find tweet ID');

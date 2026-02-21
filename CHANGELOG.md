@@ -12,6 +12,34 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ### Browser Extension
 
+## [1.0.9] - 2026-02-21
+
+### CCC - Frontend
+
+### CCC - Backend
+- Reject job URLs for x.com/home, twitter.com/home and bare-domain URLs (e.g. gelbooru.com, misskey.art) with 400 and clear message
+- Fix Gelbooru (and other sites with hotlink protection) returning HTML instead of images on direct download; validates Content-Type and falls back to gallery-dl
+- Reject Reddit base or subreddit-only URLs (e.g. reddit.com, reddit.com/r/DIY); only post URLs containing /comments/ are allowed
+- Reddit (and other sites): ensure downloaded filename has extension (from gallery-dl URL or Content-Type) so upload to Szurubooru does not fail with missing type
+
+### Mobile App
+- Job detail sheet: use sheet jobId for all actions (Start/Pause/Stop/Resume/Retry) so the correct job is targeted
+- Update download notification: use stable tag + onlyAlertOnce so progress updates replace the same notification instead of creating new ones
+- Persistent notification: add expandable action to toggle floating button (show "Disable Floating Button" when on, "Enable Floating Button" when off); settings reload on app resume so UI reflects notification toggle
+
+### Browser Extension
+- Fix Gelbooru extractor querySelector crash (remove invalid :contains selector)
+- On Gelbooru list page, floating button submits post URL so backend fetches full-size image via gallery-dl
+- Reject job URLs for x.com/home, twitter.com/home and bare-domain URLs before submit; same validation in content and context menu
+- Remove "Send page URL to Szurubooru" context menu; only media (floating button, right-click image/video) and "Send link" allowed
+- Danbooru and yande.re list pages: floating button on thumbnail submits post URL for full-size image (same as Gelbooru)
+- Twitter/X: floating button extracts only the relevant tweet permalink and its media; for retweets, use original tweet URL and media
+- Gelbooru, Danbooru, yande.re, Rule34: on list pages only submit the hovered thumbnail's single post URL; return null otherwise (no fall-through to page-level URL)
+- Rule34: add list-page handling (submit post URL for thumbnails like Gelbooru)
+- Never send thumbnail/sample media URLs: if detected, use post/source URL so backend resolves full media
+- Floating button: resolve hover to actual img/video (works on wrappers e.g. Twitter video); use extractor isGrabbable; allow video without src (lazy load); reject feed URL as source
+- Reddit: floating button on reddit.com; submit only post permalink (parent URL); reject subreddit-only URLs (e.g. r/DIY) in validation
+
 
 ## [1.0.8] - 2026-02-20
 

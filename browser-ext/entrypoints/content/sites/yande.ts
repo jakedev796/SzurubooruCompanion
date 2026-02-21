@@ -136,6 +136,28 @@ function getPostId(): string | null {
 }
 
 /**
+ * Get the post view URL from a thumbnail element (list page).
+ */
+function getPostUrlFromThumbnail(mediaElement: HTMLElement): string | null {
+  const link = mediaElement.closest('a[href*="/post/show/"]');
+  if (!link) return null;
+  const href = (link as HTMLAnchorElement).href;
+  if (!href) return null;
+  if (!href.match(/\/post\/show\/(\d+)/)) return null;
+  return href;
+}
+
+function isListPage(): boolean {
+  const pathname = window.location.pathname || '';
+  if (pathname === '/post' || pathname.startsWith('/post?')) return true;
+  return false;
+}
+
+function isThumbnailElement(element: HTMLElement): boolean {
+  return element.closest('.thumb, .preview, .post-preview') !== null;
+}
+
+/**
  * yande.re site extractor implementation.
  */
 export const yandeExtractor: SiteExtractor = {
@@ -147,8 +169,28 @@ export const yandeExtractor: SiteExtractor = {
   
   async extract(mediaElement: HTMLElement, mediaUrl: string): Promise<MediaInfo | null> {
     const pageUrl = window.location.href;
-    
-    // Get original URL
+
+    // List page: only the hovered thumbnail's post URL; never use document-level data
+    if (isListPage()) {
+      if (isThumbnailElement(mediaElement)) {
+        const postUrl = getPostUrlFromThumbnail(mediaElement);
+        if (postUrl) {
+          return {
+            url: postUrl,
+            source: postUrl,
+            tags: ['tagme'],
+            safety: 'safe',
+            type: 'image',
+            filename: extractFilename(postUrl),
+            skipTagging: false,
+            metadata: {},
+          };
+        }
+      }
+      return null;
+    }
+
+    // Post view page: DOM extraction (single post)
     const originalUrl = getOriginalUrl();
     const downloadUrl = originalUrl || mediaUrl;
     

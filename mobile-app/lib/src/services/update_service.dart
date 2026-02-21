@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -364,12 +365,19 @@ class UpdateService {
 
       await NotificationService.instance.showUpdateDownloading(0);
 
+      int lastNotifiedPercent = 0;
+      const progressStep = 10;
+
       await _dio.download(
         remote.downloadUrl,
         apkFile.path,
         onReceiveProgress: (received, total) {
-          if (total > 0) {
-            final percent = (received / total * 100).round().clamp(0, 100);
+          if (total <= 0) return;
+          final percent = (received / total * 100).round().clamp(0, 100);
+          final shouldUpdate = percent == 100 ||
+              percent >= lastNotifiedPercent + progressStep;
+          if (shouldUpdate) {
+            lastNotifiedPercent = percent;
             NotificationService.instance
                 .updateUpdateDownloadProgress(percent)
                 .ignore();

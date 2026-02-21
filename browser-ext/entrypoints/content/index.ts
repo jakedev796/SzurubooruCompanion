@@ -6,8 +6,9 @@
  */
 
 import type { SiteExtractor, MediaInfo, ContentScriptMessage } from '../../utils/types';
-import { getMediaUrl } from '../../utils/extractors/common';
-import { initFloatingButton, showToast } from './floating-button';
+import { getMediaUrl, isThumbnailOrSampleMediaUrl } from '../../utils/extractors/common';
+import { isRejectedJobUrl } from '../../utils/job_url_validation';
+import { initFloatingButton, isGrabbableMedia, showToast } from './floating-button';
 
 // Import all extractors
 import { misskeyExtractor } from './sites/misskey';
@@ -16,6 +17,7 @@ import { danbooruExtractor } from './sites/danbooru';
 import { gelbooruExtractor } from './sites/gelbooru';
 import { rule34Extractor } from './sites/rule34';
 import { yandeExtractor } from './sites/yande';
+import { redditExtractor } from './sites/reddit';
 
 /** All available extractors */
 const extractors: SiteExtractor[] = [
@@ -25,6 +27,7 @@ const extractors: SiteExtractor[] = [
   gelbooruExtractor,
   rule34Extractor,
   yandeExtractor,
+  redditExtractor,
 ];
 
 /** Current active extractor for this page */
@@ -64,19 +67,22 @@ function validateUrl(url: string | null | undefined): boolean {
 
 /**
  * Get the media URL from an element.
+ * For VIDEO with no src yet (lazy-loaded), returns '' so the extractor can run and provide the post/tweet URL.
  */
 function getElementMediaUrl(element: HTMLElement): string | null {
-  // First try the common utility
   const url = getMediaUrl(element);
   if (url && validateUrl(url)) return url;
-  
-  // Try background-image for divs
+
+  if (element.tagName === 'VIDEO') {
+    return '';
+  }
+
   if (element.tagName !== 'IMG' && element.tagName !== 'VIDEO') {
     const bgImage = window.getComputedStyle(element).backgroundImage;
     const match = bgImage.match(/url\(['"]?([^'")]+)['"]?\)/);
     if (match && validateUrl(match[1])) return match[1];
   }
-  
+
   return null;
 }
 
@@ -89,32 +95,44 @@ async function handleMediaGrab(mediaElement: HTMLElement): Promise<void> {
     return;
   }
   
-  // Get media URL
   const mediaUrl = getElementMediaUrl(mediaElement);
-  if (!mediaUrl) {
+  if (mediaUrl === null && mediaElement.tagName !== 'VIDEO') {
     showToast('Could not find media URL', 'error');
     return;
   }
-  
-  console.log('[CCC] Extracting media from:', mediaElement.tagName, mediaUrl);
-  
+
+  const urlForExtract = mediaUrl ?? '';
+  const urlForLog = urlForExtract || '(video – extractor will provide URL)';
+  console.log('[CCC] Extracting media from:', mediaElement.tagName, urlForLog);
+
   try {
-    // Extract media info using the site-specific extractor
-    const mediaInfo = await activeExtractor.extract(mediaElement, mediaUrl);
+    const mediaInfo = await activeExtractor.extract(mediaElement, urlForExtract);
     
     if (!mediaInfo) {
       showToast('Could not extract media info', 'error');
       return;
     }
-    
+
+    // Never send thumbnail/sample URLs; use post/source URL so backend resolves full media
+    if (isThumbnailOrSampleMediaUrl(mediaInfo.url) && mediaInfo.source && !isThumbnailOrSampleMediaUrl(mediaInfo.source)) {
+      mediaInfo.url = mediaInfo.source;
+    }
+
     console.log('[CCC] Extracted media info:', mediaInfo);
-    
-    // Validate URL before submitting
+
     if (!validateUrl(mediaInfo.url)) {
       showToast('Invalid URL format', 'error');
       return;
     }
-    
+    if (isRejectedJobUrl(mediaInfo.url)) {
+      showToast('Use a direct link to a post or media, not a feed or homepage', 'error');
+      return;
+    }
+    if (mediaInfo.source && isRejectedJobUrl(mediaInfo.source)) {
+      showToast('Use a direct link to a post or media, not a feed or homepage', 'error');
+      return;
+    }
+
     // Send to background script
     const message: ContentScriptMessage = {
       action: 'SUBMIT_JOB',
@@ -184,8 +202,10 @@ function init(): void {
   
   console.log('[CCC] Using extractor:', activeExtractor.name);
   
-  // Initialize floating button
-  const cleanup = initFloatingButton(handleMediaGrab);
+  const cleanup = initFloatingButton(
+    handleMediaGrab,
+    (el) => activeExtractor?.isGrabbable(el) ?? isGrabbableMedia(el)
+  );
   
   // Set up mutation observer for dynamic content
   setupMutationObserver();
@@ -217,6 +237,8 @@ export default defineContentScript({
     '*://*.gelbooru.com/*',
     '*://rule34.xxx/*',
     '*://yande.re/*',
+    '*://reddit.com/*',
+    '*://*.reddit.com/*',
   ],
   runAt: 'document_idle',
   
