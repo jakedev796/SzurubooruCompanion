@@ -48,8 +48,8 @@ function extractGelbooruTags(): { tags: string[]; safety: 'safe' | 'sketchy' | '
     }
   });
   
-  // Extract rating
-  const ratingElement = document.querySelector('.tag-type-rating a, #stats li:contains("Rating")');
+  // Extract rating (:contains is jQuery-only; use valid CSS and stats fallback below)
+  const ratingElement = document.querySelector('.tag-type-rating a');
   if (ratingElement) {
     const ratingText = ratingElement.textContent?.toLowerCase() || '';
     if (ratingText.includes('explicit')) {
@@ -132,6 +132,26 @@ function getPostId(): string | null {
 }
 
 /**
+ * Get the post view URL from a thumbnail element (list page).
+ * Returns the absolute href of the wrapping link if it points to a post view.
+ */
+function getPostUrlFromThumbnail(mediaElement: HTMLElement): string | null {
+  const link = mediaElement.closest('a[href*="page=post"]');
+  if (!link) return null;
+  const href = (link as HTMLAnchorElement).href;
+  if (!href || (!href.includes('s=view') && !href.includes('id='))) return null;
+  return href;
+}
+
+function isListPage(): boolean {
+  return window.location.href.includes('page=post') && window.location.href.includes('s=list');
+}
+
+function isThumbnailElement(element: HTMLElement): boolean {
+  return element.closest('.thumb, .thumbnail, .post-preview') !== null;
+}
+
+/**
  * Gelbooru site extractor implementation.
  */
 export const gelbooruExtractor: SiteExtractor = {
@@ -143,20 +163,34 @@ export const gelbooruExtractor: SiteExtractor = {
   
   async extract(mediaElement: HTMLElement, mediaUrl: string): Promise<MediaInfo | null> {
     const pageUrl = window.location.href;
-    
-    // Get original URL
+
+    // List page: only the hovered thumbnail's post URL; never use document-level data
+    if (isListPage()) {
+      if (isThumbnailElement(mediaElement)) {
+        const postUrl = getPostUrlFromThumbnail(mediaElement);
+        if (postUrl) {
+          return {
+            url: postUrl,
+            source: postUrl,
+            tags: ['tagme'],
+            safety: 'safe',
+            type: 'image',
+            filename: extractFilename(postUrl),
+            skipTagging: false,
+            metadata: {},
+          };
+        }
+      }
+      return null;
+    }
+
+    // Post view page: DOM extraction (single post)
     const originalUrl = getOriginalUrl();
     const downloadUrl = originalUrl || mediaUrl;
-    
-    // Extract tags and safety
     const { tags, safety } = extractGelbooruTags();
-    
-    // Get post ID
     const postId = getPostId();
-    
-    // Determine media type
     const isVideo = isVideoMedia(mediaElement, downloadUrl);
-    
+
     return {
       url: downloadUrl,
       source: pageUrl,
@@ -164,7 +198,7 @@ export const gelbooruExtractor: SiteExtractor = {
       safety,
       type: isVideo ? 'video' : 'image',
       filename: extractFilename(downloadUrl),
-      skipTagging: true, // Gelbooru posts already have tags
+      skipTagging: true,
       metadata: {
         postId,
         originalUrl,

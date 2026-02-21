@@ -26,6 +26,8 @@ from app.api.deps import get_current_user
 from app.services.config import load_global_config
 from app.sites import normalize_url
 
+from app.api.job_url_validation import is_rejected_job_url
+
 router = APIRouter()
 settings = get_settings()
 
@@ -210,7 +212,13 @@ async def create_job_url(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a job from a URL."""
-    url = normalize_url(body.url)
+    raw_url = (body.url or "").strip()
+    if is_rejected_job_url(raw_url):
+        raise HTTPException(
+            status_code=400,
+            detail="URL is not allowed: use a direct link to a post or media, not a feed or site homepage.",
+        )
+    url = normalize_url(raw_url)
     job = Job(
         job_type=JobType.URL,
         url=url,

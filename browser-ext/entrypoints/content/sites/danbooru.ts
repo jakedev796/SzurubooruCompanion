@@ -129,6 +129,30 @@ function getPostId(): string | null {
 }
 
 /**
+ * Get the post view URL from a thumbnail element (list page).
+ */
+function getPostUrlFromThumbnail(mediaElement: HTMLElement): string | null {
+  const link = mediaElement.closest('a[href*="/posts/"]');
+  if (!link) return null;
+  const href = (link as HTMLAnchorElement).href;
+  if (!href) return null;
+  const pathMatch = href.match(/\/posts\/(\d+)/);
+  if (!pathMatch) return null;
+  return href;
+}
+
+function isListPage(): boolean {
+  const pathname = window.location.pathname || '';
+  if (pathname === '/posts' || pathname.startsWith('/posts?')) return true;
+  if (pathname === '/post' || pathname.startsWith('/post?')) return true;
+  return false;
+}
+
+function isThumbnailElement(element: HTMLElement): boolean {
+  return element.closest('.post-preview, .post-thumbnail') !== null;
+}
+
+/**
  * Danbooru site extractor implementation.
  */
 export const danbooruExtractor: SiteExtractor = {
@@ -140,8 +164,28 @@ export const danbooruExtractor: SiteExtractor = {
   
   async extract(mediaElement: HTMLElement, mediaUrl: string): Promise<MediaInfo | null> {
     const pageUrl = window.location.href;
-    
-    // Get original URL
+
+    // List page: only the hovered thumbnail's post URL; never use document-level data
+    if (isListPage()) {
+      if (isThumbnailElement(mediaElement)) {
+        const postUrl = getPostUrlFromThumbnail(mediaElement);
+        if (postUrl) {
+          return {
+            url: postUrl,
+            source: postUrl,
+            tags: ['tagme'],
+            safety: 'safe',
+            type: 'image',
+            filename: extractFilename(postUrl),
+            skipTagging: false,
+            metadata: {},
+          };
+        }
+      }
+      return null;
+    }
+
+    // Post view page: DOM extraction (single post)
     const originalUrl = getOriginalUrl();
     const downloadUrl = originalUrl || mediaUrl;
     
