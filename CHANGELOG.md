@@ -5,14 +5,21 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
-- Add Video Tagging settings section to Global Settings (toggle, scene threshold, max frames, min frame ratio)
 
 ### CCC - Backend
-- Add video frame tagging: extract key frames via FFmpeg scene detection and tag with WD14
 
 ### Mobile App
 
 ### Browser Extension
+
+
+## [1.0.8] - 2026-02-20
+
+### CCC - Frontend
+- Add Video Tagging settings section to Global Settings (toggle, scene threshold, max frames, min frame ratio)
+
+### CCC - Backend
+- Add video frame tagging: extract key frames via FFmpeg scene detection and tag with WD14
 
 
 ## [1.0.7] - 2026-02-19
