@@ -110,7 +110,7 @@ class PermissionDialog extends StatelessWidget {
       barrierDismissible: false,
       builder: (context) => PermissionDialog(
         title: 'Overlay Permission',
-        description: 'Overlay permission allows the app to display a floating bubble that lets you quickly share media to Szurubooru from any app. This is optional but provides convenient quick-share functionality.',
+        description: 'Overlay permission allows the app to display a floating bubble that lets you quickly share media to Szurubooru from any app. This is optional but provides convenient quick-share functionality.\n\nIf Android shows "App was denied access", you need to first unlock restricted settings: Settings > Apps > (this app) > three-dot menu > Allow restricted settings. Then try granting this permission again.',
         icon: Icons.bubble_chart,
         onGrant: () => Navigator.of(context).pop(true),
         onCancel: () => Navigator.of(context).pop(false),

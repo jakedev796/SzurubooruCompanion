@@ -9,6 +9,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+- Add note to overlay permission dialog about unlocking restricted settings on sideloaded installs
 
 ### Browser Extension
 
