@@ -7,6 +7,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.0.9] - 2026-02-21
+
+### CCC - Frontend
+
+### CCC - Backend
 - Reject job URLs for x.com/home, twitter.com/home and bare-domain URLs (e.g. gelbooru.com, misskey.art) with 400 and clear message
 - Fix Gelbooru (and other sites with hotlink protection) returning HTML instead of images on direct download; validates Content-Type and falls back to gallery-dl
 - Reject Reddit base or subreddit-only URLs (e.g. reddit.com, reddit.com/r/DIY); only post URLs containing /comments/ are allowed
