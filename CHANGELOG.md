@@ -5,8 +5,14 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Remove worker_concurrency and wd14_model from Global Settings UI; both are ENV-only and require a restart
 
 ### CCC - Backend
+- Cache user config in Redis (5-minute TTL) to avoid a DB round-trip on every job; invalidate on credential update
+- Add WD14_USE_PROCESS_POOL and WD14_NUM_WORKERS env settings; process pool now defaults to off (thread pool is correct for multi-worker setups)
+- Wire up dead GlobalConfig settings: wd14_enabled, wd14_confidence_threshold, wd14_max_tags, gallery_dl_timeout, and ytdlp_timeout now actually apply per-job; dashboard changes take effect immediately without restart
+- Move worker_concurrency from GlobalConfig (dashboard) to ENV (WORKER_CONCURRENCY); it requires a restart anyway so dashboard control added no value
+- Remove wd14_enabled, wd14_confidence_threshold, wd14_max_tags from ENV; these are now live settings managed exclusively via Settings > Global Settings
 
 ### Mobile App
 - Add note to overlay permission dialog about unlocking restricted settings on sideloaded installs

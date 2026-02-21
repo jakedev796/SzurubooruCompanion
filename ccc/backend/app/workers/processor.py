@@ -144,9 +144,9 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
     async with async_session() as db:
         # Load global configuration
         _global_config = await load_global_config(db)
-        logger.debug("%s Job %s: Loaded global config (WD14: %s, worker: %d, gallery-dl timeout: %ds)",
-                    tag, job.id, _global_config.wd14_enabled, _global_config.worker_concurrency,
-                    _global_config.gallery_dl_timeout)
+        logger.debug("%s Job %s: Loaded global config (WD14: %s, gallery-dl timeout: %ds, yt-dlp timeout: %ds)",
+                    tag, job.id, _global_config.wd14_enabled,
+                    _global_config.gallery_dl_timeout, _global_config.ytdlp_timeout)
 
         # Load user configuration and category mappings
         user_category_mappings = None
@@ -272,7 +272,8 @@ async def _extract_media(
     """
     if job.job_type == JobType.URL:
         logger.info("Job %s: Phase 1 - Extracting media URLs from %s", job.id, job.url)
-        extracted = await downloader.extract_media_urls(job.url, user_config)
+        gallery_dl_timeout = _global_config.gallery_dl_timeout if _global_config else 120
+        extracted = await downloader.extract_media_urls(job.url, user_config, gallery_dl_timeout)
         logger.info("Job %s: Found %d media file(s)", job.id, len(extracted))
         return extracted
 
@@ -339,6 +340,9 @@ async def _download_media(
         job_dir = os.path.join(settings.job_data_dir, str(job.id))
         return [Path(job_dir) / media.filename], {}
 
+    gallery_dl_timeout = _global_config.gallery_dl_timeout if _global_config else 120
+    ytdlp_timeout = _global_config.ytdlp_timeout if _global_config else 300
+
     if media.source_url and media.source_url != media.url:
         logger.info("Job %s: Downloading from direct media URL: %s", job.id, media.source_url)
         dl = await downloader.download_direct_media_url(
@@ -347,9 +351,15 @@ async def _download_media(
         # Fall back to gallery-dl if direct download failed (e.g. hotlink protection)
         if dl.error:
             logger.info("Job %s: Direct download failed (%s), falling back to gallery-dl", job.id, dl.error)
-            dl = await downloader.download_url(media.url, media_dir, source_url=media.source_url, user_config=user_config)
+            dl = await downloader.download_url(
+                media.url, media_dir, source_url=media.source_url, user_config=user_config,
+                gallery_dl_timeout=gallery_dl_timeout, ytdlp_timeout=ytdlp_timeout,
+            )
     else:
-        dl = await downloader.download_url(media.url, media_dir, source_url=media.source_url, user_config=user_config)
+        dl = await downloader.download_url(
+            media.url, media_dir, source_url=media.source_url, user_config=user_config,
+            gallery_dl_timeout=gallery_dl_timeout, ytdlp_timeout=ytdlp_timeout,
+        )
 
     merged_meta = {**(media.metadata or {}), **dl.metadata}
     return dl.files, merged_meta
@@ -380,8 +390,17 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
     safety = job.safety or "unsafe"
     ext = fp.suffix.lower()
 
+    wd14_enabled = _global_config.wd14_enabled if _global_config else True
+    wd14_confidence = _global_config.wd14_confidence_threshold if _global_config else 0.35
+    wd14_max_tags = _global_config.wd14_max_tags if _global_config else 30
+
     if ext in IMAGE_EXTENSIONS and not job.skip_tagging:
-        wd14 = await tagger.tag_image(fp)
+        wd14 = await tagger.tag_image(
+            fp,
+            wd14_enabled=wd14_enabled,
+            confidence_threshold=wd14_confidence,
+            max_tags=wd14_max_tags,
+        )
         for t in wd14.general_tags + wd14.character_tags:
             if t.strip():
                 all_tags.append(t.strip())
@@ -396,6 +415,9 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
         if _global_config and _global_config.video_tagging_enabled and not job.skip_tagging:
             wd14 = await tagger.tag_video(
                 fp,
+                wd14_enabled=wd14_enabled,
+                confidence_threshold=wd14_confidence,
+                max_tags=wd14_max_tags,
                 scene_threshold=_global_config.video_scene_threshold,
                 max_frames=_global_config.video_max_frames,
                 min_frame_ratio=_global_config.video_tag_min_frame_ratio,

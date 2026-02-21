@@ -3,17 +3,23 @@ Configuration service for loading user-specific and global settings from databas
 All configuration is database-driven - ENV is only used for bootstrap (admin user, encryption key).
 """
 
-from typing import Dict, Optional
+import dataclasses
+import json
+import logging
 from dataclasses import dataclass
+from typing import Dict, Optional
+
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-import logging
 
-from app.database import User, SiteCredential, GlobalSetting
-from app.services.encryption import decrypt
 from app.config import get_settings as get_env_settings
+from app.database import GlobalSetting, SiteCredential, User
+from app.services.encryption import decrypt
 
 logger = logging.getLogger(__name__)
+
+_USER_CONFIG_TTL = 300  # 5 minutes
 
 
 @dataclass
@@ -31,10 +37,8 @@ class UserConfig:
 class GlobalConfig:
     """Global system settings loaded from database."""
     wd14_enabled: bool
-    wd14_model: str
     wd14_confidence_threshold: float
     wd14_max_tags: int
-    worker_concurrency: int
     gallery_dl_timeout: int
     ytdlp_timeout: int
     max_retries: int
@@ -46,13 +50,52 @@ class GlobalConfig:
     video_tag_min_frame_ratio: float
 
 
-async def load_user_config(db: AsyncSession, user_id: str) -> Optional[UserConfig]:
+def _get_redis() -> Redis:
+    return Redis.from_url(get_env_settings().redis_url, decode_responses=True)
+
+
+async def invalidate_user_config_cache(user_id: str) -> None:
+    """Remove cached user config. Call after any credential update."""
+    try:
+        redis = _get_redis()
+        await redis.delete(f"user_config:{user_id}")
+        await redis.aclose()
+    except Exception as e:
+        logger.debug("Failed to invalidate user config cache for %s: %s", user_id, e)
+
+
+async def load_user_config(db: AsyncSession, user_id: str) -> Optional["UserConfig"]:
     """
-    Load user-specific configuration from database.
+    Load user-specific configuration.
+    Tries Redis cache first; falls back to database on miss.
     Returns None if user not found.
-    All credentials are decrypted from database.
     """
-    # Load user
+    cache_key = f"user_config:{user_id}"
+
+    try:
+        redis = _get_redis()
+        cached = await redis.get(cache_key)
+        await redis.aclose()
+        if cached:
+            return UserConfig(**json.loads(cached))
+    except Exception as e:
+        logger.debug("User config cache read failed for %s: %s", user_id, e)
+
+    config = await _load_user_config_from_db(db, user_id)
+
+    if config:
+        try:
+            redis = _get_redis()
+            await redis.setex(cache_key, _USER_CONFIG_TTL, json.dumps(dataclasses.asdict(config)))
+            await redis.aclose()
+        except Exception as e:
+            logger.debug("Failed to cache user config for %s: %s", user_id, e)
+
+    return config
+
+
+async def _load_user_config_from_db(db: AsyncSession, user_id: str) -> Optional[UserConfig]:
+    """Load user config directly from the database."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
@@ -110,10 +153,8 @@ async def load_global_config(db: AsyncSession) -> GlobalConfig:
     # Sensible defaults (used when DB is empty - first startup)
     DEFAULTS = {
         "wd14_enabled": True,
-        "wd14_model": "SmilingWolf/wd-swinv2-tagger-v3",
         "wd14_confidence_threshold": 0.35,
         "wd14_max_tags": 30,
-        "worker_concurrency": 1,
         "gallery_dl_timeout": 120,
         "ytdlp_timeout": 300,
         "max_retries": 3,
@@ -146,10 +187,8 @@ async def load_global_config(db: AsyncSession) -> GlobalConfig:
 
     return GlobalConfig(
         wd14_enabled=get_setting("wd14_enabled", DEFAULTS["wd14_enabled"], "bool"),
-        wd14_model=get_setting("wd14_model", DEFAULTS["wd14_model"], "string"),
         wd14_confidence_threshold=get_setting("wd14_confidence_threshold", DEFAULTS["wd14_confidence_threshold"], "float"),
         wd14_max_tags=get_setting("wd14_max_tags", DEFAULTS["wd14_max_tags"], "int"),
-        worker_concurrency=get_setting("worker_concurrency", DEFAULTS["worker_concurrency"], "int"),
         gallery_dl_timeout=get_setting("gallery_dl_timeout", DEFAULTS["gallery_dl_timeout"], "int"),
         ytdlp_timeout=get_setting("ytdlp_timeout", DEFAULTS["ytdlp_timeout"], "int"),
         max_retries=get_setting("max_retries", DEFAULTS["max_retries"], "int"),

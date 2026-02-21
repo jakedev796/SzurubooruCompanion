@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps: cache pip downloads across builds; install PyTorch CPU wheels first.
+# Python deps: cache pip downloads across builds.
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu \

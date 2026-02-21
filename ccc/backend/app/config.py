@@ -30,12 +30,19 @@ class Settings:
     encryption_key: str = os.getenv("ENCRYPTION_KEY", "")
 
     # --- WD14 Tagger (ENV-based, requires restart to change) ---
-    wd14_enabled: bool = os.getenv("WD14_ENABLED", "true").lower() == "true"
+    # wd14_enabled, wd14_confidence_threshold, wd14_max_tags are live settings managed via
+    # Settings > Global Settings in the dashboard (GlobalConfig). Only model/pool/threads
+    # require a restart and are therefore ENV-only.
     wd14_model: str = os.getenv("WD14_MODEL", "SmilingWolf/wd-swinv2-tagger-v3")
-    wd14_confidence_threshold: float = float(os.getenv("WD14_CONFIDENCE_THRESHOLD", "0.35"))
-    wd14_max_tags: int = int(os.getenv("WD14_MAX_TAGS", "30"))
+    # Thread pool size for GPU/multi-worker inference (ignored when process pool is active)
+    wd14_num_workers: int = int(os.getenv("WD14_NUM_WORKERS", "4"))
+    # Use a subprocess for CPU inference to bypass the GIL (only beneficial with a single worker;
+    # disable when worker_concurrency > 1 so all workers share the thread pool concurrently)
+    wd14_use_process_pool: bool = os.getenv("WD14_USE_PROCESS_POOL", "false").lower() == "true"
 
     # --- Worker & Paths ---
+    # worker_concurrency requires a restart (workers are spawned at startup), so it lives in ENV.
+    worker_concurrency: int = int(os.getenv("WORKER_CONCURRENCY", "1"))
     job_data_dir: str = os.getenv("JOB_DATA_DIR", "/data/jobs")
 
     # --- Gallery-DL ---

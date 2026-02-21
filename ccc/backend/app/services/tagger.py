@@ -112,23 +112,21 @@ def _get_tagger():
     if not WD14_AVAILABLE or Tagger is None:
         raise RuntimeError("WD14 Tagger not available. Install: pip install wdtagger torch torchvision")
     model_name = settings.wd14_model
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    if device.type == "cpu":
-        n = os.environ.get("OMP_NUM_THREADS") or os.environ.get("TORCH_NUM_THREADS")
-        if n is not None:
-            try:
-                torch.set_num_threads(int(n))
-            except (ValueError, TypeError):
-                pass
-        if torch.get_num_threads() == 1:
-            cpu_count = os.cpu_count()
-            if cpu_count and cpu_count > 1:
-                torch.set_num_threads(min(cpu_count, 8))
+    n = os.environ.get("OMP_NUM_THREADS") or os.environ.get("TORCH_NUM_THREADS")
+    if n is not None:
+        try:
+            torch.set_num_threads(int(n))
+        except (ValueError, TypeError):
+            pass
+    if torch.get_num_threads() == 1:
+        cpu_count = os.cpu_count()
+        if cpu_count and cpu_count > 1:
+            torch.set_num_threads(min(cpu_count, 8))
     try:
         nthreads = torch.get_num_threads()
     except Exception:
         nthreads = "?"
-    logger.info("WD14 Tagger using device: %s (threads: %s)", device, nthreads)
+    logger.info("WD14 Tagger initializing on CPU (threads: %s)", nthreads)
     _tagger = Tagger(model_repo=model_name)
     return _tagger
 
@@ -160,19 +158,17 @@ def _result_to_namespace(d: Dict[str, Any]) -> Any:
     return n
 
 
-def _process_wdtagger_result(result: Any) -> TagResult:
+def _process_wdtagger_result(result: Any, confidence_threshold: float, max_tags: int) -> TagResult:
     """Convert wdtagger result (object or dict) to TagResult."""
     if isinstance(result, dict):
         result = _result_to_namespace(result)
     out = TagResult()
-    threshold = settings.wd14_confidence_threshold
-    max_tags = settings.wd14_max_tags
 
     if hasattr(result, "general_tag_data") and result.general_tag_data:
         items = sorted(result.general_tag_data.items(), key=lambda kv: kv[1], reverse=True)
         for tag, confidence in items:
-            if confidence < threshold or len(out.general_tags) >= max_tags:
-                if confidence < threshold:
+            if confidence < confidence_threshold or len(out.general_tags) >= max_tags:
+                if confidence < confidence_threshold:
                     break
                 continue
             cleaned = _clean_tag(tag)
@@ -181,7 +177,7 @@ def _process_wdtagger_result(result: Any) -> TagResult:
 
     if hasattr(result, "character_tag_data") and result.character_tag_data:
         for tag, confidence in result.character_tag_data.items():
-            if confidence >= threshold:
+            if confidence >= confidence_threshold:
                 cleaned = _clean_tag(tag)
                 if cleaned:
                     out.character_tags.append(cleaned)
@@ -205,21 +201,22 @@ def _process_wdtagger_result(result: Any) -> TagResult:
 
 
 def _use_process_pool() -> bool:
-    """Use process pool when CPU-only and enabled (avoids GIL for single-image)."""
-    if not getattr(settings, "wd14_use_process_pool", True):
-        return False
-    if torch is not None and torch.cuda.is_available():
-        return False
-    return True
+    """Use process pool when enabled (avoids GIL on CPU)."""
+    return getattr(settings, "wd14_use_process_pool", True)
 
 
-async def tag_image(image_path: Path) -> TagResult:
+async def tag_image(
+    image_path: Path,
+    wd14_enabled: bool = True,
+    confidence_threshold: float = 0.35,
+    max_tags: int = 30,
+) -> TagResult:
     """
     Tag an image using WD14.
     On CPU with process pool: runs in subprocess so PyTorch can use all cores.
     Otherwise: runs in dedicated thread pool.
     """
-    if not settings.wd14_enabled:
+    if not wd14_enabled:
         logger.debug("WD14 tagging disabled; skipping %s", image_path.name)
         return TagResult()
 
@@ -235,7 +232,7 @@ async def tag_image(image_path: Path) -> TagResult:
             result_dict = await loop.run_in_executor(executor, _process_pool_tag, path_str)
             if not result_dict:
                 return TagResult()
-            return _process_wdtagger_result(result_dict)
+            return _process_wdtagger_result(result_dict, confidence_threshold, max_tags)
         else:
             await _ensure_tagger()
             loop = asyncio.get_event_loop()
@@ -243,21 +240,26 @@ async def tag_image(image_path: Path) -> TagResult:
             result = await loop.run_in_executor(thread_exec, lambda: _tagger.tag(path_str))
             if result is None:
                 return TagResult()
-            return _process_wdtagger_result(result)
+            return _process_wdtagger_result(result, confidence_threshold, max_tags)
     except Exception as exc:
         logger.warning("WD14 tagger failed for %s: %s", image_path.name, exc)
         return TagResult()
 
 
-async def tag_images_batch(image_paths: List[Path]) -> List[TagResult]:
+async def tag_images_batch(
+    image_paths: List[Path],
+    wd14_enabled: bool = True,
+    confidence_threshold: float = 0.35,
+    max_tags: int = 30,
+) -> List[TagResult]:
     """
     Tag multiple images in parallel (like reference project).
     When using thread pool, runs N tag() calls concurrently.
     When using process pool (1 worker), runs one at a time but each uses all cores.
     """
-    if not image_paths or not settings.wd14_enabled or not WD14_AVAILABLE:
+    if not image_paths or not wd14_enabled or not WD14_AVAILABLE:
         return [TagResult() for _ in image_paths]
-    tasks = [tag_image(p) for p in image_paths]
+    tasks = [tag_image(p, wd14_enabled, confidence_threshold, max_tags) for p in image_paths]
     raw = await asyncio.gather(*tasks, return_exceptions=True)
     out: List[TagResult] = []
     for r in raw:
@@ -406,6 +408,9 @@ def _aggregate_frame_tags(
 
 async def tag_video(
     video_path: Path,
+    wd14_enabled: bool = True,
+    confidence_threshold: float = 0.35,
+    max_tags: int = 30,
     scene_threshold: float = 0.3,
     max_frames: int = 10,
     min_frame_ratio: float = 0.3,
@@ -414,7 +419,7 @@ async def tag_video(
     Tag a video by extracting key frames, running WD14 on each, and aggregating.
     Returns the same TagResult as tag_image() for seamless processor integration.
     """
-    if not settings.wd14_enabled:
+    if not wd14_enabled:
         logger.debug("WD14 tagging disabled; skipping video %s", video_path.name)
         return TagResult()
 
@@ -434,12 +439,12 @@ async def tag_video(
             return TagResult()
 
         logger.info("Tagging %d frames from video %s", len(frames), video_path.name)
-        frame_results = await tag_images_batch(frames)
+        frame_results = await tag_images_batch(frames, wd14_enabled, confidence_threshold, max_tags)
 
         return _aggregate_frame_tags(
             frame_results,
             min_frame_ratio=min_frame_ratio,
-            max_tags=settings.wd14_max_tags,
+            max_tags=max_tags,
         )
     except Exception as exc:
         logger.warning("Video tagging failed for %s: %s", video_path.name, exc)

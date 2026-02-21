@@ -69,20 +69,8 @@ async def lifespan(app: FastAPI):
     await init_szuru_session()
     await load_tag_cache()
 
-    # Load worker concurrency from database, fallback to default
-    from app.database import async_session
-    from app.services.config import load_global_config
-
-    num_workers = 1  # Default fallback (matches DB default)
-    async with async_session() as db:
-        try:
-            config = await load_global_config(db)
-            num_workers = config.worker_concurrency
-            logger.info("Loaded worker_concurrency=%d from database", num_workers)
-        except Exception as e:
-            logger.warning("Failed to load worker_concurrency from database, using default: %s", e)
-
-    logger.info("Starting %d background worker(s)...", num_workers)
+    num_workers = settings.worker_concurrency
+    logger.info("Starting %d background worker(s) (WORKER_CONCURRENCY)...", num_workers)
     worker_tasks = [asyncio.create_task(start_worker(i)) for i in range(num_workers)]
 
     yield

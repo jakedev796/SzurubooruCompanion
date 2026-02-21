@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { Pencil, Circle, X, ChevronDown, AlertTriangle } from "lucide-react";
+import { Pencil, Circle, X, ChevronDown } from "lucide-react";
 import ConfirmModal from "../components/ConfirmModal";
 import {
   fetchMyConfig,
@@ -546,39 +546,21 @@ function SiteCredentialsTab() {
 function GlobalSettingsTab() {
   const { showToast } = useToast();
   const [settings, setSettings] = useState<GlobalSettings | null>(null);
-  const [initialSettings, setInitialSettings] = useState<GlobalSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [wd14Changed, setWd14Changed] = useState(false);
 
   useEffect(() => {
     fetchGlobalSettings()
-      .then((s) => {
-        setSettings(s);
-        setInitialSettings(s);
-      })
+      .then((s) => setSettings(s))
       .catch((err) => showToast("Failed to load: " + err.message, "error"))
       .finally(() => setLoading(false));
   }, [showToast]);
-
-  useEffect(() => {
-    if (!settings || !initialSettings) return;
-    // Check if WD14 or worker settings changed (both require restart)
-    const changed =
-      settings.wd14_enabled !== initialSettings.wd14_enabled ||
-      settings.wd14_model !== initialSettings.wd14_model ||
-      settings.wd14_confidence_threshold !== initialSettings.wd14_confidence_threshold ||
-      settings.wd14_max_tags !== initialSettings.wd14_max_tags ||
-      settings.worker_concurrency !== initialSettings.worker_concurrency;
-    setWd14Changed(changed);
-  }, [settings, initialSettings]);
 
   async function handleSave() {
     if (!settings) return;
     setSaving(true);
     try {
       await updateGlobalSettings(settings);
-      setInitialSettings(settings);
       showToast("Global settings updated!", "success");
     } catch (err: any) {
       showToast("Failed to update: " + err.message, "error");
@@ -594,19 +576,8 @@ function GlobalSettingsTab() {
     <div className="card">
       <h3>Global Settings</h3>
       <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-        Configure system-wide settings for the worker and AI tagging. Note: WD14 and worker concurrency settings require a container restart to take effect.
+        Configure system-wide settings. All changes take effect on the next job without a restart.
       </p>
-
-      {wd14Changed && (
-        <div className="status-message" style={{ background: "rgba(251, 146, 60, 0.12)", color: "var(--orange)", border: "1px solid rgba(251, 146, 60, 0.35)", marginBottom: "1.5rem", display: "flex", alignItems: "center" }}>
-          <AlertTriangle size={16} style={{ marginRight: "0.5rem", flexShrink: 0 }} />
-          <div>
-            <strong>Restart required!</strong> WD14 or worker settings changed. Container restart required for changes to take effect.
-            <br />
-            <small>Run: <code style={{ background: "var(--bg)", padding: "0.15rem 0.35rem", borderRadius: "4px" }}>docker-compose restart ccc-backend</code></small>
-          </div>
-        </div>
-      )}
 
       <div className="settings-form">
         <h4 style={{ fontSize: "1rem", marginBottom: "0.75rem", color: "var(--text)" }}>WD14 Tagger</h4>
@@ -626,15 +597,6 @@ function GlobalSettingsTab() {
         </div>
         {settings.wd14_enabled && (
           <>
-            <div className="form-group">
-              <label>WD14 Model</label>
-              <input
-                type="text"
-                value={settings.wd14_model}
-                onChange={(e) => setSettings({ ...settings, wd14_model: e.target.value })}
-              />
-              <small>HuggingFace model identifier (e.g., SmilingWolf/wd-swinv2-tagger-v3)</small>
-            </div>
             <div className="form-group">
               <label>Confidence Threshold</label>
               <input
@@ -716,16 +678,6 @@ function GlobalSettingsTab() {
         )}
 
         <h4 style={{ fontSize: "1rem", marginTop: "1.5rem", marginBottom: "0.75rem", color: "var(--text)" }}>Worker Settings</h4>
-        <div className="form-group">
-          <label>Worker Concurrency</label>
-          <input
-            type="number"
-            min="1"
-            value={settings.worker_concurrency}
-            onChange={(e) => setSettings({ ...settings, worker_concurrency: parseInt(e.target.value) })}
-          />
-          <small>Number of concurrent jobs to process</small>
-        </div>
         <div className="form-group">
           <label>Gallery-DL Timeout (seconds)</label>
           <input
