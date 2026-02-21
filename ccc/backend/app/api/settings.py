@@ -27,6 +27,10 @@ class GlobalSettingsResponse(BaseModel):
     ytdlp_timeout: int
     max_retries: int
     retry_delay: float
+    video_tagging_enabled: bool
+    video_scene_threshold: float
+    video_max_frames: int
+    video_tag_min_frame_ratio: float
 
 
 class GlobalSettingsUpdateRequest(BaseModel):
@@ -39,6 +43,10 @@ class GlobalSettingsUpdateRequest(BaseModel):
     ytdlp_timeout: Optional[int] = None
     max_retries: Optional[int] = None
     retry_delay: Optional[float] = None
+    video_tagging_enabled: Optional[bool] = None
+    video_scene_threshold: Optional[float] = None
+    video_max_frames: Optional[int] = None
+    video_tag_min_frame_ratio: Optional[float] = None
 
 
 @router.get("/settings/global", response_model=GlobalSettingsResponse)
@@ -61,6 +69,10 @@ async def get_global_settings(
         ytdlp_timeout=config.ytdlp_timeout,
         max_retries=config.max_retries,
         retry_delay=config.retry_delay,
+        video_tagging_enabled=config.video_tagging_enabled,
+        video_scene_threshold=config.video_scene_threshold,
+        video_max_frames=config.video_max_frames,
+        video_tag_min_frame_ratio=config.video_tag_min_frame_ratio,
     )
 
 
