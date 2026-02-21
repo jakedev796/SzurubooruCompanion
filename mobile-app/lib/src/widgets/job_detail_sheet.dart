@@ -231,22 +231,23 @@ class _JobDetailSheetContentState extends State<JobDetailSheetContent> {
       );
     }
 
+    final jobId = widget.jobId;
     switch (job.status.toLowerCase()) {
       case 'pending':
-        addButton('Start', () => appState.startJob(job.id), AppColors.green);
+        addButton('Start', () => appState.startJob(jobId), AppColors.green);
         break;
       case 'downloading':
       case 'tagging':
       case 'uploading':
-        addButton('Pause', () => appState.pauseJob(job.id), AppColors.orange);
-        addButton('Stop', () => appState.stopJob(job.id), AppColors.red);
+        addButton('Pause', () => appState.pauseJob(jobId), AppColors.orange);
+        addButton('Stop', () => appState.stopJob(jobId), AppColors.red);
         break;
       case 'paused':
       case 'stopped':
-        addButton('Resume', () => appState.resumeJob(job.id), AppColors.green);
+        addButton('Resume', () => appState.resumeJob(jobId), AppColors.green);
         break;
       case 'failed':
-        addButton('Retry', () => appState.retryJob(job.id), AppColors.yellow, icon: Icons.refresh, iconOnly: true);
+        addButton('Retry', () => appState.retryJob(jobId), AppColors.yellow, icon: Icons.refresh, iconOnly: true);
         break;
     }
 

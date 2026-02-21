@@ -161,6 +161,7 @@ class NotificationService {
   }
 
   /// Download in progress; [progressPercent] 0–100.
+  /// Uses a stable [tag] so Android replaces the same notification on each update instead of creating new ones.
   Future<void> showUpdateDownloading(int progressPercent) async {
     const androidDetails = AndroidNotificationDetails(
       _updateChannelId,
@@ -171,6 +172,8 @@ class NotificationService {
       showProgress: true,
       maxProgress: 100,
       progress: 0,
+      tag: _updateDownloadTag,
+      onlyAlertOnce: true,
     );
     final details = NotificationDetails(android: androidDetails);
     await _notifications.show(
@@ -182,7 +185,9 @@ class NotificationService {
     );
   }
 
-  /// Update download progress (update same notification).
+  static const String _updateDownloadTag = 'update_download';
+
+  /// Update download progress (same notification; tag + id ensure in-place update).
   Future<void> updateUpdateDownloadProgress(int progressPercent) async {
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -194,6 +199,8 @@ class NotificationService {
         showProgress: true,
         maxProgress: 100,
         progress: progressPercent,
+        tag: _updateDownloadTag,
+        onlyAlertOnce: true,
       ),
     );
     await _notifications.show(
@@ -207,7 +214,10 @@ class NotificationService {
 
   /// Download complete; tap to install. Cancels the downloading notification.
   Future<void> showUpdateReadyToInstall() async {
-    await _notifications.cancel(id: kUpdateDownloadingNotificationId);
+    await _notifications.cancel(
+      id: kUpdateDownloadingNotificationId,
+      tag: _updateDownloadTag,
+    );
     const androidDetails = AndroidNotificationDetails(
       _updateChannelId,
       _updateChannelName,
@@ -228,7 +238,10 @@ class NotificationService {
   /// Dismiss all update flow notifications.
   Future<void> dismissUpdateNotification() async {
     await _notifications.cancel(id: kUpdateAvailableNotificationId);
-    await _notifications.cancel(id: kUpdateDownloadingNotificationId);
+    await _notifications.cancel(
+      id: kUpdateDownloadingNotificationId,
+      tag: _updateDownloadTag,
+    );
     await _notifications.cancel(id: kUpdateReadyToInstallNotificationId);
   }
 }

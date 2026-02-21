@@ -116,6 +116,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Toggle floating bubble from persistent notification action -->
+        <receiver
+            android:name=".CompanionNotificationReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.szurubooru.szuruqueue.TOGGLE_BUBBLE"/>
+            </intent-filter>
+        </receiver>
+
         <!-- FileProvider for installing downloaded APK (content:// URI) -->
         <provider
             android:name="androidx.core.content.FileProvider"
