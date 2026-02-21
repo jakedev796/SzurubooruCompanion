@@ -21,6 +21,11 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# User-Agent used for all direct HTTP downloads (avoids blocks from CDNs that reject empty UA).
+DEFAULT_DOWNLOAD_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0"
+)
+
 
 @dataclass
 class DownloadResult:
@@ -199,31 +204,46 @@ async def download_url(url: str, dest_dir: str, source_url: Optional[str] = None
 async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[str] = None) -> DownloadResult:
     """
     Download a direct media URL (e.g., pbs.twimg.com/media/xxx.jpg) directly.
-    
+
     This is used for Twitter/Misskey where we have the exact media URL and don't
     need gallery-dl to extract it. This ensures each file is downloaded individually.
-    
+
     Args:
         url: The direct media URL to download.
         dest_dir: Destination directory for the downloaded file.
         filename: Optional filename to use. If not provided, extracts from URL.
-    
+
     Returns:
         DownloadResult with the downloaded file path.
     """
     import aiohttp
-    
+
     os.makedirs(dest_dir, exist_ok=True)
     result = DownloadResult(source_url=url, used_tool="direct")
-    
+
+    headers = {"User-Agent": DEFAULT_DOWNLOAD_USER_AGENT}
+
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+            async with session.get(
+                url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)
+            ) as resp:
                 if resp.status != 200:
                     result.error = f"HTTP {resp.status}: {await resp.text()}"
                     logger.warning("Direct download failed for %s: %s", url, result.error)
                     return result
-                
+
+                # Reject HTML responses (e.g. hotlink protection pages)
+                content_type = resp.headers.get("Content-Type", "")
+                ct_base = content_type.split(";")[0].strip().lower()
+                if ct_base in ("text/html", "application/xhtml+xml"):
+                    result.error = (
+                        f"Server returned HTML instead of media (Content-Type: {ct_base}). "
+                        "The host may be blocking direct downloads."
+                    )
+                    logger.warning("Direct download for %s returned HTML, not media", url)
+                    return result
+
                 # Determine filename
                 if not filename:
                     # Try to get filename from Content-Disposition header
@@ -236,11 +256,18 @@ async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[
                         
                         # Add extension from Content-Type if missing
                         if not Path(filename).suffix:
-                            content_type = resp.headers.get("Content-Type", "")
                             ext = _extension_from_content_type(content_type)
                             if ext:
                                 filename = f"{filename}.{ext}"
-                
+                elif not Path(filename).suffix:
+                    # Filename was provided but has no extension (e.g. Reddit t3_xxx); add from Content-Type
+                    ext = _extension_from_content_type(content_type)
+                    if ext:
+                        filename = f"{filename}.{ext}"
+
+                if not filename:
+                    filename = _extract_filename_from_url(url) or "download"
+
                 # Ensure unique filename
                 file_path = Path(dest_dir) / filename
                 if file_path.exists():
@@ -476,6 +503,8 @@ async def _extract_generic_media(url: str, user_config: Optional[Dict] = None) -
             extension = item.get("extension", "") or (item.get("file_ext") or "")
             base_filename = item.get("filename") or item.get("name") or _extract_filename_from_url(media_url)
 
+            if not extension and media_url:
+                extension = _extension_from_media_url(media_url)
             if extension and not base_filename.endswith(f".{extension}"):
                 filename = f"{base_filename}.{extension}"
             else:
@@ -534,6 +563,23 @@ def _extract_filename_from_url(url: str) -> str:
     path = unquote(parsed.path)
     filename = path.split("/")[-1] if path.split("/") else "download"
     return filename or "download"
+
+
+def _extension_from_media_url(url: str) -> str:
+    """Derive file extension from a media URL path (e.g. i.redd.it/xxx.jpeg -> jpeg)."""
+    try:
+        parsed = urlparse(url)
+        path = (parsed.path or "").strip().rstrip("/")
+        if not path:
+            return ""
+        name = path.split("/")[-1]
+        if "." in name:
+            ext = name.rsplit(".", 1)[-1].lower()
+            if ext in ("jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "mp4", "webm", "mkv", "mov", "avi", "gifv"):
+                return "jpg" if ext == "jpeg" else ext
+    except Exception:
+        pass
+    return ""
 
 
 # ---------------------------------------------------------------------------

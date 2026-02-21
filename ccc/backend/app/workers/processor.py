@@ -344,6 +344,10 @@ async def _download_media(
         dl = await downloader.download_direct_media_url(
             media.source_url, media_dir, filename=media.filename
         )
+        # Fall back to gallery-dl if direct download failed (e.g. hotlink protection)
+        if dl.error:
+            logger.info("Job %s: Direct download failed (%s), falling back to gallery-dl", job.id, dl.error)
+            dl = await downloader.download_url(media.url, media_dir, source_url=media.source_url, user_config=user_config)
     else:
         dl = await downloader.download_url(media.url, media_dir, source_url=media.source_url, user_config=user_config)
 

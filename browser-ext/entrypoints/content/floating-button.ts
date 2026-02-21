@@ -173,28 +173,37 @@ function showButton(media: HTMLElement): void {
 }
 
 /**
- * Check if an element is grabbable media.
+ * Resolve hover target to the actual media element (img or video).
+ * Handles wrappers (e.g. Twitter video container, image carousel).
+ */
+function resolveMediaElement(target: HTMLElement): HTMLElement | null {
+  if (!target || !target.tagName) return null;
+  if (target.tagName === 'IMG' || target.tagName === 'VIDEO') return target;
+  const closestMedia = target.closest('img, video');
+  if (closestMedia) return closestMedia as HTMLElement;
+  const inContainer = target.querySelector('video') || target.querySelector('img');
+  return inContainer ? (inContainer as HTMLElement) : null;
+}
+
+/**
+ * Check if an element is grabbable media (built-in rules).
+ * VIDEO inside a known container is grabbable even without src (lazy-loaded).
  */
 export function isGrabbableMedia(element: HTMLElement): boolean {
   if (!element || !element.tagName) {
     return false;
   }
-  
+
   if (element.tagName === 'IMG') {
     const img = element as HTMLImageElement;
     const src = img.src;
-    
-    // Skip if no src or invalid URL
+
     if (!src || src === 'data:' || src.startsWith('blob:')) {
       return false;
     }
-    
-    // Skip if not loaded or too small
     if (!img.complete || img.naturalWidth < 50 || img.naturalHeight < 50) {
       return false;
     }
-    
-    // Skip profile pictures, emojis, icons (common patterns)
     const skipPatterns = [
       /\/profile_images\//i,
       /\/avatar/i,
@@ -206,55 +215,54 @@ export function isGrabbableMedia(element: HTMLElement): boolean {
       /_bigger\./i,
       /_mini\./i,
     ];
-    
     for (const pattern of skipPatterns) {
-      if (pattern.test(src)) {
-        return false;
-      }
+      if (pattern.test(src)) return false;
     }
-    
     return true;
   }
-  
+
   if (element.tagName === 'VIDEO') {
     const video = element as HTMLVideoElement;
-    // Check if video has a valid source
-    if (!video.src && (!video.srcObject || !video.currentSrc)) {
-      return false;
+    const hasSource = !!(video.src || video.currentSrc || video.srcObject);
+    const inVideoContainer = !!video.closest('[data-testid="videoPlayer"], [data-testid="previewInterstitial"], article');
+    if (inVideoContainer) {
+      return video.readyState >= 0;
     }
-    return video.readyState >= 1; // HAVE_METADATA
+    if (!hasSource) return false;
+    return video.readyState >= 1;
   }
-  
+
   return false;
 }
 
 /**
  * Initialize floating button functionality.
- * 
+ *
  * @param onGrab - Callback when the button is clicked with the media element
+ * @param isGrabbable - Optional site-specific check; when provided, used instead of built-in isGrabbableMedia
  */
 export function initFloatingButton(
-  onGrab: (media: HTMLElement) => void
+  onGrab: (media: HTMLElement) => void,
+  isGrabbable?: (element: HTMLElement) => boolean
 ): () => void {
   const button = getOrCreateButton();
-  
-  // Button click handler
+  const checkGrabbable = isGrabbable ?? isGrabbableMedia;
+
   const handleButtonClick = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!state.currentMedia) {
       console.warn('[CCC] Button clicked but no media element available');
       return;
     }
-    
+
     try {
-      // Visual feedback
       button.style.background = '#22c55e';
       setTimeout(() => {
         button.style.background = '#6366f1';
       }, 200);
-      
+
       onGrab(state.currentMedia);
     } catch (error) {
       console.error('[CCC] Error in button click handler:', error);
@@ -264,36 +272,32 @@ export function initFloatingButton(
       );
     }
   };
-  
+
   button.addEventListener('click', handleButtonClick);
-  
-  // Global mouseover for media detection
+
   const handleMouseOver = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
-    
-    if (!isGrabbableMedia(target)) {
+    const media = resolveMediaElement(target);
+    if (!media || !checkGrabbable(media)) {
       return;
     }
-    
-    // Clear any existing timeout
+
     if (state.hoverTimeout) {
       clearTimeout(state.hoverTimeout);
       state.hoverTimeout = null;
     }
-    
-    // Delay showing button
+
     state.hoverTimeout = setTimeout(() => {
-      showButton(target);
+      showButton(media);
     }, HOVER_DELAY_MS);
   };
-  
-  // Hide button when mouse leaves media
+
   const handleMouseOut = (e: MouseEvent) => {
-    const target = e.target as HTMLElement;
-    
-    if (state.currentMedia === target) {
-      scheduleHide();
-    }
+    if (!state.currentMedia) return;
+    const related = e.relatedTarget as HTMLElement | null;
+    if (related?.closest?.('#' + BUTTON_ID)) return;
+    if (state.currentMedia.contains(related as Node) || related === state.currentMedia) return;
+    scheduleHide();
   };
   
   // Handle scroll (reposition button)
@@ -306,15 +310,14 @@ export function initFloatingButton(
     }
   };
   
-  document.addEventListener('mouseover', handleMouseOver);
-  document.addEventListener('mouseout', handleMouseOut);
+  document.addEventListener('mouseover', handleMouseOver, true);
+  document.addEventListener('mouseout', handleMouseOut, true);
   window.addEventListener('scroll', handleScroll, { passive: true });
-  
-  // Return cleanup function
+
   return () => {
     button.removeEventListener('click', handleButtonClick);
-    document.removeEventListener('mouseover', handleMouseOver);
-    document.removeEventListener('mouseout', handleMouseOut);
+    document.removeEventListener('mouseover', handleMouseOver, true);
+    document.removeEventListener('mouseout', handleMouseOut, true);
     window.removeEventListener('scroll', handleScroll);
     
     if (state.hoverTimeout) {
