@@ -35,6 +35,7 @@ class CompanionForegroundService : Service() {
     private var bubbleView: View? = null
     private var isForeground = false
     private var lastShowBubble = false
+    private var lastBodyBase: String = ""
     private var sseThread: Thread? = null
     private val stopSse = AtomicBoolean(false)
     private val notifiedFailedJobs =
@@ -51,8 +52,15 @@ class CompanionForegroundService : Service() {
         val updateBodyOnly = intent?.getBooleanExtra(EXTRA_UPDATE_BODY_ONLY, false) == true
         val body = intent?.getStringExtra(EXTRA_BODY) ?: "SzuruCompanion active"
 
+        val toggleBubble = intent?.getBooleanExtra(EXTRA_TOGGLE_BUBBLE, false) == true
+        if (toggleBubble) {
+            handleToggleBubble()
+            return START_STICKY
+        }
+
         if (updateBodyOnly) {
-            val notification = buildNotification(body)
+            lastBodyBase = body.replace(Regex(" \u2022 Bubble on$"), "").trim()
+            val notification = buildNotification(body, lastShowBubble)
             if (isForeground) {
                 getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
             } else {
@@ -64,6 +72,7 @@ class CompanionForegroundService : Service() {
 
         val showBubble = intent?.getBooleanExtra(EXTRA_SHOW_BUBBLE, false) ?: false
         lastShowBubble = showBubble
+        lastBodyBase = body.replace(Regex(" \u2022 Bubble on$"), "").trim()
 
         if (showBubble && bubbleView == null) {
             showBubbleOverlay()
@@ -71,7 +80,7 @@ class CompanionForegroundService : Service() {
             removeBubbleOverlay()
         }
 
-        val notification = buildNotification(body)
+        val notification = buildNotification(body, showBubble)
         if (isForeground) {
             getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
         } else {
@@ -120,13 +129,22 @@ class CompanionForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(body: String): Notification {
+    private fun buildNotification(body: String, showBubble: Boolean): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val togglePendingIntent = PendingIntent.getBroadcast(
+            this,
+            0,
+            Intent(this, CompanionNotificationReceiver::class.java).apply {
+                action = CompanionNotificationReceiver.ACTION_TOGGLE_BUBBLE
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val actionLabel = if (showBubble) "Disable Floating Button" else "Enable Floating Button"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("SzuruCompanion")
             .setContentText(body)
@@ -137,7 +155,25 @@ class CompanionForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setGroup(COMPANION_GROUP_KEY)
             .setGroupSummary(false)
+            .addAction(0, actionLabel, togglePendingIntent)
             .build()
+    }
+
+    private fun handleToggleBubble() {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val current = prefs.getBoolean("flutter.showFloatingBubble", false)
+        val newValue = !current
+        prefs.edit().putBoolean("flutter.showFloatingBubble", newValue).apply()
+        lastShowBubble = newValue
+        if (newValue && bubbleView == null) {
+            showBubbleOverlay()
+        } else if (!newValue && bubbleView != null) {
+            removeBubbleOverlay()
+        }
+        val newBody = if (lastBodyBase.isEmpty()) "SzuruCompanion active" else lastBodyBase +
+            if (newValue) " \u2022 Bubble on" else ""
+        val notification = buildNotification(newBody, newValue)
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
     }
 
     // -- Bubble overlay (BubbleOverlayHelper) ---------------------------------
@@ -488,5 +524,6 @@ class CompanionForegroundService : Service() {
         const val EXTRA_SHOW_BUBBLE = "showBubble"
         const val EXTRA_BODY = "body"
         const val EXTRA_UPDATE_BODY_ONLY = "updateBodyOnly"
+        const val EXTRA_TOGGLE_BUBBLE = "toggleBubble"
     }
 }

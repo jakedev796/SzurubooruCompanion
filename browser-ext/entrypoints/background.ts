@@ -1,11 +1,11 @@
 /**
  * Background entrypoint – registers context menu items and handles clicks.
- * Always sends the page URL when available so gallery-dl can resolve and download.
+ * Context menu: "Send to Szurubooru" on image/video, "Send link to Szurubooru" on links.
  * Polls job status and shows a toast + notification when the job finishes or fails.
- * 
- * Also handles messages from content scripts for DOM-level media extraction.
+ * Also handles messages from content scripts for DOM-level media extraction (floating button).
  */
 import { fetchJob, submitJob, getNotificationsEnabled, getDefaultSafety } from "../utils/api";
+import { isRejectedJobUrl } from "../utils/job_url_validation";
 import type { MediaInfo, ContentScriptMessage, BackgroundScriptResponse } from "../utils/types";
 
 const POLL_INTERVAL_MS = 3000;
@@ -150,6 +150,12 @@ async function handleSubmitJob(
   tabId?: number
 ): Promise<BackgroundScriptResponse> {
   try {
+    if (isRejectedJobUrl(mediaInfo.url)) {
+      return {
+        success: false,
+        error: "Use a direct link to a post or media, not a feed or homepage",
+      };
+    }
     const defaultSafety = await getDefaultSafety();
     const job = await submitJob(mediaInfo.url, {
       source: mediaInfo.source,
@@ -202,12 +208,6 @@ export default defineBackground(() => {
       title: "Send link to Szurubooru",
       contexts: ["link"],
     });
-
-    browser.contextMenus.create({
-      id: "ccc-send-page",
-      title: "Send page URL to Szurubooru",
-      contexts: ["page"],
-    });
   });
 
   // Handle context menu clicks
@@ -221,12 +221,18 @@ export default defineBackground(() => {
       case "ccc-send-link":
         url = info.linkUrl;
         break;
-      case "ccc-send-page":
-        url = info.pageUrl ?? tab?.url;
-        break;
     }
 
     if (!url) return;
+    if (isRejectedJobUrl(url)) {
+      await showToastAndNotification(
+        "Use a direct link to a post or media, not a feed or homepage",
+        "Szurubooru Companion – Error",
+        "error",
+        tab?.id
+      );
+      return;
+    }
 
     const tabId = tab?.id;
 
