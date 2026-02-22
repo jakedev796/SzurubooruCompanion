@@ -1,10 +1,11 @@
 """
 Auto-migrations run on startup.
-Each migration is a (version, sql) pair; version is stored in schema_migrations after apply.
+Migrations are .sql files in app/migrations/sql/ named {version_id}.sql (e.g. 001_add_initial_tags.sql).
+Applied versions are stored in schema_migrations.
 """
 
 import logging
-from typing import List, Tuple
+from pathlib import Path
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,221 +14,42 @@ from app.database import SchemaMigration, User, UserRole, async_session, engine
 
 logger = logging.getLogger(__name__)
 
-# (version_id, raw SQL to run). Use PostgreSQL syntax; run in order.
-MIGRATIONS: List[Tuple[str, str]] = [
-    (
-        "001_add_initial_tags",
-        """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'initial_tags'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN initial_tags TEXT;
-          END IF;
-        END $$;
-        """,
-    ),
-    (
-        "002_add_tags_from_source_and_ai",
-        """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'tags_from_source'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN tags_from_source TEXT;
-          END IF;
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'tags_from_ai'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN tags_from_ai TEXT;
-          END IF;
-        END $$;
-        """,
-    ),
-    (
-        "003_add_related_post_ids",
-        """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'related_post_ids'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN related_post_ids INTEGER[] DEFAULT '{}';
-          END IF;
-        END $$;
-        """,
-    ),
-    (
-        "004_create_tag_cache",
-        """
-        CREATE TABLE IF NOT EXISTS tag_cache (
-            tag_name    VARCHAR(512) PRIMARY KEY,
-            category    VARCHAR(128) NOT NULL,
-            verified_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-        );
-        """,
-    ),
-    (
-        "005_add_szuru_user",
-        """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'szuru_user'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN szuru_user VARCHAR(255);
-          END IF;
-        END $$;
-        """,
-    ),
-    (
-        "006_add_was_merge",
-        """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'was_merge'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN was_merge INTEGER NOT NULL DEFAULT 0;
-          END IF;
-        END $$;
-        """,
-    ),
-    (
-        "007_create_users_table",
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            username VARCHAR(255) UNIQUE NOT NULL,
-            password_hash VARCHAR(255) NOT NULL,
-            role VARCHAR(16) NOT NULL DEFAULT 'user',
-            szuru_url VARCHAR(512),
-            szuru_username VARCHAR(255),
-            szuru_token_encrypted TEXT,
-            is_active INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-        """,
-    ),
-    (
-        "008_create_site_credentials_table",
-        """
-        CREATE TABLE IF NOT EXISTS site_credentials (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID NOT NULL,
-            site_name VARCHAR(64) NOT NULL,
-            credential_key VARCHAR(128) NOT NULL,
-            credential_value_encrypted TEXT NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            CONSTRAINT uq_user_site_cred UNIQUE(user_id, site_name, credential_key)
-        );
-        CREATE INDEX IF NOT EXISTS idx_site_creds_user ON site_credentials(user_id);
-        """,
-    ),
-    (
-        "009_create_global_settings_table",
-        """
-        CREATE TABLE IF NOT EXISTS global_settings (
-            key VARCHAR(255) PRIMARY KEY,
-            value TEXT,
-            value_type VARCHAR(32) NOT NULL DEFAULT 'string',
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        """,
-    ),
-    (
-        "010_create_client_preferences",
-        """
-        CREATE TABLE IF NOT EXISTS client_preferences (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            client_type VARCHAR(32) NOT NULL,
-            preferences JSONB NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            CONSTRAINT uq_user_client UNIQUE(user_id, client_type)
-        );
-        CREATE INDEX IF NOT EXISTS idx_client_prefs_user ON client_preferences(user_id);
-        """,
-    ),
-    (
-        "011_add_szuru_public_url",
-        """
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS szuru_public_url VARCHAR(512);
-        """,
-    ),
-    (
-        "012_add_szuru_category_mappings",
-        """
-        ALTER TABLE users ADD COLUMN IF NOT EXISTS szuru_category_mappings JSONB DEFAULT '{}';
-        """,
-    ),
-    (
-        "013_create_swiper_tables",
-        """
-        CREATE TABLE IF NOT EXISTS swiper_seen_items (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID NOT NULL,
-            site_name VARCHAR(50) NOT NULL,
-            external_id VARCHAR(255) NOT NULL,
-            action VARCHAR(10) NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            CONSTRAINT uq_swiper_seen UNIQUE(user_id, site_name, external_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_swiper_seen_user ON swiper_seen_items(user_id);
-        CREATE INDEX IF NOT EXISTS idx_swiper_seen_lookup ON swiper_seen_items(user_id, site_name);
+_SQL_DIR = Path(__file__).resolve().parent / "sql"
 
-        CREATE TABLE IF NOT EXISTS swiper_presets (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID NOT NULL,
-            name VARCHAR(100) NOT NULL,
-            sites JSONB NOT NULL DEFAULT '[]',
-            tags TEXT NOT NULL DEFAULT '',
-            rating VARCHAR(20) NOT NULL DEFAULT 'all',
-            is_default INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_swiper_presets_user ON swiper_presets(user_id);
-        """,
-    ),
-    (
-        "014_add_sort_to_swiper_presets",
-        """
-        ALTER TABLE swiper_presets ADD COLUMN IF NOT EXISTS sort VARCHAR(20) NOT NULL DEFAULT 'newest';
-        """,
-    ),
-    (
-        "015_add_job_started_at",
-        """
-        ALTER TABLE jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
-        """,
-    ),
-    (
-        "016_add_job_completed_at",
-        """
-        ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
-        """,
-    ),
-    (
-        "017_backfill_job_completed_at",
-        """
-        UPDATE jobs SET completed_at = updated_at
-        WHERE status IN ('completed', 'merged') AND completed_at IS NULL;
-        """,
-    ),
-]
+
+def _split_sql_statements(content: str) -> list[str]:
+    """
+    Split SQL by semicolon into statements, without splitting inside dollar-quoted strings ($$...$$).
+    So DO $$ ... END $$; is kept as one statement.
+    """
+    content = content.strip()
+    if not content:
+        return []
+    parts = content.split(";")
+    statements: list[str] = []
+    current: list[str] = []
+    for i, part in enumerate(parts):
+        current.append(part)
+        merged = ";".join(current)
+        if merged.count("$$") % 2 == 0:
+            stmt = merged.strip()
+            if stmt:
+                statements.append(stmt)
+            current = []
+    if current:
+        stmt = ";".join(current).strip()
+        if stmt:
+            statements.append(stmt)
+    return statements
+
+
+def _discover_migrations() -> list[str]:
+    """Return sorted list of migration version ids (filename stem) from sql/ directory."""
+    if not _SQL_DIR.is_dir():
+        return []
+    versions = [f.stem for f in _SQL_DIR.glob("*.sql")]
+    return sorted(versions)
+
 
 async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:
     """
@@ -343,20 +165,20 @@ async def _bootstrap_admin_user() -> None:
 
 
 async def run_migrations() -> None:
-    """Apply any pending migrations."""
-    # Run regular migrations (inside transaction)
+    """Apply any pending migrations from app/migrations/sql/*.sql."""
     async with async_session() as session:
         applied = await _applied_versions(session)
-        for version, sql in MIGRATIONS:
+        for version in _discover_migrations():
             if version in applied:
                 continue
+            sql_path = _SQL_DIR / f"{version}.sql"
+            if not sql_path.is_file():
+                continue
             logger.info("Applying migration: %s", version)
-
-            # Split SQL into individual statements (asyncpg doesn't support multiple commands)
-            statements = [s.strip() for s in sql.strip().split(';') if s.strip()]
+            content = sql_path.read_text(encoding="utf-8")
+            statements = _split_sql_statements(content)
             for stmt in statements:
                 await session.execute(text(stmt))
-
             session.add(SchemaMigration(version=version))
             await session.commit()
             logger.info("Applied migration: %s", version)
