@@ -588,6 +588,7 @@ async def _bg_bulk_resume(job_ids: List[str], user_ctx: _BulkUserContext) -> Non
                 if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status not in allowed:
                     continue
                 job.status = JobStatus.PENDING
+                job.started_at = None
                 job.updated_at = datetime.now(timezone.utc)
                 await db.commit()
                 await db.refresh(job)
@@ -913,6 +914,7 @@ async def resume_job(
         )
 
     job.status = JobStatus.PENDING
+    job.started_at = None
     job.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(job)
