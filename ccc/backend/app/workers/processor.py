@@ -237,6 +237,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 related_post_ids=related_ids,
                 stored_sources=primary.get("final_source"),
                 was_merge=primary.get("merged", False),
+                safety=primary.get("safety"),
             )
         elif last_error:
             await _fail_job(job, last_error, max_retries=max_retries, retry_delay=retry_delay)
@@ -413,10 +414,11 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
         tags_from_source.append("video")
 
         if _global_config and _global_config.video_tagging_enabled and not job.skip_tagging:
+            video_confidence = _global_config.video_confidence_threshold if _global_config else 0.45
             wd14 = await tagger.tag_video(
                 fp,
                 wd14_enabled=wd14_enabled,
-                confidence_threshold=wd14_confidence,
+                confidence_threshold=video_confidence,
                 max_tags=wd14_max_tags,
                 scene_threshold=_global_config.video_scene_threshold,
                 max_frames=_global_config.video_max_frames,
@@ -537,6 +539,7 @@ async def _upload_file(
         "tags": all_tags,
         "tags_from_source": tag_result["tags_from_source"],
         "tags_from_ai": tag_result["tags_from_ai"],
+        "safety": safety,
         "merged": merged,
         "final_source": final_source,
     }
@@ -769,12 +772,15 @@ async def _complete_job(
     related_post_ids: Optional[List[int]] = None,
     stored_sources: Optional[str] = None,
     was_merge: bool = False,
+    safety: Optional[str] = None,
 ) -> None:
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
         j = result.scalar_one()
         j.status = JobStatus.MERGED if was_merge else JobStatus.COMPLETED
         j.szuru_post_id = szuru_post_id
+        if safety:
+            j.safety = safety
         # Exclude primary post from relations so a post is never its own relation
         raw = related_post_ids or []
         j.related_post_ids = [pid for pid in raw if pid != szuru_post_id]

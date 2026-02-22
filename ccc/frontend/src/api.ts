@@ -549,6 +549,7 @@ export interface GlobalSettings {
   video_scene_threshold: number;
   video_max_frames: number;
   video_tag_min_frame_ratio: number;
+  video_confidence_threshold: number;
 }
 
 export async function fetchGlobalSettings(): Promise<GlobalSettings> {

@@ -204,7 +204,15 @@ class _FolderConfigScreenState extends State<FolderConfigScreen> {
                       leading: const Icon(Icons.folder),
                       title: Text(_selectedFolderName ?? 'Select Folder'),
                       subtitle: _selectedFolderUri != null
-                          ? const Text('Tap to change folder')
+                          ? Text(
+                              _selectedFolderUri!.startsWith('/')
+                                  ? _selectedFolderUri!
+                                  : '/storage/emulated/0/$_selectedFolderUri',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).textTheme.bodySmall?.color,
+                              ),
+                            )
                           : const Text('Tap to browse'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _pickFolder,

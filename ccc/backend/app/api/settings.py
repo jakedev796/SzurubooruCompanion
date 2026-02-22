@@ -29,6 +29,7 @@ class GlobalSettingsResponse(BaseModel):
     video_scene_threshold: float
     video_max_frames: int
     video_tag_min_frame_ratio: float
+    video_confidence_threshold: float
 
 
 class GlobalSettingsUpdateRequest(BaseModel):
@@ -43,6 +44,7 @@ class GlobalSettingsUpdateRequest(BaseModel):
     video_scene_threshold: Optional[float] = None
     video_max_frames: Optional[int] = None
     video_tag_min_frame_ratio: Optional[float] = None
+    video_confidence_threshold: Optional[float] = None
 
 
 @router.get("/settings/global", response_model=GlobalSettingsResponse)
@@ -67,6 +69,7 @@ async def get_global_settings(
         video_scene_threshold=config.video_scene_threshold,
         video_max_frames=config.video_max_frames,
         video_tag_min_frame_ratio=config.video_tag_min_frame_ratio,
+        video_confidence_threshold=config.video_confidence_threshold,
     )
 
 

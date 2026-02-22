@@ -674,6 +674,18 @@ function GlobalSettingsTab() {
               />
               <small>A tag must appear in this fraction of frames to be kept (0.0 - 1.0, recommended: 0.3). Character tags are always kept.</small>
             </div>
+            <div className="form-group">
+              <label>Video Confidence Threshold</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="1"
+                value={settings.video_confidence_threshold}
+                onChange={(e) => setSettings({ ...settings, video_confidence_threshold: parseFloat(e.target.value) })}
+              />
+              <small>Minimum WD14 confidence for tags in video frames (0.0 - 1.0, default: 0.45). Higher than image threshold since individual frames are less reliable.</small>
+            </div>
           </>
         )}
 

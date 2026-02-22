@@ -5,11 +5,15 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Add video confidence threshold setting to Global Settings page
 
 ### CCC - Backend
+- Fix AI safety rating not persisting to the Job record after tagging (folder sync default was shown instead of AI result)
+- Add separate video confidence threshold setting (default 0.45, higher than image threshold) for stricter per-frame tag filtering
 
 ### Mobile App
 - Split overview stat cards into two rows (stages / outcomes) to prevent crowding
+- Show full folder path in folder config screen instead of just "Tap to change folder"
 
 ### Browser Extension
 
