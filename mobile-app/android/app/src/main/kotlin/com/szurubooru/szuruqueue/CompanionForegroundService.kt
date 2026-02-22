@@ -9,7 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
@@ -36,6 +38,7 @@ class CompanionForegroundService : Service() {
     private var isForeground = false
     private var lastShowBubble = false
     private var lastBodyBase: String = ""
+    private val bodyLock = Any()
     private var sseThread: Thread? = null
     private val stopSse = AtomicBoolean(false)
     private val notifiedFailedJobs =
@@ -92,6 +95,29 @@ class CompanionForegroundService : Service() {
         // work even when the main Flutter UI has been swiped away.
         startSseListenerIfNeeded()
         return START_STICKY
+    }
+
+    /**
+     * Update the persistent notification body to show current SSE connection status.
+     * Called from the native SSE loop so the notification stays correct when the app
+     * is closed and only the foreground service is running.
+     */
+    private fun updateNotificationConnectionStatus(connected: Boolean) {
+        val newStatus = if (connected) "Connected" else "Disconnected"
+        val newBody = synchronized(bodyLock) {
+            val base = lastBodyBase
+            if (base.isEmpty()) newStatus
+            else {
+                val idx = base.indexOf(" \u2022 ")
+                if (idx >= 0) newStatus + base.substring(idx) else newStatus
+            }
+        }
+        synchronized(bodyLock) { lastBodyBase = newBody }
+        Handler(Looper.getMainLooper()).post {
+            if (!isForeground) return@post
+            val notification = buildNotification(newBody, lastShowBubble)
+            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
+        }
     }
 
     override fun onDestroy() {
@@ -170,7 +196,8 @@ class CompanionForegroundService : Service() {
         } else if (!newValue && bubbleView != null) {
             removeBubbleOverlay()
         }
-        val newBody = if (lastBodyBase.isEmpty()) "SzuruCompanion active" else lastBodyBase +
+        val base = synchronized(bodyLock) { lastBodyBase }
+        val newBody = if (base.isEmpty()) "SzuruCompanion active" else base +
             if (newValue) " \u2022 Bubble on" else ""
         val notification = buildNotification(newBody, newValue)
         getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
@@ -223,6 +250,8 @@ class CompanionForegroundService : Service() {
         var lastHealthCheck = 0L
         val healthCheckIntervalMs = 5 * 60 * 1000L // 5 minutes
         var sseConnected = false
+        var lastNotifiedConnected: Boolean? = null
+        var reconnectDelayMs = 3000L
         
         while (!stopSse.get()) {
             var backendUrl = ""
@@ -265,15 +294,28 @@ class CompanionForegroundService : Service() {
                     if (conn.responseCode != HttpURLConnection.HTTP_OK) {
                         Log.w(TAG, "SSE connection failed: ${conn.responseCode}")
                         sseConnected = false
-                        // SSE disconnected - perform health check
+                        if (lastNotifiedConnected != false) {
+                            lastNotifiedConnected = false
+                            updateNotificationConnectionStatus(false)
+                        }
                         performHealthCheck(backendUrl)
                         conn.disconnect()
-                        Thread.sleep(5_000)
+                        try {
+                            Thread.sleep(reconnectDelayMs)
+                        } catch (e: InterruptedException) {
+                            if (stopSse.get()) return
+                        }
+                        reconnectDelayMs = minOf(60_000L, reconnectDelayMs * 2)
                         continue
                     }
                     
                     // SSE connected successfully
                     sseConnected = true
+                    reconnectDelayMs = 3000L
+                    if (lastNotifiedConnected != true) {
+                        lastNotifiedConnected = true
+                        updateNotificationConnectionStatus(true)
+                    }
 
                     val reader = BufferedReader(InputStreamReader(conn.inputStream))
                     var line: String? = null
@@ -310,6 +352,16 @@ class CompanionForegroundService : Service() {
             } catch (e: Exception) {
                 Log.w(TAG, "Error in SSE loop", e)
                 sseConnected = false
+                if (lastNotifiedConnected != false) {
+                    lastNotifiedConnected = false
+                    updateNotificationConnectionStatus(false)
+                }
+                try {
+                    Thread.sleep(reconnectDelayMs)
+                } catch (e2: InterruptedException) {
+                    if (stopSse.get()) return
+                }
+                reconnectDelayMs = minOf(60_000L, reconnectDelayMs * 2)
                 // Error occurred - perform health check if we have a valid URL
                 val now = System.currentTimeMillis()
                 if (backendUrl.isNotBlank() && now - lastHealthCheck > healthCheckIntervalMs) {
@@ -319,7 +371,7 @@ class CompanionForegroundService : Service() {
             }
 
             try {
-                Thread.sleep(3_000)
+                Thread.sleep(reconnectDelayMs)
             } catch (e: InterruptedException) {
                 if (stopSse.get()) return
             }

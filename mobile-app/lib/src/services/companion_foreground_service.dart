@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 
+import 'backend_client.dart';
 import 'sse_background_service.dart';
 
 const _channel = MethodChannel('com.szurubooru.szuruqueue/share');
@@ -44,6 +45,21 @@ Future<void> startCompanionForegroundService({
       'bubbleEnabled': bubbleEnabled,
       'statusBody': body,
     });
+    
+    // So the persistent notification reflects connection status when app is in background
+    SseBackgroundService.notificationUpdater = (state) {
+      final connectionText = state == SseConnectionState.connected
+          ? 'Connected'
+          : state == SseConnectionState.connecting
+              ? 'Connecting...'
+              : 'Disconnected';
+      final notificationBody = buildCompanionNotificationBody(
+        connectionText: connectionText,
+        folderSyncOn: folderSyncEnabled,
+        bubbleOn: bubbleEnabled,
+      );
+      updateCompanionNotification(statusBody: notificationBody);
+    };
     
     // Start SSE background service to maintain connection for job notifications
     // The foreground service keeps the process alive, so SSE works even when app UI is closed
