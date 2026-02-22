@@ -67,5 +67,10 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=local,src=/runner/persistent_files/.buildx-cache
+          cache-to: type=local,dest=/runner/persistent_files/.buildx-cache-new,mode=max
+
+      - name: Rotate buildx cache
+        run: |
+          rm -rf /runner/persistent_files/.buildx-cache
+          mv /runner/persistent_files/.buildx-cache-new /runner/persistent_files/.buildx-cache
