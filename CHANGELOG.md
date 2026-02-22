@@ -9,6 +9,14 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+
+### Browser Extension
+
+## [1.0.11]
+
+### Mobile Feature: App lock
+
+### Mobile App
 - Fix app lock authentication: use FlutterFragmentActivity so system PIN/biometric prompt is shown; log auth failure codes for diagnosis
 - Fix app lock loop: only require re-auth when app goes to background (resumed→paused), not when system auth dialog dismisses (avoids re-lock on every resumed)
 - App lock is Android-only: gate and settings card hidden on Darwin/Windows; local_auth not used on non-Android
@@ -18,8 +26,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Persistent notification now reflects connection status when app is in background (SseBackgroundService updates notification on connect/disconnect)
 - Reconnect SSE when connection dies: SseBackgroundService listens for disconnect and reconnects; connection status card and app bar icon trigger reconnect when tapped; share flow reconnects if disconnected when bubble is used
 - Add note to overlay permission dialog about unlocking restricted settings on sideloaded installs
-
-### Browser Extension
 
 ## [1.0.10] - 2026-02-21
 
