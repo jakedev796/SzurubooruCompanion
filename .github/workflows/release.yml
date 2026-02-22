@@ -65,6 +65,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Extract release notes for this version
         run: |
@@ -124,6 +126,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -142,8 +146,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ needs.scope.outputs.version_name }}
             type=sha,prefix=
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -172,6 +175,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -221,12 +226,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 11076708
+          log-accepted-android-sdk-licenses: false
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -361,3 +374,27 @@ jobs:
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup-draft:
+    runs-on: [self-hosted, linux, x64]
+    needs: [scope, create-release, ccc, browser, mobile]
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    permissions:
+      contents: write
+    steps:
+      - name: Delete draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.scope.outputs.tag }}"
+          REPO="${{ github.repository }}"
+          RELEASE_ID=$(curl -sf -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/releases" \
+            | python3 -c "import sys,json; releases=json.load(sys.stdin); print(next((str(r['id']) for r in releases if r['tag_name']=='$TAG' and r['draft']), ''))")
+          if [ -n "$RELEASE_ID" ]; then
+            curl -sf -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/releases/$RELEASE_ID"
+            echo "Deleted draft release $RELEASE_ID for tag $TAG"
+          else
+            echo "No draft release found for tag $TAG"
+          fi
