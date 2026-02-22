@@ -36,9 +36,15 @@ After logging in, configure settings through the dashboard:
 Configure authentication for sites that require login credentials (Twitter, Sankaku, Danbooru, Reddit, etc.). All credentials are encrypted in the database and never stored in plain text.
 
 ### **Global Settings** (Settings → Global Settings - Admin only)
-- **WD14 Tagger:** Enable/disable, model selection, confidence threshold, max tags
-- **Worker Settings:** Concurrency, timeouts, retry configuration
-- Container restart required for WD14 changes to take effect
+- **WD14 Tagger:** Enable/disable, confidence threshold, max tags (live — no restart needed)
+- **Download Timeouts:** gallery-dl and yt-dlp subprocess timeouts
+- **Worker Settings:** Max retries, retry delay, video tagging configuration
+
+> **What requires a restart vs. what is live:**
+> ENV variables that require a restart: `WD14_MODEL` (model singleton), `WD14_NUM_WORKERS` (thread pool), `WD14_USE_PROCESS_POOL` (executor type), `WORKER_CONCURRENCY` (worker count).
+> Everything else (WD14 enable/disable, confidence threshold, max tags, timeouts, retries) is a live dashboard setting — changes take effect on the next job without restarting.
+
+> **Process pool and worker concurrency:** `WD14_USE_PROCESS_POOL` (ENV) controls whether inference runs in a dedicated subprocess. This is only beneficial when `WORKER_CONCURRENCY=1`, as the subprocess handles one job at a time and all other workers queue behind it. With multiple workers, leave `WD14_USE_PROCESS_POOL=false` (the default) so workers share the thread pool and run inference concurrently.
 
 ### **User Management** (Settings → Users - Admin only)
 - Create new users with username, password, and role (admin/user)

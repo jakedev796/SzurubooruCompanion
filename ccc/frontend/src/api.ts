@@ -541,7 +541,6 @@ export interface GlobalSettings {
   wd14_model: string;
   wd14_confidence_threshold: number;
   wd14_max_tags: number;
-  worker_concurrency: number;
   gallery_dl_timeout: number;
   ytdlp_timeout: number;
   max_retries: number;
