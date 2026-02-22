@@ -42,6 +42,7 @@ class AppState extends ChangeNotifier {
     'tagging': 0,
     'uploading': 0,
     'completed': 0,
+    'merged': 0,
     'failed': 0,
   };
   String? errorMessage;
@@ -239,7 +240,7 @@ class AppState extends ChangeNotifier {
     } else {
       _disconnectSse();
       jobs = [];
-      stats = {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'failed': 0};
+      stats = {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'merged': 0, 'failed': 0};
       notifyListeners();
     }
   }

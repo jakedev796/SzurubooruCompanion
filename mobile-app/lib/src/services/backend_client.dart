@@ -485,20 +485,20 @@ class BackendClient {
   }
 
   /// Backend endpoint: GET /api/stats
-  /// Response: { total_jobs, by_status: { pending, downloading, tagging, uploading, completed, failed }, daily_uploads }
+  /// Response: { total_jobs, by_status: { pending, downloading, tagging, uploading, completed, merged, failed, ... }, daily_uploads }
   Future<Map<String, int>> fetchStats() async {
     try {
       final response = await _dio.get('/api/stats');
 
       if (response.data is! Map<String, dynamic>) {
-        return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'failed': 0};
+        return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'merged': 0, 'failed': 0};
       }
 
       final data = response.data as Map<String, dynamic>;
       final byStatus = data['by_status'] as Map<String, dynamic>?;
 
       if (byStatus == null) {
-        return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'failed': 0};
+        return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'merged': 0, 'failed': 0};
       }
 
       return {
@@ -507,6 +507,7 @@ class BackendClient {
         'tagging': (byStatus['tagging'] as int?) ?? 0,
         'uploading': (byStatus['uploading'] as int?) ?? 0,
         'completed': (byStatus['completed'] as int?) ?? 0,
+        'merged': (byStatus['merged'] as int?) ?? 0,
         'failed': (byStatus['failed'] as int?) ?? 0,
       };
     } on DioException catch (e) {

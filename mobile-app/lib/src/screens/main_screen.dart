@@ -504,6 +504,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
               const SizedBox(width: 8),
               StatCard(
+                label: 'Merged',
+                value: stats['merged'] ?? 0,
+                color: AppColors.purple,
+              ),
+              const SizedBox(width: 8),
+              StatCard(
                 label: 'Failed',
                 value: stats['failed'] ?? 0,
                 color: AppColors.red,

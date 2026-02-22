@@ -425,7 +425,6 @@ export default function Dashboard() {
                   type="monotone"
                   dataKey="completed"
                   name="Completed"
-                  stackId="status"
                   stroke={CHART_COMPLETED}
                   strokeWidth={2}
                   fill="url(#completedGradient)"
@@ -434,7 +433,6 @@ export default function Dashboard() {
                   type="monotone"
                   dataKey="merged"
                   name="Merged"
-                  stackId="status"
                   stroke={CHART_MERGED}
                   strokeWidth={2}
                   fill="url(#mergedGradient)"
@@ -443,7 +441,6 @@ export default function Dashboard() {
                   type="monotone"
                   dataKey="failed"
                   name="Failed"
-                  stackId="status"
                   stroke={CHART_FAIL}
                   strokeWidth={2}
                   fill="url(#failedGradient)"
