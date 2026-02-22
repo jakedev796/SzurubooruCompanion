@@ -317,10 +317,9 @@ tr:hover td {
 .col-user { width: 80px; }
 .col-source { width: auto; }
 .col-szuru { width: 100px; }
-.col-created { width: 100px; }
-.col-time { width: 70px; }
-.col-actions { width: 110px; }
-.col-details { width: 60px; }
+.col-created { width: 80px; }
+.col-time { width: 60px; }
+.col-actions { width: 140px; }
 
 /* Status badges – distinct colors by meaning (waiting / active / success / merged / paused / stopped / error) */
 .badge {
@@ -671,6 +670,15 @@ tr:hover td {
 }
 .btn-danger:hover:not(:disabled) {
   background: rgba(248, 113, 113, 0.2);
+}
+.btn-info {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+.btn-info:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text);
 }
 
 .btn-sm {

@@ -7,6 +7,9 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 - Standardize source column truncation: filenames now use the same 30-char limit with ellipsis as URLs
 - Fix layout shifts in job tables: fixed column widths prevent reflow when status/actions change
+- Merge details link into actions column as info icon button
+- Use relative timestamps in job tables (e.g. "3m ago") with full date on hover
+- Extract shared formatters (formatRelativeDate, formatDurationSeconds) to utils/format.ts
 
 ### CCC - Backend
 

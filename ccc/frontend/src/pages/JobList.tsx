@@ -14,6 +14,7 @@ import {
   GitMerge,
   XCircle,
   Ban,
+  Info,
 } from "lucide-react";
 import {
   fetchJobs,
@@ -85,23 +86,7 @@ const SORT_OPTIONS = [
   { value: "duration_asc", label: "Shortest time first" },
 ] as const;
 
-function formatDate(iso: string | undefined): string {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString();
-}
-
-function formatDurationSeconds(seconds: number | null | undefined): string {
-  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return "—";
-  const s = Math.round(seconds);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const sRem = s % 60;
-  if (m < 60) return sRem > 0 ? `${m}m ${sRem}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  const mRem = m % 60;
-  if (mRem > 0) return `${h}h ${mRem}m`;
-  return `${h}h`;
-}
+import { formatRelativeDate, formatDurationSeconds } from "../utils/format";
 
 export default function JobList() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -669,7 +654,6 @@ export default function JobList() {
               <th className="col-created">Created</th>
               <th className="col-time">Time</th>
               <th className="col-actions">Actions</th>
-              <th className="col-details"></th>
             </tr>
           </thead>
           <tbody>
@@ -773,22 +757,22 @@ export default function JobList() {
                       "-"
                     )}
                   </td>
-                  <td>{formatDate(j.created_at)}</td>
+                  <td title={j.created_at ? new Date(j.created_at).toLocaleString() : ""}>{formatRelativeDate(j.created_at)}</td>
                   <td>{formatDurationSeconds(j.duration_seconds)}</td>
                   <td>
                     <div className="quick-actions">
                       {getQuickActions(j)}
+                      <Link to={`/jobs/${j.id}`} className="btn btn-sm btn-info" title="Job details">
+                        <Info size={14} />
+                      </Link>
                     </div>
-                  </td>
-                  <td>
-                    <Link to={`/jobs/${j.id}`}>details</Link>
                   </td>
                 </tr>
               );
             })}
             {data.results.length === 0 && (
               <tr>
-                <td colSpan={10} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                <td colSpan={9} style={{ textAlign: "center", color: "var(--text-muted)" }}>
                   No jobs found.
                 </td>
               </tr>
