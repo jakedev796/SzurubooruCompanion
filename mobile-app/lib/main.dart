@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/main_screen.dart';
 import 'src/screens/setup_screen.dart';
+import 'src/services/app_lock_model.dart';
 import 'src/services/app_state.dart';
 import 'src/services/background_task.dart';
 import 'src/services/discover_state.dart';
@@ -13,6 +14,7 @@ import 'src/services/notification_service.dart';
 import 'src/services/settings_model.dart';
 import 'src/services/update_service.dart';
 import 'src/theme/app_theme.dart';
+import 'src/widgets/app_lock_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -160,6 +162,7 @@ class _AppRootState extends State<_AppRoot> {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<SettingsModel>.value(value: _settings!),
+        ChangeNotifierProvider<AppLockModel>(create: (_) => AppLockModel()),
         ChangeNotifierProxyProvider<SettingsModel, AppState>(
           create: (context) => AppState(_settings!),
           update: (context, settings, previous) =>
@@ -177,7 +180,7 @@ class _AppRootState extends State<_AppRoot> {
           },
         ),
       ],
-      child: const SzuruCompanionApp(),
+      child: const AppLockGate(child: SzuruCompanionApp()),
     );
   }
 }

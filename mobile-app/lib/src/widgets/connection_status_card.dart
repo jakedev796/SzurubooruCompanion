@@ -10,10 +10,12 @@ class ConnectionStatusCard extends StatelessWidget {
     super.key,
     required this.connectionState,
     this.lastUpdated,
+    this.onReconnect,
   });
 
   final SseConnectionState connectionState;
   final DateTime? lastUpdated;
+  final VoidCallback? onReconnect;
 
   @override
   Widget build(BuildContext context) {
@@ -39,43 +41,65 @@ class ConnectionStatusCard extends StatelessWidget {
         break;
     }
 
-    return Card(
-      color: statusColor.withOpacity(0.1),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(statusIcon, color: statusColor, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    statusText,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+    final canReconnect = onReconnect != null &&
+        (connectionState == SseConnectionState.disconnected ||
+            connectionState == SseConnectionState.connecting);
+
+    Widget cardContent = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w500,
                   ),
-                ),
-              ],
-            ),
-            if (lastUpdated != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Last update: ${relativeTime(lastUpdated!)}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textMuted,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
+          ),
+          if (lastUpdated != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Last update: ${relativeTime(lastUpdated!)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textMuted,
+              ),
+            ),
           ],
-        ),
+          if (connectionState == SseConnectionState.disconnected && onReconnect != null) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'Tap to reconnect',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textMuted,
+              ),
+            ),
+          ],
+        ],
       ),
+    );
+
+    return Card(
+      color: statusColor.withOpacity(0.1),
+      child: canReconnect
+          ? InkWell(
+              onTap: onReconnect,
+              borderRadius: BorderRadius.circular(12),
+              child: cardContent,
+            )
+          : cardContent,
     );
   }
 }

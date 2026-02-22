@@ -18,9 +18,16 @@ class SseBackgroundService {
 
   BackendClient? _backendClient;
   StreamSubscription<JobUpdate>? _jobUpdateSubscription;
+  StreamSubscription<SseConnectionState>? _sseStateSubscription;
+  Timer? _reconnectTimer;
   String? _lastBackendUrl;
   DateTime? _lastFailedJobCheck;
   bool _isRunning = false;
+  int _reconnectDelaySeconds = 3;
+
+  /// Optional callback invoked when SSE connection state changes, so the persistent
+  /// notification can be updated (e.g. from [startCompanionForegroundService]).
+  static void Function(SseConnectionState)? notificationUpdater;
 
   /// Start the background SSE service.
   /// This will maintain an SSE connection and show notifications for failed jobs.
@@ -53,6 +60,7 @@ class SseBackgroundService {
       debugPrint('[SseBackgroundService] Stopping background SSE service...');
       _disconnectSse();
       _isRunning = false;
+      notificationUpdater = null;
       debugPrint('[SseBackgroundService] Background SSE service stopped');
     } catch (e) {
       debugPrint('[SseBackgroundService] Error stopping: $e');
@@ -99,6 +107,24 @@ class SseBackgroundService {
       // Connect to SSE
       _backendClient!.connectSse(autoReconnect: true);
 
+      // Listen to connection state and reconnect when disconnected
+      _sseStateSubscription = _backendClient!.sseStateStream.listen((state) {
+        notificationUpdater?.call(state);
+        if (state == SseConnectionState.connected) {
+          _reconnectDelaySeconds = 3;
+        }
+        if (state == SseConnectionState.disconnected && _isRunning) {
+          _reconnectTimer?.cancel();
+          final delay = _reconnectDelaySeconds;
+          _reconnectDelaySeconds = _reconnectDelaySeconds >= 60 ? 60 : _reconnectDelaySeconds * 2;
+          _reconnectTimer = Timer(Duration(seconds: delay), () {
+            _reconnectTimer = null;
+            _disconnectSse();
+            _connectSse();
+          });
+        }
+      });
+
       // Listen to job updates
       _jobUpdateSubscription = _backendClient!.jobUpdateStream.listen((update) {
         _handleJobUpdate(update);
@@ -111,11 +137,16 @@ class SseBackgroundService {
   }
 
   void _disconnectSse() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _sseStateSubscription?.cancel();
+    _sseStateSubscription = null;
     _jobUpdateSubscription?.cancel();
     _jobUpdateSubscription = null;
     _backendClient?.disconnectSse();
     _backendClient = null;
     _lastBackendUrl = null;
+    _reconnectDelaySeconds = 3;
     debugPrint('[SseBackgroundService] SSE disconnected');
   }
 

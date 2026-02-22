@@ -11,12 +11,12 @@ import android.os.Environment
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private val CHANNEL = "com.szurubooru.szuruqueue/share"
     private val TAG = "SzuruCompanion"
     private val PREFS_NAME = "szuruqueue_prefs"

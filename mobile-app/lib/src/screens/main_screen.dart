@@ -250,6 +250,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await appState.refreshJobs();
         _showSnackBar('Background share scheduled');
       } else {
+        if (!appState.isConnected) {
+          appState.reconnect();
+          await _waitForConnection(appState, maxWait: const Duration(seconds: 5));
+        }
         final error = await appState.enqueueFromUrl(
           url: url,
           tags: tags,
@@ -266,6 +270,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() => _isProcessingShare = false);
       }
+    }
+  }
+
+  Future<void> _waitForConnection(AppState appState, {required Duration maxWait}) async {
+    if (appState.isConnected) return;
+    final deadline = DateTime.now().add(maxWait);
+    while (mounted && DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      if (appState.isConnected) return;
     }
   }
 
@@ -426,7 +440,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       padding: const EdgeInsets.only(right: 8),
       child: Tooltip(
         message: tooltip,
-        child: Icon(icon, color: color, size: 20),
+        child: appState.sseConnectionState == SseConnectionState.disconnected
+            ? IconButton(
+                icon: Icon(icon, color: color, size: 20),
+                onPressed: () => appState.reconnect(),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              )
+            : Icon(icon, color: color, size: 20),
       ),
     );
   }
@@ -441,6 +462,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ConnectionStatusCard(
             connectionState: appState.sseConnectionState,
             lastUpdated: appState.lastUpdated,
+            onReconnect: () => appState.reconnect(),
           ),
           const SizedBox(height: 12),
           const Text(

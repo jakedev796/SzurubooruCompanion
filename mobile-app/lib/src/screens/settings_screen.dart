@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:battery_optimization_helper/battery_optimization_helper.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -20,6 +21,7 @@ import '../services/storage_permission.dart';
 import '../services/update_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/settings/app_features_card.dart';
+import '../widgets/settings/app_lock_card.dart';
 import '../widgets/settings/backup_restore_card.dart';
 import '../widgets/settings/backend_settings_card.dart';
 import '../widgets/settings/folder_settings_card.dart';
@@ -597,6 +599,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }
               },
             ),
+            if (defaultTargetPlatform == TargetPlatform.android)
+              const AppLockCard(),
             BackupRestoreCard(
               isRestoreInProgress: _isRestoreInProgress,
               onShowSnackBar: _showSnackBar,
