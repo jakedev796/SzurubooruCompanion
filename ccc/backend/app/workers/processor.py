@@ -216,7 +216,9 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                     created_posts.append(post_info)
                     all_sources.append(media.source_url)
                 elif post_info is None:
-                    # None means download or upload failed
+                    # Abort returned None too — don't treat pause/stop as failure
+                    if await _abort_if_paused_or_stopped(job):
+                        return
                     last_error = f"Failed to process {media.filename}"
             except Exception as exc:
                 logger.exception("%s Job %s: Failed to process media %d (%s)",
@@ -249,7 +251,9 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
 
     except Exception as exc:
         logger.exception("%s Job %s failed", tag, job.id)
-        await _fail_job(job, str(exc), max_retries=max_retries, retry_delay=retry_delay)
+        # Don't overwrite PAUSED/STOPPED status with a failure
+        if not await _abort_if_paused_or_stopped(job):
+            await _fail_job(job, str(exc), max_retries=max_retries, retry_delay=retry_delay)
     finally:
         try:
             if os.path.isdir(job_dir):

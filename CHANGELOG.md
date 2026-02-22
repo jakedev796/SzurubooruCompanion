@@ -16,6 +16,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Add completed_at to jobs; backfill existing completed/merged jobs; average duration uses completed_at - started_at
 - GET /api/jobs: sort param (created_at, completed_at, duration asc/desc), return completed_at and duration_seconds in list
 - SSE job updates include completed_at and duration_seconds for real-time time display
+- Fix paused/stopped jobs incorrectly entering the failure/retry workflow instead of staying in their paused/stopped state
 
 ### Mobile App
 - Dashboard stats from API: total jobs, average job time, jobs (24h); reuse stats endpoint
