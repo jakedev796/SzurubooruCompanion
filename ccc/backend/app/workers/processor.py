@@ -797,6 +797,8 @@ async def _complete_job(
         now = datetime.now(timezone.utc)
         j.updated_at = now
         j.completed_at = now
+        started = getattr(j, "started_at", None)
+        duration_seconds = (now - started).total_seconds() if started else None
         await db.commit()
     logger.info("Job %s completed -> Szuru post %d (related: %s)",
                 job.id, szuru_post_id, related_post_ids or [])
@@ -808,4 +810,6 @@ async def _complete_job(
         related_post_ids=related_post_ids,
         tags=tags,
         was_merge=was_merge,
+        completed_at=now,
+        duration_seconds=duration_seconds,
     )

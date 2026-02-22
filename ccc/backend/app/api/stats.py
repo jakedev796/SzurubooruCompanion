@@ -57,6 +57,7 @@ async def get_stats(
 
     # Average job duration (completed/merged only): seconds from started_at to completed_at (processing time).
     # Excludes queue wait; only jobs with both started_at and completed_at are included.
+    # Backfilled jobs (completed_at set, no started_at) are excluded for data integrity.
     avg_epoch = func.avg(text("EXTRACT(EPOCH FROM (jobs.completed_at - jobs.started_at))"))
     duration_q = _apply_user_filter(
         select(avg_epoch)

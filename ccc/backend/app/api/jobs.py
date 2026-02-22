@@ -86,6 +86,8 @@ class JobOut(BaseModel):
     retry_count: int = 0
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
     post: Optional[SzuruPostMirror] = None
 
     class Config:
@@ -212,6 +214,8 @@ def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
         retry_count=job.retry_count,
         created_at=job.created_at,
         updated_at=job.updated_at,
+        completed_at=getattr(job, "completed_at", None),
+        duration_seconds=_job_duration_seconds(job),
         post=post,
     )
 

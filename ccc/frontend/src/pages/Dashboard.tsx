@@ -174,6 +174,9 @@ export default function Dashboard() {
         })
         .catch(() => {});
     }
+    if (payload.status === "completed" || payload.status === "merged") {
+      fetchStats().then(setStats).catch(() => {});
+    }
   });
 
   async function handleJobAction(

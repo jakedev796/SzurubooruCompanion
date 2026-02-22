@@ -80,6 +80,8 @@ class JobUpdate {
   final DateTime timestamp;
   final bool? retriesExhausted;
   final int? retryCount;
+  final DateTime? completedAt;
+  final double? durationSeconds;
 
   JobUpdate({
     required this.jobId,
@@ -92,6 +94,8 @@ class JobUpdate {
     required this.timestamp,
     this.retriesExhausted,
     this.retryCount,
+    this.completedAt,
+    this.durationSeconds,
   });
 
   factory JobUpdate.fromSseData(Map<String, dynamic> data) {
@@ -99,6 +103,20 @@ class JobUpdate {
     final raw = data['related_post_ids'];
     if (raw is List) {
       relatedIds = raw.whereType<int>().toList();
+    }
+    DateTime? completedAt;
+    final ca = data['completed_at'];
+    if (ca is String) {
+      completedAt = DateTime.tryParse(ca);
+    }
+    double? durationSeconds;
+    final ds = data['duration_seconds'];
+    if (ds != null) {
+      if (ds is int) {
+        durationSeconds = ds.toDouble();
+      } else if (ds is double) {
+        durationSeconds = ds;
+      }
     }
     return JobUpdate(
       jobId: data['job_id']?.toString() ?? data['id']?.toString() ?? '',
@@ -111,6 +129,8 @@ class JobUpdate {
       timestamp: DateTime.parse(data['timestamp'] as String),
       retriesExhausted: data['retries_exhausted'] as bool?,
       retryCount: data['retry_count'] as int?,
+      completedAt: completedAt,
+      durationSeconds: durationSeconds,
     );
   }
 }

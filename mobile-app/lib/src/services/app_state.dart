@@ -165,6 +165,8 @@ class AppState extends ChangeNotifier {
         retryCount: existingJob.retryCount,
         createdAt: existingJob.createdAt,
         updatedAt: update.timestamp,
+        completedAt: update.completedAt ?? existingJob.completedAt,
+        durationSeconds: update.durationSeconds ?? existingJob.durationSeconds,
       );
 
       if (isTerminal || hasPostId || hasTags) {
