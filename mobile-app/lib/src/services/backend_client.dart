@@ -139,6 +139,8 @@ class BackendClient {
   StreamSubscription<String>? _sseSubscription;
   final _sseStateController = StreamController<SseConnectionState>.broadcast();
   final _jobUpdateController = StreamController<JobUpdate>.broadcast();
+  int _sseReconnectDelaySeconds = 3;
+  bool _sseReconnectScheduled = false;
 
   BackendClient({
     required this.baseUrl,
@@ -276,11 +278,24 @@ class BackendClient {
   /// Connect to the SSE endpoint and start receiving real-time updates.
   /// 
   /// Returns a stream of SSE events. The connection will automatically
-  /// reconnect on disconnect if [autoReconnect] is true.
+  /// reconnect on disconnect if [autoReconnect] is true, with exponential
+  /// backoff (3s, 6s, 12s, ... cap 60s) to avoid hammering the server.
   Stream<SseEvent> connectSse({bool autoReconnect = true}) {
     final controller = StreamController<SseEvent>();
+    late void Function() connectRef;
     
-    void connect() {
+    void scheduleReconnect() {
+      if (!autoReconnect || _sseStateController.isClosed || _sseReconnectScheduled) return;
+      _sseReconnectScheduled = true;
+      final delay = _sseReconnectDelaySeconds;
+      _sseReconnectDelaySeconds = _sseReconnectDelaySeconds >= 60 ? 60 : _sseReconnectDelaySeconds * 2;
+      Future.delayed(Duration(seconds: delay), () {
+        _sseReconnectScheduled = false;
+        connectRef();
+      });
+    }
+    
+    void connectImpl() {
       if (_sseStateController.isClosed) return;
       _sseState = SseConnectionState.connecting;
       if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
@@ -299,45 +314,34 @@ class BackendClient {
           ));
           _sseState = SseConnectionState.disconnected;
           if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
+          scheduleReconnect();
           return;
         }
         
+        _sseReconnectDelaySeconds = 3;
         _sseState = SseConnectionState.connected;
         if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
         
-        // Buffer for incomplete SSE events
         final buffer = StringBuffer();
         
         response.stream.transform(utf8.decoder).listen(
           (chunk) {
             buffer.write(chunk);
-            
-            // Process complete events (ending with \n\n)
             String content = buffer.toString();
             while (content.contains('\n\n')) {
               final index = content.indexOf('\n\n');
               final eventStr = content.substring(0, index);
               content = content.substring(index + 2);
-              
-              // Skip comments (heartbeats)
-              if (eventStr.startsWith(':')) {
-                continue;
-              }
-              
+              if (eventStr.startsWith(':')) continue;
               final event = SseEvent.parse(eventStr);
               if (!controller.isClosed) controller.add(event);
-              
               if (event.type == SseEventType.jobUpdate && event.data != null && !_jobUpdateController.isClosed) {
                 try {
                   final jobUpdate = JobUpdate.fromSseData(event.data!);
                   _jobUpdateController.add(jobUpdate);
-                } catch (_) {
-                  // Ignore parse errors for job updates
-                }
+                } catch (_) {}
               }
             }
-            
-            // Keep incomplete data in buffer
             buffer.clear();
             buffer.write(content);
           },
@@ -345,29 +349,24 @@ class BackendClient {
             if (!controller.isClosed) controller.addError(const BackendException('Connection error'));
             _sseState = SseConnectionState.disconnected;
             if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
-            if (autoReconnect && !_sseStateController.isClosed) {
-              Future.delayed(const Duration(seconds: 3), connect);
-            }
+            scheduleReconnect();
           },
           onDone: () {
             _sseState = SseConnectionState.disconnected;
             if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
-            if (autoReconnect && !_sseStateController.isClosed) {
-              Future.delayed(const Duration(seconds: 3), connect);
-            }
+            scheduleReconnect();
           },
         );
       }).catchError((error) {
         if (!controller.isClosed) controller.addError(const BackendException('Connection error'));
         _sseState = SseConnectionState.disconnected;
         if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
-        if (autoReconnect && !_sseStateController.isClosed) {
-          Future.delayed(const Duration(seconds: 3), connect);
-        }
+        scheduleReconnect();
       });
     }
     
-    connect();
+    connectRef = connectImpl;
+    connectRef();
     
     controller.onCancel = () {
       disconnectSse();
@@ -382,6 +381,8 @@ class BackendClient {
     _sseSubscription = null;
     _sseClient?.close();
     _sseClient = null;
+    _sseReconnectScheduled = false;
+    _sseReconnectDelaySeconds = 3;
     _sseState = SseConnectionState.disconnected;
     if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
   }
