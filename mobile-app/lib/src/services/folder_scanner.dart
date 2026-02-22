@@ -43,11 +43,18 @@ class FolderScanner {
 
   /// Scan a folder and return list of media file paths using direct File I/O.
   /// With MANAGE_EXTERNAL_STORAGE permission, we can access files directly.
-  Future<List<String>> scanFolder(ScheduledFolder folder) async {
+  /// When [sinceTimestamp] > 0, only files modified after that epoch (seconds) are included.
+  Future<List<String>> scanFolder(
+    ScheduledFolder folder, {
+    int sinceTimestamp = 0,
+  }) async {
     debugPrint('[FolderScanner] scanFolder() started for ${folder.name}');
     try {
       final folderPath = _toAbsolutePath(folder.uri);
       debugPrint('[FolderScanner] Scanning directory: $folderPath');
+      if (sinceTimestamp > 0) {
+        debugPrint('[FolderScanner] Filtering files modified after $sinceTimestamp');
+      }
 
       final directory = Directory(folderPath);
       if (!await directory.exists()) {
@@ -55,10 +62,22 @@ class FolderScanner {
         return [];
       }
 
+      final cutoff = sinceTimestamp > 0
+          ? DateTime.fromMillisecondsSinceEpoch(sinceTimestamp * 1000)
+          : null;
+
       // Recursively scan for media files
       final mediaFiles = <String>[];
       await for (final entity in directory.list(recursive: true, followLinks: false)) {
         if (entity is File && isMediaFile(entity.path)) {
+          if (cutoff != null) {
+            try {
+              final mtime = await entity.lastModified();
+              if (!mtime.isAfter(cutoff)) continue;
+            } catch (e) {
+              debugPrint('[FolderScanner] Could not read mtime for ${entity.path}: $e');
+            }
+          }
           mediaFiles.add(entity.path);
         }
       }
@@ -171,10 +190,17 @@ class FolderScanner {
     final deleteAfterUpload = _settings.deleteMediaAfterSync && allowDelete;
     final enqueueDeleteForLater = _settings.deleteMediaAfterSync && !allowDelete;
 
-    debugPrint('[FolderScanner] Settings: deleteAfterUpload=$deleteAfterUpload, enqueueDeleteForLater=$enqueueDeleteForLater');
+    // When deletion is off, filter by modification time to avoid re-queuing
+    // files that were already uploaded in a previous scan.
+    final filterByMtime = !_settings.deleteMediaAfterSync && folder.lastRunTimestamp > 0;
+
+    debugPrint('[FolderScanner] Settings: deleteAfterUpload=$deleteAfterUpload, enqueueDeleteForLater=$enqueueDeleteForLater, filterByMtime=$filterByMtime');
 
     debugPrint('[FolderScanner] Scanning folder: ${folder.name} at URI: ${folder.uri}');
-    final mediaFiles = await scanFolder(folder);
+    final mediaFiles = await scanFolder(
+      folder,
+      sinceTimestamp: filterByMtime ? folder.lastRunTimestamp : 0,
+    );
     debugPrint('[FolderScanner] Scan complete: found ${mediaFiles.length} media files');
 
     if (mediaFiles.isEmpty) {

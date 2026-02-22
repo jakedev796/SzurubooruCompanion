@@ -5,10 +5,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Dashboard chart now shows completed, merged, and failed jobs as stacked areas with distinct colors (green, purple, red)
 
 ### CCC - Backend
+- Stats endpoint returns per-day completed and merged counts alongside failed for the daily uploads chart
 
 ### Mobile App
+- Add app icon to app lock screen
+- Fix vibration on update download progress by using a dedicated silent notification channel
+- Show changelog dialog after an app update completes
+- Skip previously synced files in folder sync when media deletion is off (filter by modification time)
 
 ### Browser Extension
 

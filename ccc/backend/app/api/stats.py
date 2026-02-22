@@ -54,15 +54,20 @@ async def get_stats(
 
     # Keep completed and merged separate so the dashboard can show both.
 
-    # Uploads per day for the last 30 days (count and failed). Group by UTC date.
+    # Uploads per day for the last 30 days (completed, merged, failed). Group by UTC date.
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     day_utc_expr = text("(jobs.created_at AT TIME ZONE 'UTC')::date")
     day_utc_select = text("(jobs.created_at AT TIME ZONE 'UTC')::date AS day")
-    failed_case = case((cast(Job.status, String) == "failed", 1), else_=0)
+    status_str = cast(Job.status, String)
+    completed_case = case((status_str == "completed", 1), else_=0)
+    merged_case = case((status_str == "merged", 1), else_=0)
+    failed_case = case((status_str == "failed", 1), else_=0)
     daily_q = _apply_user_filter(
         select(
             day_utc_select,
             func.count(Job.id).label("count"),
+            func.sum(completed_case).label("completed"),
+            func.sum(merged_case).label("merged"),
             func.sum(failed_case).label("failed"),
         )
         .select_from(Job)
@@ -73,7 +78,13 @@ async def get_stats(
     daily_result = await db.execute(daily_q)
     rows = daily_result.all()
     daily = [
-        {"date": str(row[0]), "count": row[1], "failed": int(row[2] or 0)}
+        {
+            "date": str(row[0]),
+            "count": row[1],
+            "completed": int(row[2] or 0),
+            "merged": int(row[3] or 0),
+            "failed": int(row[4] or 0),
+        }
         for row in rows
     ]
 

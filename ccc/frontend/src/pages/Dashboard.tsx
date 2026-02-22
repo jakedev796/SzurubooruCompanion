@@ -45,7 +45,8 @@ import {
 } from "recharts";
 
 const ACTIVITY_LIMIT = 10;
-const CHART_ACCENT = "#C41E3A";
+const CHART_COMPLETED = "#4ade80";
+const CHART_MERGED = "#a855f7";
 const CHART_FAIL = "#f87171";
 const CHART_GRID = "rgba(255, 255, 255, 0.06)";
 const CHART_TOOLTIP_BG = "#252220";
@@ -392,9 +393,13 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={daily_uploads}>
                 <defs>
-                  <linearGradient id="uploadGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={CHART_ACCENT} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={CHART_ACCENT} stopOpacity={0.02} />
+                  <linearGradient id="completedGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_COMPLETED} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={CHART_COMPLETED} stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="mergedGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_MERGED} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={CHART_MERGED} stopOpacity={0.02} />
                   </linearGradient>
                   <linearGradient id="failedGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={CHART_FAIL} stopOpacity={0.35} />
@@ -418,16 +423,27 @@ export default function Dashboard() {
                 />
                 <Area
                   type="monotone"
-                  dataKey="count"
-                  name="Jobs"
-                  stroke={CHART_ACCENT}
+                  dataKey="completed"
+                  name="Completed"
+                  stackId="status"
+                  stroke={CHART_COMPLETED}
                   strokeWidth={2}
-                  fill="url(#uploadGradient)"
+                  fill="url(#completedGradient)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="merged"
+                  name="Merged"
+                  stackId="status"
+                  stroke={CHART_MERGED}
+                  strokeWidth={2}
+                  fill="url(#mergedGradient)"
                 />
                 <Area
                   type="monotone"
                   dataKey="failed"
                   name="Failed"
+                  stackId="status"
                   stroke={CHART_FAIL}
                   strokeWidth={2}
                   fill="url(#failedGradient)"

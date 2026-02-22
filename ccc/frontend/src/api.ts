@@ -148,7 +148,7 @@ export interface Job extends JobSummary {
 
 export interface StatsResponse {
   by_status: Record<string, number>;
-  daily_uploads?: { date: string; count: number; failed?: number }[];
+  daily_uploads?: { date: string; count: number; completed?: number; merged?: number; failed?: number }[];
 }
 
 export interface ConfigResponse {
