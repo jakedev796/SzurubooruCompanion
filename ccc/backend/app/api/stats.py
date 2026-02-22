@@ -4,9 +4,10 @@ Uses single queries per metric to avoid transaction-aborted issues when the DB
 enum or schema diverges from the app (e.g. old status values in the DB).
 """
 
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends
-from sqlalchemy import String, func, select, cast, text, case
+from sqlalchemy import String, func, select, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import Job, JobStatus, User, get_db
@@ -54,39 +55,36 @@ async def get_stats(
 
     # Keep completed and merged separate so the dashboard can show both.
 
-    # Uploads per day for the last 30 days (completed, merged, failed). Group by UTC date.
+    # Uploads per day for the last 30 days, broken down by status.
+    # GROUP BY date + status then pivot in Python to avoid CASE/enum mismatch
+    # (same pattern as status_counts above which reads status as text).
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     day_utc_expr = text("(jobs.created_at AT TIME ZONE 'UTC')::date")
     day_utc_select = text("(jobs.created_at AT TIME ZONE 'UTC')::date AS day")
-    status_str = cast(Job.status, String)
-    completed_case = case((status_str == "completed", 1), else_=0)
-    merged_case = case((status_str == "merged", 1), else_=0)
-    failed_case = case((status_str == "failed", 1), else_=0)
     daily_q = _apply_user_filter(
         select(
             day_utc_select,
+            cast(Job.status, String).label("status"),
             func.count(Job.id).label("count"),
-            func.sum(completed_case).label("completed"),
-            func.sum(merged_case).label("merged"),
-            func.sum(failed_case).label("failed"),
         )
         .select_from(Job)
         .where(Job.created_at >= thirty_days_ago)
-        .group_by(day_utc_expr)
+        .group_by(day_utc_expr, Job.status)
         .order_by(day_utc_expr)
     )
     daily_result = await db.execute(daily_q)
     rows = daily_result.all()
-    daily = [
-        {
-            "date": str(row[0]),
-            "count": row[1],
-            "completed": int(row[2] or 0),
-            "merged": int(row[3] or 0),
-            "failed": int(row[4] or 0),
-        }
-        for row in rows
-    ]
+    daily_map: dict[str, dict] = defaultdict(
+        lambda: {"count": 0, "completed": 0, "merged": 0, "failed": 0}
+    )
+    for row in rows:
+        date = str(row[0])
+        status = str(row[1]).lower()
+        cnt = row[2]
+        daily_map[date]["count"] += cnt
+        if status in ("completed", "merged", "failed"):
+            daily_map[date][status] = cnt
+    daily = [{"date": d, **v} for d, v in sorted(daily_map.items())]
 
     return {
         "total_jobs": total,
