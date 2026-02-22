@@ -291,12 +291,15 @@ header nav .user-select {
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 th,
 td {
   text-align: left;
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 th {
   font-size: 0.75rem;
@@ -308,6 +311,17 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Fixed column widths to prevent layout shifts */
+.col-status { width: 120px; }
+.col-type { width: 80px; }
+.col-user { width: 80px; }
+.col-source { width: auto; }
+.col-szuru { width: 100px; }
+.col-created { width: 100px; }
+.col-time { width: 70px; }
+.col-actions { width: 110px; }
+.col-details { width: 60px; }
+
 /* Status badges – distinct colors by meaning (waiting / active / success / merged / paused / stopped / error) */
 .badge {
   display: inline-flex;
@@ -318,6 +332,7 @@ tr:hover td {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .badge-icon {
   display: inline-flex;
@@ -487,9 +502,12 @@ tr:hover td {
 
 /* Multi-source display: 2 stacked, then +N */
 .source-cell {
-  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.source-filename {
+  color: var(--text);
+  white-space: nowrap;
 }
 .multi-source {
   display: flex;
@@ -512,6 +530,7 @@ tr:hover td {
 .source-link {
   color: var(--accent);
   text-decoration: none;
+  white-space: nowrap;
 }
 .source-link:hover {
   text-decoration: underline;
@@ -597,6 +616,12 @@ tr:hover td {
 }
 
 /* Job action buttons */
+.quick-actions {
+  display: flex;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

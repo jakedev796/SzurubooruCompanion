@@ -503,15 +503,15 @@ export default function Dashboard() {
             <table>
               <thead>
                 <tr>
-                  <th>Status</th>
-                  <th>Type</th>
-                  <th>User</th>
-                  <th>Source</th>
-                  <th>Szuru Post</th>
-                  <th>Created</th>
-                  <th>Time</th>
-                  <th>Actions</th>
-                  <th></th>
+                  <th className="col-status">Status</th>
+                  <th className="col-type">Type</th>
+                  <th className="col-user">User</th>
+                  <th className="col-source">Source</th>
+                  <th className="col-szuru">Szuru Post</th>
+                  <th className="col-created">Created</th>
+                  <th className="col-time">Time</th>
+                  <th className="col-actions">Actions</th>
+                  <th className="col-details"></th>
                 </tr>
               </thead>
               <tbody>
@@ -560,7 +560,9 @@ export default function Dashboard() {
                             </div>
                           </div>
                         ) : j.original_filename ? (
-                          <span>{j.original_filename}</span>
+                          <div className="source-cell" title={j.original_filename}>
+                            <span className="source-filename">{truncate(j.original_filename)}</span>
+                          </div>
                         ) : (
                           "-"
                         )}
@@ -608,7 +610,7 @@ export default function Dashboard() {
                       <td>{formatDate(j.created_at)}</td>
                       <td>{formatDurationSeconds(j.duration_seconds)}</td>
                       <td>
-                        <div className="quick-actions" style={{ display: "flex", gap: "0.25rem" }}>
+                        <div className="quick-actions">
                           {getQuickActions(j)}
                         </div>
                       </td>
