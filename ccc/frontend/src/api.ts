@@ -149,6 +149,9 @@ export interface Job extends JobSummary {
 export interface StatsResponse {
   by_status: Record<string, number>;
   daily_uploads?: { date: string; count: number; completed?: number; merged?: number; failed?: number }[];
+  total_jobs?: number;
+  average_job_duration_seconds?: number | null;
+  jobs_last_24h?: number;
 }
 
 export interface ConfigResponse {

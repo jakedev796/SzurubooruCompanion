@@ -55,6 +55,23 @@ async def get_stats(
 
     # Keep completed and merged separate so the dashboard can show both.
 
+    # Average job duration (completed/merged only): seconds from created_at to updated_at.
+    avg_epoch = func.avg(text("EXTRACT(EPOCH FROM (jobs.updated_at - jobs.created_at))"))
+    duration_q = _apply_user_filter(
+        select(avg_epoch)
+        .select_from(Job)
+        .where(Job.status.in_([JobStatus.COMPLETED, JobStatus.MERGED]))
+    )
+    avg_seconds = (await db.execute(duration_q)).scalar()
+    average_job_duration_seconds = float(avg_seconds) if avg_seconds is not None else None
+
+    # Jobs created in the last 24 hours (UTC).
+    twenty_four_h_ago = datetime.now(timezone.utc) - timedelta(hours=24)
+    count_24h_q = _apply_user_filter(
+        select(func.count(Job.id)).select_from(Job).where(Job.created_at >= twenty_four_h_ago)
+    )
+    jobs_last_24h = (await db.execute(count_24h_q)).scalar() or 0
+
     # Uploads per day for the last 30 days, broken down by status.
     # GROUP BY date + status then pivot in Python to avoid CASE/enum mismatch
     # (same pattern as status_counts above which reads status as text).
@@ -90,4 +107,6 @@ async def get_stats(
         "total_jobs": total,
         "by_status": status_counts,
         "daily_uploads": daily,
+        "average_job_duration_seconds": average_job_duration_seconds,
+        "jobs_last_24h": jobs_last_24h,
     }

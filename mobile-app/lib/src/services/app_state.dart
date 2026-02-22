@@ -45,6 +45,9 @@ class AppState extends ChangeNotifier {
     'merged': 0,
     'failed': 0,
   };
+  int? totalJobs;
+  double? averageJobDurationSeconds;
+  int? jobsLast24h;
   String? errorMessage;
   DateTime? lastUpdated;
   
@@ -241,6 +244,9 @@ class AppState extends ChangeNotifier {
       _disconnectSse();
       jobs = [];
       stats = {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'merged': 0, 'failed': 0};
+      totalJobs = null;
+      averageJobDurationSeconds = null;
+      jobsLast24h = null;
       notifyListeners();
     }
   }
@@ -365,7 +371,11 @@ class AppState extends ChangeNotifier {
 
     try {
       // Stats are automatically filtered by authenticated user on backend
-      stats = await backendClient.fetchStats();
+      final result = await backendClient.fetchStats();
+      stats = result.byStatus;
+      totalJobs = result.totalJobs;
+      averageJobDurationSeconds = result.averageJobDurationSeconds;
+      jobsLast24h = result.jobsLast24h;
       errorMessage = null;
     } catch (error) {
       errorMessage = userFriendlyErrorMessage(error);

@@ -144,6 +144,35 @@ header nav .user-select {
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
+.stat-grid--summary {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.stat-card--summary {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  text-align: center;
+  background: var(--bg-card);
+}
+.stat-card--summary .value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+}
+.stat-card--summary .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}
 .stat-card {
   text-align: center;
 }

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/auth.dart';
 import '../models/browse_item.dart';
+import '../models/dashboard_stats.dart';
 import '../models/job.dart';
 
 /// SSE event types received from the backend
@@ -485,31 +486,16 @@ class BackendClient {
   }
 
   /// Backend endpoint: GET /api/stats
-  /// Response: { total_jobs, by_status: { pending, downloading, tagging, uploading, completed, merged, failed, ... }, daily_uploads }
-  Future<Map<String, int>> fetchStats() async {
+  /// Response: { total_jobs, by_status, daily_uploads, average_job_duration_seconds, jobs_last_24h }
+  Future<DashboardStats> fetchStats() async {
     try {
       final response = await _dio.get('/api/stats');
 
       if (response.data is! Map<String, dynamic>) {
-        return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'merged': 0, 'failed': 0};
+        return DashboardStats.fromJson({'by_status': {}});
       }
 
-      final data = response.data as Map<String, dynamic>;
-      final byStatus = data['by_status'] as Map<String, dynamic>?;
-
-      if (byStatus == null) {
-        return const {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'merged': 0, 'failed': 0};
-      }
-
-      return {
-        'pending': (byStatus['pending'] as int?) ?? 0,
-        'downloading': (byStatus['downloading'] as int?) ?? 0,
-        'tagging': (byStatus['tagging'] as int?) ?? 0,
-        'uploading': (byStatus['uploading'] as int?) ?? 0,
-        'completed': (byStatus['completed'] as int?) ?? 0,
-        'merged': (byStatus['merged'] as int?) ?? 0,
-        'failed': (byStatus['failed'] as int?) ?? 0,
-      };
+      return DashboardStats.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
       throw BackendException(
         _friendlyLabelForStatusCode(e.response?.statusCode),

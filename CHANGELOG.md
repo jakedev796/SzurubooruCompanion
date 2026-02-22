@@ -5,10 +5,13 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Dashboard summary cards: total jobs, average job time, jobs (24h)
 
 ### CCC - Backend
+- Add average_job_duration_seconds and jobs_last_24h to GET /api/stats
 
 ### Mobile App
+- Dashboard stats from API: total jobs, average job time, jobs (24h); reuse stats endpoint
 
 ### Browser Extension
 

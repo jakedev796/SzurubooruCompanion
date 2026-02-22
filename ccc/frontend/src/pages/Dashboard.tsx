@@ -81,6 +81,19 @@ function formatDate(iso: string | undefined): string {
   return new Date(iso).toLocaleString();
 }
 
+function formatDurationSeconds(seconds: number | null | undefined): string {
+  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const sRem = s % 60;
+  if (m < 60) return sRem > 0 ? `${m}m ${sRem}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const mRem = m % 60;
+  if (mRem > 0) return `${h}h ${mRem}m`;
+  return `${h}h`;
+}
+
 const MERGED_REPORT_LIMIT = 50;
 
 export default function Dashboard() {
@@ -331,6 +344,24 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* Summary row: total jobs, avg job time, jobs (24h) */}
+      <div className="stat-grid stat-grid--summary">
+        <div className="stat-card stat-card--summary">
+          <div className="value">{stats.total_jobs ?? 0}</div>
+          <div className="label">Total jobs</div>
+        </div>
+        <div className="stat-card stat-card--summary">
+          <div className="value">{formatDurationSeconds(stats.average_job_duration_seconds)}</div>
+          <div className="label">
+            <Clock size={14} className="stat-label-icon" /> Avg job time
+          </div>
+        </div>
+        <div className="stat-card stat-card--summary">
+          <div className="value">{stats.jobs_last_24h ?? 0}</div>
+          <div className="label">Jobs (24h)</div>
+        </div>
+      </div>
+
       {/* Primary stat cards – order: in-progress, then completed/merged, then terminal (stopped/failed) */}
       <div className="stat-grid--primary">
         <div className="stat-card--colored stat-card--pending">
