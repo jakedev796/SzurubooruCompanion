@@ -8,6 +8,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.1.0)'
+        required: true
 
 jobs:
   scope:
@@ -18,14 +23,21 @@ jobs:
       scope_mobile: ${{ steps.scope.outputs.scope_mobile }}
       version_name: ${{ steps.version.outputs.version_name }}
       version_code: ${{ steps.version.outputs.version_code }}
+      tag: ${{ steps.resolve-tag.outputs.tag }}
     steps:
+      - name: Resolve tag
+        id: resolve-tag
+        run: echo "tag=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve-tag.outputs.tag }}
 
       - name: Parse scope from tag
         id: scope
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="${{ steps.resolve-tag.outputs.tag }}"
           case "$TAG" in
             *-ccc)  C=1; E=0; M=0 ;;
             *-ext)  C=0; E=1; M=0 ;;
@@ -92,7 +104,7 @@ jobs:
       - name: Create release (draft)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           name: ${{ steps.title.outputs.title }}
           body_path: release-notes.md
           draft: true
@@ -189,7 +201,7 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           draft: true
           files: |
             browser-ext/chrome-mv3.zip
@@ -285,7 +297,7 @@ jobs:
       - name: Attach assets to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           draft: true
           files: |
             release-artifacts/SzuruCompanion.apk
@@ -343,7 +355,7 @@ jobs:
       - name: Publish release (set draft to false)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           name: ${{ steps.title.outputs.title }}
           body_path: release-notes.md
           draft: false
