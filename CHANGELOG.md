@@ -5,6 +5,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+
+### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.1.1] - 2026-02-22
+
+### CCC - Frontend
 - Add video confidence threshold setting to Global Settings page
 
 ### CCC - Backend
@@ -15,7 +25,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Split overview stat cards into two rows (stages / outcomes) to prevent crowding
 - Show full folder path in folder config screen instead of just "Tap to change folder"
 
-### Browser Extension
 
 ## [1.1.0] - 2026-02-22
 
