@@ -11,7 +11,7 @@ on:
 
 jobs:
   scope:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     outputs:
       scope_ccc: ${{ steps.scope.outputs.scope_ccc }}
       scope_ext: ${{ steps.scope.outputs.scope_ext }}
@@ -46,7 +46,7 @@ jobs:
           echo "version_code=${VC:-0}" >> "$GITHUB_OUTPUT"
 
   create-release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: scope
     permissions:
       contents: write
@@ -102,7 +102,7 @@ jobs:
   ccc:
     needs: scope
     if: needs.scope.outputs.scope_ccc == '1'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
       packages: write
@@ -149,7 +149,7 @@ jobs:
   browser:
     needs: [scope, create-release]
     if: needs.scope.outputs.scope_ext == '1'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: write
     steps:
@@ -195,7 +195,7 @@ jobs:
   mobile:
     needs: [scope, create-release]
     if: needs.scope.outputs.scope_mobile == '1'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: write
     steps:
@@ -307,7 +307,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [scope, create-release, ccc, browser, mobile]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     permissions:
