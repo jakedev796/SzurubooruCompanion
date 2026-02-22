@@ -55,12 +55,17 @@ async def get_stats(
 
     # Keep completed and merged separate so the dashboard can show both.
 
-    # Average job duration (completed/merged only): seconds from created_at to updated_at.
-    avg_epoch = func.avg(text("EXTRACT(EPOCH FROM (jobs.updated_at - jobs.created_at))"))
+    # Average job duration (completed/merged only): seconds from started_at to completed_at (processing time).
+    # Excludes queue wait; only jobs with both started_at and completed_at are included.
+    avg_epoch = func.avg(text("EXTRACT(EPOCH FROM (jobs.completed_at - jobs.started_at))"))
     duration_q = _apply_user_filter(
         select(avg_epoch)
         .select_from(Job)
-        .where(Job.status.in_([JobStatus.COMPLETED, JobStatus.MERGED]))
+        .where(
+            Job.status.in_([JobStatus.COMPLETED, JobStatus.MERGED]),
+            Job.started_at.isnot(None),
+            Job.completed_at.isnot(None),
+        )
     )
     avg_seconds = (await db.execute(duration_q)).scalar()
     average_job_duration_seconds = float(avg_seconds) if avg_seconds is not None else None

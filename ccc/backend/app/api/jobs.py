@@ -16,7 +16,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import cast, func, select, String
+from sqlalchemy import cast, func, select, String, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -107,6 +107,8 @@ class JobSummaryOut(BaseModel):
     related_post_ids: Optional[List[int]] = None
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -144,6 +146,18 @@ class _BulkUserContext:
         self.szuru_username = szuru_username
 
 
+def _job_duration_seconds(job: Job) -> Optional[float]:
+    """Processing time if started_at and completed_at set; else submit-to-complete for old jobs."""
+    if not getattr(job, "completed_at", None):
+        return None
+    completed_at = job.completed_at
+    start = getattr(job, "started_at", None) or job.created_at
+    if not start or not completed_at:
+        return None
+    delta = completed_at - start if hasattr(completed_at, "__sub__") else None
+    return delta.total_seconds() if delta is not None else None
+
+
 def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSummaryOut:
     return JobSummaryOut(
         id=str(job.id),
@@ -159,6 +173,8 @@ def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSu
         related_post_ids=job.related_post_ids,
         created_at=job.created_at,
         updated_at=job.updated_at,
+        completed_at=getattr(job, "completed_at", None),
+        duration_seconds=_job_duration_seconds(job),
     )
 
 
@@ -279,16 +295,20 @@ async def create_job_file(
     return _job_to_out(job)
 
 
+VALID_SORT = {"created_at_desc", "created_at_asc", "completed_at_desc", "completed_at_asc", "duration_desc", "duration_asc"}
+
+
 @router.get("/jobs", response_model=dict)
 async def list_jobs(
     status: Optional[str] = Query(None),
     was_merge: Optional[bool] = Query(None),
+    sort: Optional[str] = Query("created_at_desc", description="Sort: created_at_desc|asc, completed_at_desc|asc, duration_desc|asc"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs for current user with optional status and was_merge filter, paginated."""
+    """List jobs for current user with optional status and was_merge filter, paginated and sortable."""
     valid_statuses = {s.value.lower() for s in JobStatus}
     if status:
         status_lower = status.strip().lower()
@@ -297,6 +317,12 @@ async def list_jobs(
                 status_code=400,
                 detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
             )
+    sort_key = (sort or "created_at_desc").strip().lower()
+    if sort_key not in VALID_SORT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid sort: {sort!r}. Must be one of: {sorted(VALID_SORT)}.",
+        )
 
     try:
         query = select(Job).options(
@@ -312,6 +338,8 @@ async def list_jobs(
                 Job.szuru_post_id,
                 Job.related_post_ids,
                 Job.created_at,
+                Job.started_at,
+                Job.completed_at,
                 Job.updated_at,
             )
         )
@@ -330,7 +358,23 @@ async def list_jobs(
             query = query.where(Job.szuru_user == current_user.szuru_username)
             count_query = count_query.where(Job.szuru_user == current_user.szuru_username)
 
-        query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
+        if sort_key == "created_at_desc":
+            query = query.order_by(Job.created_at.desc())
+        elif sort_key == "created_at_asc":
+            query = query.order_by(Job.created_at.asc())
+        elif sort_key == "completed_at_desc":
+            query = query.order_by(Job.completed_at.desc().nulls_last())
+        elif sort_key == "completed_at_asc":
+            query = query.order_by(Job.completed_at.asc().nulls_last())
+        elif sort_key == "duration_desc":
+            query = query.order_by(
+                text("(jobs.completed_at - COALESCE(jobs.started_at, jobs.created_at)) DESC NULLS LAST")
+            )
+        else:
+            query = query.order_by(
+                text("(jobs.completed_at - COALESCE(jobs.started_at, jobs.created_at)) ASC NULLS LAST")
+            )
+        query = query.offset(offset).limit(limit)
 
         result = await db.execute(query)
         jobs = result.scalars().all()

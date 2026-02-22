@@ -506,6 +506,7 @@ export default function Dashboard() {
                   <th>Source</th>
                   <th>Szuru Post</th>
                   <th>Created</th>
+                  <th>Time</th>
                   <th>Actions</th>
                   <th></th>
                 </tr>
@@ -562,15 +563,14 @@ export default function Dashboard() {
                         )}
                       </td>
                       <td>
-                        {(j.post?.id ?? j.szuru_post_id) ? (
+                        {j.szuru_post_id ? (
                           <span className="post-links">
                             {(() => {
                               const allIds = Array.from(
                                 new Set(
-                                  [
-                                    j.post?.id ?? j.szuru_post_id,
-                                    ...((j.post?.relations ?? j.related_post_ids) ?? []),
-                                  ].filter((id): id is number => id != null)
+                                  [j.szuru_post_id, ...(j.related_post_ids ?? [])].filter(
+                                    (id): id is number => id != null
+                                  )
                                 )
                               );
                               const maxVisible = 3;
@@ -603,6 +603,7 @@ export default function Dashboard() {
                         )}
                       </td>
                       <td>{formatDate(j.created_at)}</td>
+                      <td>{formatDurationSeconds(j.duration_seconds)}</td>
                       <td>
                         <div className="quick-actions" style={{ display: "flex", gap: "0.25rem" }}>
                           {getQuickActions(j)}

@@ -6,12 +6,17 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ### CCC - Frontend
 - Dashboard summary cards: total jobs, average job time, jobs (24h)
+- Job list and dashboard: Time column (duration); sortable list (created, completed, duration) with server-side pagination
 
 ### CCC - Backend
 - Add average_job_duration_seconds and jobs_last_24h to GET /api/stats
+- Fix average job time to use processing time only (started_at to updated_at); add started_at to jobs, set when worker claims job
+- Add completed_at to jobs; backfill existing completed/merged jobs; average duration uses completed_at - started_at
+- GET /api/jobs: sort param (created_at, completed_at, duration asc/desc), return completed_at and duration_seconds in list
 
 ### Mobile App
 - Dashboard stats from API: total jobs, average job time, jobs (24h); reuse stats endpoint
+- Job model and cards: completed_at, duration_seconds; show duration on job card when available
 
 ### Browser Extension
 

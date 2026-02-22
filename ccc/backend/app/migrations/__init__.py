@@ -208,6 +208,41 @@ MIGRATIONS: List[Tuple[str, str]] = [
         ALTER TABLE swiper_presets ADD COLUMN IF NOT EXISTS sort VARCHAR(20) NOT NULL DEFAULT 'newest';
         """,
     ),
+    (
+        "015_add_job_started_at",
+        """
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'started_at'
+          ) THEN
+            ALTER TABLE jobs ADD COLUMN started_at TIMESTAMPTZ;
+          END IF;
+        END $$;
+        """,
+    ),
+    (
+        "016_add_job_completed_at",
+        """
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'completed_at'
+          ) THEN
+            ALTER TABLE jobs ADD COLUMN completed_at TIMESTAMPTZ;
+          END IF;
+        END $$;
+        """,
+    ),
+    (
+        "017_backfill_job_completed_at",
+        """
+        UPDATE jobs SET completed_at = updated_at
+        WHERE status IN ('completed', 'merged') AND completed_at IS NULL;
+        """,
+    ),
 ]
 
 async def _check_enum_value_exists(conn, enum_name: str, value: str) -> bool:

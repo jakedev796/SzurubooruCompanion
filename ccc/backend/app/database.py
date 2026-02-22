@@ -104,6 +104,8 @@ class Job(Base):
 
     # Timestamps (always UTC)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime(timezone=True), nullable=True)  # When worker began processing (left PENDING)
+    completed_at = Column(DateTime(timezone=True), nullable=True)  # When job reached completed/merged
     updated_at = Column(
         DateTime(timezone=True),
         nullable=False,

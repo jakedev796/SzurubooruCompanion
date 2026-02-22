@@ -105,6 +105,8 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 export interface JobsResponse {
   results: JobSummary[];
   total: number;
+  offset?: number;
+  limit?: number;
 }
 
 /** Mirrors the post as stored on Szurubooru (what we offload to them). */
@@ -130,6 +132,8 @@ export interface JobSummary {
   related_post_ids?: number[];
   created_at?: string;
   updated_at?: string;
+  completed_at?: string | null;
+  duration_seconds?: number | null;
 }
 
 export interface Job extends JobSummary {
@@ -196,8 +200,9 @@ export async function fetchJobs({
   szuru_user,
   offset = 0,
   limit = 50,
-}: { status?: string; was_merge?: boolean; szuru_user?: string; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
-  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  sort = "created_at_desc",
+}: { status?: string; was_merge?: boolean; szuru_user?: string; offset?: number; limit?: number; sort?: string } = {}): Promise<JobsResponse> {
+  const params = new URLSearchParams({ offset: String(offset), limit: String(limit), sort });
   if (status) params.set("status", status);
   if (was_merge !== undefined) params.set("was_merge", String(was_merge));
   if (szuru_user) params.set("szuru_user", szuru_user);

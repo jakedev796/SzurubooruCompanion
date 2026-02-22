@@ -76,14 +76,37 @@ const STATUS_FILTER_ORDER: { value: string; label: string; icon: React.ReactNode
   { value: "failed", label: "Failed", icon: <XCircle size={12} /> },
 ];
 
+const SORT_OPTIONS = [
+  { value: "created_at_desc", label: "Newest first" },
+  { value: "created_at_asc", label: "Oldest first" },
+  { value: "completed_at_desc", label: "Completed (newest)" },
+  { value: "completed_at_asc", label: "Completed (oldest)" },
+  { value: "duration_desc", label: "Longest time first" },
+  { value: "duration_asc", label: "Shortest time first" },
+] as const;
+
 function formatDate(iso: string | undefined): string {
   if (!iso) return "-";
   return new Date(iso).toLocaleString();
 }
 
+function formatDurationSeconds(seconds: number | null | undefined): string {
+  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const sRem = s % 60;
+  if (m < 60) return sRem > 0 ? `${m}m ${sRem}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const mRem = m % 60;
+  if (mRem > 0) return `${h}h ${mRem}m`;
+  return `${h}h`;
+}
+
 export default function JobList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get("status") || "";
+  const sort = searchParams.get("sort") || "created_at_desc";
   const page = parseInt(searchParams.get("page") || "0", 10);
 
   const [data, setData] = useState<JobsResponse | null>(null);
@@ -108,13 +131,14 @@ export default function JobList() {
       status: statusFilter || undefined,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
+      sort,
     })
       .then((d) => {
         setData(d);
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
-  }, [statusFilter, page]);
+  }, [statusFilter, sort, page]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = String(payload.id ?? payload.job_id ?? "");
@@ -491,6 +515,26 @@ export default function JobList() {
             </button>
           );
         })}
+        <select
+          className="filter-pill"
+          style={{ marginLeft: "auto", minWidth: "160px" }}
+          value={sort}
+          onChange={(e) => {
+            setSearchParams((p) => {
+              const next = new URLSearchParams(p);
+              next.set("sort", e.target.value);
+              next.set("page", "0");
+              return next;
+            });
+          }}
+          title="Sort order"
+        >
+          {SORT_OPTIONS.map(({ value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {selectedJobIds.size > 0 && (
@@ -623,6 +667,7 @@ export default function JobList() {
               <th>Source</th>
               <th>Szuru Post</th>
               <th>Created</th>
+              <th>Time</th>
               <th>Actions</th>
               <th></th>
             </tr>
@@ -687,15 +732,14 @@ export default function JobList() {
                     )}
                   </td>
                   <td>
-                    {(j.post?.id ?? j.szuru_post_id) ? (
+                    {j.szuru_post_id ? (
                       <span className="post-links">
                         {(() => {
                           const allIds = Array.from(
                             new Set(
-                              [
-                                j.post?.id ?? j.szuru_post_id,
-                                ...((j.post?.relations ?? j.related_post_ids) ?? []),
-                              ].filter((id): id is number => id != null)
+                              [j.szuru_post_id, ...(j.related_post_ids ?? [])].filter(
+                                (id): id is number => id != null
+                              )
                             )
                           );
                           const maxVisible = 3;
@@ -728,6 +772,7 @@ export default function JobList() {
                     )}
                   </td>
                   <td>{formatDate(j.created_at)}</td>
+                  <td>{formatDurationSeconds(j.duration_seconds)}</td>
                   <td>
                     <div className="quick-actions" style={{ display: "flex", gap: "0.25rem" }}>
                       {getQuickActions(j)}
@@ -741,7 +786,7 @@ export default function JobList() {
             })}
             {data.results.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+                <td colSpan={10} style={{ textAlign: "center", color: "var(--text-muted)" }}>
                   No jobs found.
                 </td>
               </tr>

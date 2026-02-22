@@ -80,6 +80,11 @@ class JobCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text('Progress: ${job.progressValue.toStringAsFixed(0)}%'),
+              if (job.durationDisplay != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('Time: ${job.durationDisplay}'),
+                ),
               if (job.safetyDisplay.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),

@@ -115,8 +115,11 @@ async def _claim_next_job():
         )
         job = result.scalar_one_or_none()
         if job:
+            now = datetime.now(timezone.utc)
             job.status = JobStatus.DOWNLOADING
-            job.updated_at = datetime.now(timezone.utc)
+            job.updated_at = now
+            if job.started_at is None:
+                job.started_at = now
             await db.commit()
             await db.refresh(job)
             # Publish SSE update
@@ -791,7 +794,9 @@ async def _complete_job(
         if stored_sources:
             j.source_override = stored_sources
 
-        j.updated_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        j.updated_at = now
+        j.completed_at = now
         await db.commit()
     logger.info("Job %s completed -> Szuru post %d (related: %s)",
                 job.id, szuru_post_id, related_post_ids or [])
