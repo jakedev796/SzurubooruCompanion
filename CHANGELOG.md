@@ -5,6 +5,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+
+### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.1.0] - 2026-02-22
+
+### CCC - Frontend
 - Dashboard chart now shows completed, merged, and failed jobs as overlaid areas with distinct colors (green, purple, red)
 - Fix daily chart status breakdown (failed/merged counts were always zero due to enum CASE mismatch)
 
@@ -18,7 +28,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Skip previously synced files in folder sync when media deletion is off (filter by modification time)
 - Add merged stat card to main screen to match the frontend dashboard
 
-### Browser Extension
 
 ## [1.0.11]
 
