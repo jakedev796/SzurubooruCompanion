@@ -125,4 +125,4 @@ jobs:
           git add VERSION CHANGELOG.md README.md mobile-app/pubspec.yaml
           git commit -m "chore: bump version to ${{ steps.version.outputs.version_name }}"
           git tag "${{ steps.tag.outputs.tag }}"
-          git push origin main --tags
+          git push origin main "${{ steps.tag.outputs.tag }}"

@@ -222,6 +222,9 @@ jobs:
           flutter-version: '3.41.1'
           channel: 'stable'
 
+      - name: Fix Flutter SDK ownership
+        run: git config --global --add safe.directory "$(which flutter | xargs dirname | xargs dirname)"
+
       - name: Inject version from VERSION into pubspec
         run: |
           LINE=$(cat VERSION | tr -d ' \n')
