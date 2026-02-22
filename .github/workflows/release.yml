@@ -353,18 +353,6 @@ jobs:
           echo "" >> release-notes.md
           echo "**Note:** Be sure to update your local Docker images. Docker builds should be live." >> release-notes.md
 
-      - name: Update README version badge
-        run: |
-          VN="${{ needs.scope.outputs.version_name }}"
-          sed -i "s|badge/version-[0-9.]*-blue|badge/version-$VN-blue|g" README.md
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          if ! git diff --staged --quiet; then
-            git commit -m "chore: update version badge to ${{ needs.scope.outputs.version_name }}"
-            git push
-          fi
-
       - name: Publish release (set draft to false)
         uses: softprops/action-gh-release@v2
         with:

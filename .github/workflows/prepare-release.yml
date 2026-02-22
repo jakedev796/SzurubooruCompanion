@@ -1,0 +1,128 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      scope:
+        description: 'Release scope'
+        type: choice
+        options:
+          - all
+          - ccc
+          - ext
+          - mobile
+        default: all
+
+jobs:
+  prepare:
+    runs-on: [self-hosted, linux, x64]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump version
+        id: version
+        run: |
+          LINE=$(cat VERSION | tr -d ' \n')
+          VN=$(echo "$LINE" | sed -n 's/^\([^+]*\)+.*/\1/p')
+          VC=$(echo "$LINE" | sed -n 's/^[^+]*+\([0-9]*\).*/\1/p')
+
+          MAJOR=$(echo "$VN" | cut -d. -f1)
+          MINOR=$(echo "$VN" | cut -d. -f2)
+          PATCH=$(echo "$VN" | cut -d. -f3)
+
+          case "${{ inputs.bump }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          SCOPE="${{ inputs.scope }}"
+          if [ "$SCOPE" = "all" ] || [ "$SCOPE" = "mobile" ]; then
+            VC=$((VC + 1))
+          fi
+          NEW_VN="${MAJOR}.${MINOR}.${PATCH}"
+
+          echo "${NEW_VN}+${VC}" > VERSION
+          echo "version_name=${NEW_VN}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VC}" >> "$GITHUB_OUTPUT"
+
+      - name: Update CHANGELOG
+        run: |
+          VN="${{ steps.version.outputs.version_name }}"
+          DATE=$(date -u +%Y-%m-%d)
+
+          # Replace "## [Unreleased]" with the new version header,
+          # then re-add a fresh Unreleased section above it
+          sed -i "s/^## \[Unreleased\]/## [${VN}] - ${DATE}/" CHANGELOG.md
+
+          # Strip empty subsections (### headers with no content before the next header or EOF)
+          python3 - CHANGELOG.md "$VN" <<'PYEOF'
+          import sys, re
+
+          path, version = sys.argv[1], sys.argv[2]
+          with open(path) as f:
+              text = f.read()
+
+          # Match the version section we just stamped
+          ver_re = re.escape(version)
+          pattern = rf'(## \[{ver_re}\][^\n]*\n)(.*?)(\n## \[|$)'
+          m = re.search(pattern, text, re.DOTALL)
+          if m:
+              header, body, next_section = m.group(1), m.group(2), m.group(3)
+              # Remove ### lines that are followed by nothing before the next ### or end
+              cleaned = re.sub(r'### [^\n]+\n\n*(?=###|\Z)', '', body)
+              # Collapse multiple blank lines
+              cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+              text = text[:m.start()] + header + cleaned + next_section + text[m.end():]
+
+          with open(path, 'w') as f:
+              f.write(text)
+          PYEOF
+
+          # Insert fresh Unreleased block after the preamble line
+          sed -i '/^All notable changes/a\\n## [Unreleased]\n\n### CCC - Frontend\n\n### CCC - Backend\n\n### Mobile App\n\n### Browser Extension' CHANGELOG.md
+
+      - name: Determine tag
+        id: tag
+        run: |
+          VN="${{ steps.version.outputs.version_name }}"
+          case "${{ inputs.scope }}" in
+            all)    TAG="v${VN}" ;;
+            ccc)    TAG="v${VN}-ccc" ;;
+            ext)    TAG="v${VN}-ext" ;;
+            mobile) TAG="v${VN}-mobile" ;;
+          esac
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Update README version badge
+        run: |
+          VN="${{ steps.version.outputs.version_name }}"
+          sed -i "s|badge/version-[0-9.]*-blue|badge/version-$VN-blue|g" README.md
+
+      - name: Update pubspec.yaml version
+        run: |
+          LINE=$(cat VERSION | tr -d ' \n')
+          sed -i "s/^version: .*/version: $LINE/" mobile-app/pubspec.yaml
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION CHANGELOG.md README.md mobile-app/pubspec.yaml
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version_name }}"
+          git tag "${{ steps.tag.outputs.tag }}"
+          git push origin main --tags
