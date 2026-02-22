@@ -211,29 +211,13 @@ MIGRATIONS: List[Tuple[str, str]] = [
     (
         "015_add_job_started_at",
         """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'started_at'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN started_at TIMESTAMPTZ;
-          END IF;
-        END $$;
+        ALTER TABLE jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
         """,
     ),
     (
         "016_add_job_completed_at",
         """
-        DO $$
-        BEGIN
-          IF NOT EXISTS (
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'completed_at'
-          ) THEN
-            ALTER TABLE jobs ADD COLUMN completed_at TIMESTAMPTZ;
-          END IF;
-        END $$;
+        ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
         """,
     ),
     (
