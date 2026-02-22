@@ -5,6 +5,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+
+### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.1.2] - 2026-02-22
+
+### CCC - Frontend
 - Dashboard summary cards: total jobs, average job time, jobs (24h)
 - Job list and dashboard: Time column (duration); sortable list (created, completed, duration) with server-side pagination
 - Refetch stats on completed/merged SSE so avg job time and time column update in real time
@@ -24,7 +34,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Job model and cards: completed_at, duration_seconds; show duration on job card when available
 - JobUpdate from SSE includes completedAt/durationSeconds; job list time updates in real time
 
-### Browser Extension
 
 ## [1.1.1] - 2026-02-22
 
