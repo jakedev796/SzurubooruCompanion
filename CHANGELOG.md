@@ -9,6 +9,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+- Split overview stat cards into two rows (stages / outcomes) to prevent crowding
 
 ### Browser Extension
 

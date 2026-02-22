@@ -481,7 +481,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
             ),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               StatCard(
                 label: 'Pending',
@@ -496,7 +495,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     (stats['uploading'] ?? 0),
                 color: AppColors.accent,
               ),
-              const SizedBox(width: 8),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
               StatCard(
                 label: 'Completed',
                 value: stats['completed'] ?? 0,
