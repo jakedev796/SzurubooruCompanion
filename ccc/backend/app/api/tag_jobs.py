@@ -161,9 +161,9 @@ async def discover_tag_jobs(
                         existing_post_ids.add(pid)
                     if len(candidate_post_ids) >= effective_limit:
                         break
-            if len(results) < page_size:
-                break
-            offset += page_size
+                if len(results) < page_size:
+                    break
+                offset += page_size
         else:
             seen: set = set()
             for tag in tags_list:
