@@ -108,11 +108,15 @@ async def discover_tag_jobs(
             detail="max_tag_count must be between 0 and 1000.",
         )
     if body.limit < 0:
-        raise HTTPException(status_code=400, detail="limit must be 0 (no limit) or positive.")
+        raise HTTPException(status_code=400, detail="limit must be 0 (auto chunk) or positive.")
 
-    # 0 means no limit; cap at safety max to avoid runaway job creation
-    NO_LIMIT_CAP = 50_000
-    effective_limit = NO_LIMIT_CAP if body.limit == 0 else body.limit
+    # 0 means \"no explicit limit\" – we still cap per request
+    # to avoid huge one-shot job creation spikes.
+    MAX_PER_REQUEST = 1000
+    if body.limit == 0:
+        effective_limit = MAX_PER_REQUEST
+    else:
+        effective_limit = min(body.limit, MAX_PER_REQUEST)
 
     await _ensure_szuru_context(current_user, db)
 

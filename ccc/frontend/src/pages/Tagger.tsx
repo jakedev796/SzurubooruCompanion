@@ -591,15 +591,15 @@ export default function Tagger() {
           )}
 
           <div className="form-group">
-            <label>Limit</label>
+            <label>Limit per run</label>
             <input
               type="number"
               min={0}
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
-              placeholder="0 = no limit"
+              placeholder="0 = auto (max 1,000)"
             />
-            <small>Leave 0 or empty for no limit (max 50,000 jobs per run).</small>
+            <small>Leave 0 or empty to auto-chunk; each click will create at most 1,000 matching jobs.</small>
           </div>
 
           <div className="form-group">
