@@ -15,7 +15,6 @@ import {
   XCircle,
   Ban,
   Info,
-  AlertOctagon,
 } from "lucide-react";
 import {
   fetchJobs,
@@ -37,7 +36,20 @@ import {
 import { useJobUpdates } from "../hooks/useJobUpdates";
 import { formatRelativeDate, formatDurationSeconds } from "../utils/format";
 
-const TAG_JOBS_PAGE_SIZE = 30;
+const TAG_JOBS_PAGE_SIZE = 20;
+
+const STATUS_FILTER_ORDER: { value: string; label: string; icon: React.ReactNode }[] = [
+  { value: "", label: "All statuses", icon: null },
+  { value: "pending", label: "Pending", icon: <Clock size={12} /> },
+  { value: "downloading", label: "Downloading", icon: <Download size={12} /> },
+  { value: "tagging", label: "Tagging", icon: <Tag size={12} /> },
+  { value: "uploading", label: "Uploading", icon: <Upload size={12} /> },
+  { value: "paused", label: "Paused", icon: <Pause size={12} /> },
+  { value: "completed", label: "Completed", icon: <CheckCircle2 size={12} /> },
+  { value: "merged", label: "Merged", icon: <GitMerge size={12} /> },
+  { value: "stopped", label: "Stopped", icon: <Ban size={12} /> },
+  { value: "failed", label: "Failed", icon: <XCircle size={12} /> },
+];
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   pending: <Clock size={12} />,
@@ -84,6 +96,8 @@ export default function Tagger() {
   const [abortLoading, setAbortLoading] = useState(false);
   const [loadingActions, setLoadingActions] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [activityStatusFilter, setActivityStatusFilter] = useState("");
+  const [activityPage, setActivityPage] = useState(0);
 
   useEffect(() => {
     fetchConfig()
@@ -95,13 +109,14 @@ export default function Tagger() {
     setError(null);
     fetchJobs({
       job_type: "tag_existing",
-      offset: 0,
+      status: activityStatusFilter || undefined,
+      offset: activityPage * TAG_JOBS_PAGE_SIZE,
       limit: TAG_JOBS_PAGE_SIZE,
       sort: "created_at_desc",
     })
       .then(setData)
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [activityStatusFilter, activityPage]);
 
   const runTagSearch = useCallback((q: string) => {
     if (!q.trim()) {
@@ -217,7 +232,8 @@ export default function Tagger() {
       });
       fetchJobs({
         job_type: "tag_existing",
-        offset: 0,
+        status: activityStatusFilter || undefined,
+        offset: activityPage * TAG_JOBS_PAGE_SIZE,
         limit: TAG_JOBS_PAGE_SIZE,
         sort: "created_at_desc",
       }).then(setData);
@@ -236,7 +252,8 @@ export default function Tagger() {
       setMessage({ type: "ok", text: `Stopped ${res.aborted} pending tag job(s).` });
       fetchJobs({
         job_type: "tag_existing",
-        offset: 0,
+        status: activityStatusFilter || undefined,
+        offset: activityPage * TAG_JOBS_PAGE_SIZE,
         limit: TAG_JOBS_PAGE_SIZE,
         sort: "created_at_desc",
       }).then(setData);
@@ -504,18 +521,9 @@ export default function Tagger() {
               {selectedTags.length > 0 && (
                 <div className="form-group">
                   <label>Selected tags</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+                  <span className="tag-list">
                     {selectedTags.map((t) => (
-                      <span
-                        key={t.name}
-                        className="tag"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.35rem",
-                          paddingRight: "0.25rem",
-                        }}
-                      >
+                      <span key={t.name} className="tag tag--other" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
                         {t.name} ({t.usages})
                         <button
                           type="button"
@@ -525,17 +533,19 @@ export default function Tagger() {
                             background: "none",
                             border: "none",
                             padding: 0,
+                            marginLeft: "0.1rem",
                             cursor: "pointer",
                             color: "inherit",
-                            opacity: 0.8,
+                            opacity: 0.85,
                             lineHeight: 1,
+                            display: "inline-flex",
                           }}
                         >
-                          <XCircle size={14} />
+                          <XCircle size={12} />
                         </button>
                       </span>
                     ))}
-                  </div>
+                  </span>
                 </div>
               )}
               {selectedTags.length >= 2 && (
@@ -611,11 +621,12 @@ export default function Tagger() {
             <button
               type="button"
               className="btn btn-danger"
+              style={{ background: "var(--red)", color: "#fff", borderColor: "var(--red)" }}
               onClick={handleAbortAll}
               disabled={abortLoading}
               title="Stop all pending/paused tag jobs"
             >
-              {abortLoading ? "..." : <><AlertOctagon size={16} style={{ verticalAlign: "middle" }} /> Abort all tag jobs</>}
+              {abortLoading ? "..." : "Abort all tag jobs"}
             </button>
           </div>
         </div>
@@ -636,8 +647,28 @@ export default function Tagger() {
 
       <div className="card">
         <h3 style={{ marginTop: 0, marginBottom: "0.75rem" }}>Tag job activity</h3>
+        <div className="filters filter-pills" style={{ marginBottom: "0.75rem" }}>
+          {STATUS_FILTER_ORDER.map(({ value, label, icon }) => {
+            const isActive = activityStatusFilter === value;
+            return (
+              <button
+                key={value || "all"}
+                type="button"
+                className={`filter-pill badge ${value ? value : "all"} ${isActive ? "active" : ""}`}
+                onClick={() => {
+                  setActivityStatusFilter(value);
+                  setActivityPage(0);
+                }}
+              >
+                {icon && <span className="badge-icon">{icon}</span>}
+                {label}
+              </button>
+            );
+          })}
+        </div>
         {error && <p style={{ color: "var(--red)" }}>{error}</p>}
         {data?.results?.length ? (
+          <>
           <div className="table-wrap" style={{ overflowX: "auto" }}>
             <table>
               <thead>
@@ -688,6 +719,33 @@ export default function Tagger() {
               </tbody>
             </table>
           </div>
+          {(() => {
+            const total = data?.total ?? 0;
+            const totalPages = Math.ceil(total / TAG_JOBS_PAGE_SIZE) || 1;
+            if (totalPages <= 1) return null;
+            return (
+              <div className="pagination" style={{ marginTop: "0.75rem" }}>
+                <button
+                  type="button"
+                  disabled={activityPage === 0}
+                  onClick={() => setActivityPage((p) => Math.max(0, p - 1))}
+                >
+                  Prev
+                </button>
+                <span style={{ lineHeight: "2rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                  Page {activityPage + 1} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={activityPage >= totalPages - 1}
+                  onClick={() => setActivityPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            );
+          })()}
+          </>
         ) : (
           <p style={{ color: "var(--text-muted)" }}>No tag jobs yet. Create some above.</p>
         )}

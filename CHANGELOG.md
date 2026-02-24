@@ -5,7 +5,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
-- Tagger page: tag search with debounce (search Szurubooru tags, show post count); selected-tags list with remove (X); AND/OR match (all tags vs any tag); form uses shared form-group/form-actions styling
+- Tagger page: tag search with debounce (search Szurubooru tags, show post count); selected-tags list with remove (X); AND/OR match (all tags vs any tag)
 - Jobs API and types: job_type filter, target_szuru_post_id and replace_original_tags for tag jobs; discoverTagJobs and abortAllTagJobs
 - Standardize source column truncation: filenames now use the same 30-char limit with ellipsis as URLs
 - Fix layout shifts in job tables: fixed column widths prevent reflow when status/actions change
