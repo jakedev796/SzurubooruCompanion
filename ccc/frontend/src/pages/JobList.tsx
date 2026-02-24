@@ -132,11 +132,24 @@ export default function JobList() {
     const status = String(payload.status ?? "").toLowerCase();
     const hasTerminalStatus =
       status === "completed" || status === "merged" || status === "failed";
+    const statusFilterLower = statusFilter ? statusFilter.toLowerCase() : "";
+
+    const noLongerMatchesFilter =
+      statusFilterLower && status !== statusFilterLower;
 
     setData((prevData) => {
       if (!prevData) return prevData;
       const index = prevData.results.findIndex((j) => j.id === id);
       if (index >= 0) {
+        if (noLongerMatchesFilter) {
+          const newResults = prevData.results.filter((j) => j.id !== id);
+          return {
+            ...prevData,
+            results: newResults,
+            total: Math.max(0, prevData.total - 1),
+          };
+        }
+
         const existing = prevData.results[index];
         const prevStatus = existing?.status?.toLowerCase();
         const statusChanged = prevStatus != null && prevStatus !== status;
@@ -148,26 +161,60 @@ export default function JobList() {
               setData((current) => {
                 if (!current) return current;
                 const idx = current.results.findIndex((j) => j.id === id);
-                if (idx >= 0) {
-                  const newResults = [...current.results];
-                  newResults[idx] = fullJob as JobSummary;
-                  return { ...current, results: newResults };
+                if (idx < 0) return current;
+                const fullStatus = String(fullJob.status ?? "").toLowerCase();
+                if (statusFilterLower && fullStatus !== statusFilterLower) {
+                  const newResults = current.results.filter((j) => j.id !== id);
+                  return {
+                    ...current,
+                    results: newResults,
+                    total: Math.max(0, current.total - 1),
+                  };
                 }
-                return current;
+                // Main jobs list excludes tag_existing; remove if refetch reveals it is one
+                const jobType = String(fullJob.job_type ?? "").toLowerCase();
+                if (jobType === "tag_existing") {
+                  const newResults = current.results.filter((j) => j.id !== id);
+                  return {
+                    ...current,
+                    results: newResults,
+                    total: Math.max(0, current.total - 1),
+                  };
+                }
+                const newResults = [...current.results];
+                newResults[idx] = fullJob as JobSummary;
+                return { ...current, results: newResults };
               });
             })
             .catch((e: Error) => {
               console.error(`Failed to refetch job ${id} after SSE update:`, e.message);
-              // Fallback: at least update with SSE payload
-              const newResults = [...prevData.results];
-              newResults[index] = { ...existing, ...updatedJob };
-              setData({ ...prevData, results: newResults });
+              if (noLongerMatchesFilter) {
+                setData((current) => {
+                  if (!current) return current;
+                  const newResults = current.results.filter((j) => j.id !== id);
+                  return {
+                    ...current,
+                    results: newResults,
+                    total: Math.max(0, current.total - 1),
+                  };
+                });
+              } else {
+                const newResults = [...prevData.results];
+                newResults[index] = { ...existing, ...updatedJob };
+                setData({ ...prevData, results: newResults });
+              }
             });
           return prevData; // Return unchanged while fetching
         }
 
+        const merged = { ...existing, ...updatedJob };
+        const mergedJobType = String(merged.job_type ?? "").toLowerCase();
+        if (mergedJobType === "tag_existing") {
+          const newResults = prevData.results.filter((j) => j.id !== id);
+          return { ...prevData, results: newResults, total: Math.max(0, prevData.total - 1) };
+        }
         const newResults = [...prevData.results];
-        newResults[index] = { ...existing, ...updatedJob };
+        newResults[index] = merged;
         return { ...prevData, results: newResults };
       }
       // Job not in the current page; try to fetch and insert it if visible to this user
@@ -178,8 +225,13 @@ export default function JobList() {
             const exists = current.results.some((j) => j.id === id);
             if (exists) return current;
 
+            // Main jobs list excludes tag_existing; do not add them when they appear via SSE
+            const jobType = String(fullJob.job_type ?? "").toLowerCase();
+            if (jobType === "tag_existing") return current;
+
             // Respect current status filter if present
-            if (statusFilter && fullJob.status !== statusFilter) {
+            const fullStatus = String(fullJob.status ?? "").toLowerCase();
+            if (statusFilterLower && fullStatus !== statusFilterLower) {
               return current;
             }
 

@@ -72,12 +72,39 @@ def _extract_metadata_sources(metadata: Dict) -> List[str]:
 # ---------------------------------------------------------------------------
 
 
+INFLIGHT_STATUSES = (JobStatus.DOWNLOADING, JobStatus.TAGGING, JobStatus.UPLOADING)
+
+
+async def _reset_inflight_jobs_on_startup() -> None:
+    """
+    On worker startup, reset any jobs left in DOWNLOADING/TAGGING/UPLOADING (e.g. after
+    a container reboot) to PENDING so they get picked up again.
+    """
+    async with async_session() as db:
+        result = await db.execute(
+            select(Job).where(Job.status.in_(INFLIGHT_STATUSES))
+        )
+        jobs = result.scalars().all()
+        if not jobs:
+            return
+        for job in jobs:
+            job.status = JobStatus.PENDING
+            job.started_at = None
+            job.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        for job in jobs:
+            await publish_job_update(job_id=job.id, status="pending", progress=0)
+        logger.info("Reset %d in-flight job(s) to pending after startup", len(jobs))
+
+
 async def start_worker(worker_id: int = 0) -> None:
     """Main worker loop – polls for pending jobs."""
     global _running
     _running = True
     tag = f"[W{worker_id}]"
     logger.info("%s Worker started.", tag)
+
+    await _reset_inflight_jobs_on_startup()
 
     while _running:
         try:

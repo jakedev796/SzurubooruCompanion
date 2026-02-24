@@ -5,6 +5,8 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Jobs page: when a status filter is set, SSE updates that change a job's status remove it from the list if it no longer matches the filter; exclude tag_existing jobs from the main list when merging SSE updates (add/update/refetch)
+- Dashboard activity and merged reports: exclude tag_existing jobs when merging SSE updates so the activity log and jobs list stay limited to URL/file jobs
 - Tagger page: tag search with debounce (search Szurubooru tags, show post count); selected-tags list with remove (X); AND/OR match (all tags vs any tag)
 - Jobs API and types: job_type filter, target_szuru_post_id and replace_original_tags for tag jobs; discoverTagJobs and abortAllTagJobs
 - Standardize source column truncation: filenames now use the same 30-char limit with ellipsis as URLs
@@ -14,6 +16,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Extract shared formatters (formatRelativeDate, formatDurationSeconds) to utils/format.ts
 
 ### CCC - Backend
+- Worker: on startup, reset jobs stuck in downloading/tagging/uploading (e.g. after reboot) to pending so they are picked up again
 - Tag-existing jobs: POST /api/tag-jobs/discover accepts tags[] and tag_operator (and/or); GET /api/tag-jobs/tag-search for tag autocomplete with usage count; discover scopes to current user's posts
 - Szurubooru: search_posts, download_post_content (via contentUrl); worker downloads post content, runs WD14, updates post tags/safety (replace or merge)
 - GET /api/jobs: exclude tag_existing jobs by default (dashboard/Jobs page); optional job_type filter to include them
@@ -21,6 +24,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Fix jobtype enum: ensure TAG_EXISTING (name) is added for SQLAlchemy compatibility
 
 ### Mobile App
+- Exclude tag_existing jobs from main job list when applying SSE updates (do not add on fetch; remove if refetch reveals tag job)
 
 ### Browser Extension
 

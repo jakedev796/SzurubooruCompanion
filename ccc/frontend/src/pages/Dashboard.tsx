@@ -128,8 +128,14 @@ export default function Dashboard() {
       if (!prev?.results) return prev;
       const index = prev.results.findIndex((j) => j.id === id);
       if (index >= 0) {
+        const merged = { ...prev.results[index], ...updatedJob };
+        const jobType = String(merged.job_type ?? "").toLowerCase();
+        if (jobType === "tag_existing") {
+          const newResults = prev.results.filter((j) => j.id !== id);
+          return { ...prev, results: newResults, total: Math.max(0, prev.total - 1) };
+        }
         const newResults = [...prev.results];
-        newResults[index] = { ...prev.results[index], ...updatedJob };
+        newResults[index] = merged;
         return { ...prev, results: newResults };
       }
       fetchJob(id)
@@ -138,6 +144,9 @@ export default function Dashboard() {
             if (!p) return p;
             const idx = p.results.findIndex((j) => j.id === id);
             if (idx >= 0) return p;
+            // Activity log excludes tag_existing; do not add them when they appear via SSE
+            const jobType = String(fullJob.job_type ?? "").toLowerCase();
+            if (jobType === "tag_existing") return p;
             const results = [{ ...fullJob, ...updatedJob }, ...p.results].slice(0, ACTIVITY_LIMIT);
             return { ...p, results, total: p.total + 1 };
           });
@@ -153,6 +162,8 @@ export default function Dashboard() {
           setMergedJobs((prev) => {
             const list = prev?.results ?? [];
             if (list.some((j) => j.id === id)) return prev;
+            const jobType = String(job.job_type ?? "").toLowerCase();
+            if (jobType === "tag_existing") return prev;
             const next = [job, ...list].slice(0, MERGED_REPORT_LIMIT);
             return { results: next, total: (prev?.total ?? 0) + 1, offset: 0, limit: prev?.limit ?? MERGED_REPORT_LIMIT };
           });
