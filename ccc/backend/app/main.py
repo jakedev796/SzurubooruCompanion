@@ -27,6 +27,7 @@ from app.api.users import router as users_router
 from app.api.settings import router as settings_router
 from app.api.preferences import router as preferences_router
 from app.api.swiper import router as swiper_router
+from app.api.tag_jobs import router as tag_jobs_router
 from app.services.szurubooru import (
     init_session as init_szuru_session,
     close_session as close_szuru_session,
@@ -165,6 +166,7 @@ app.include_router(stats_router, prefix="/api", tags=["stats"])
 app.include_router(events_router, prefix="/api", tags=["events"])
 app.include_router(config_router, prefix="/api", tags=["config"])
 app.include_router(swiper_router, prefix="/api", tags=["discover"])
+app.include_router(tag_jobs_router, prefix="/api", tags=["tag-jobs"])
 
 
 # ---------------------------------------------------------------------------

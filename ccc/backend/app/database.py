@@ -62,6 +62,7 @@ class JobStatus(str, PyEnum):
 class JobType(str, PyEnum):
     URL = "url"
     FILE = "file"
+    TAG_EXISTING = "tag_existing"
 
 
 class UserRole(str, PyEnum):
@@ -89,6 +90,10 @@ class Job(Base):
     safety = Column(String(16), nullable=True, default="unsafe")
     skip_tagging = Column(Integer, nullable=False, default=0)
     szuru_user = Column(String(255), nullable=True)  # Which Szurubooru user to upload as
+
+    # Tag-existing job input (job_type=TAG_EXISTING)
+    target_szuru_post_id = Column(Integer, nullable=True)  # Post to retag
+    replace_original_tags = Column(Integer, nullable=False, default=0)  # 1 = replace all tags with AI result
 
     # Output
     szuru_post_id = Column(Integer, nullable=True)

@@ -79,6 +79,8 @@ class JobOut(BaseModel):
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     was_merge: bool = False
+    target_szuru_post_id: Optional[int] = None
+    replace_original_tags: bool = False
     error_message: Optional[str] = None
     tags_applied: Optional[List[str]] = None
     tags_from_source: Optional[List[str]] = None
@@ -107,6 +109,8 @@ class JobSummaryOut(BaseModel):
     dashboard_username: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
+    target_szuru_post_id: Optional[int] = None
+    replace_original_tags: bool = False
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
@@ -173,6 +177,8 @@ def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSu
         dashboard_username=dashboard_username,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
+        target_szuru_post_id=getattr(job, "target_szuru_post_id", None),
+        replace_original_tags=bool(getattr(job, "replace_original_tags", 0)),
         created_at=job.created_at,
         updated_at=job.updated_at,
         completed_at=getattr(job, "completed_at", None),
@@ -207,6 +213,8 @@ def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         was_merge=bool(job.was_merge),
+        target_szuru_post_id=getattr(job, "target_szuru_post_id", None),
+        replace_original_tags=bool(getattr(job, "replace_original_tags", 0)),
         error_message=job.error_message,
         tags_applied=tags_applied,
         tags_from_source=_parse_json_tags(job.tags_from_source),
@@ -302,17 +310,21 @@ async def create_job_file(
 VALID_SORT = {"created_at_desc", "created_at_asc", "completed_at_desc", "completed_at_asc", "duration_desc", "duration_asc"}
 
 
+VALID_JOB_TYPES = {t.value for t in JobType}
+
+
 @router.get("/jobs", response_model=dict)
 async def list_jobs(
     status: Optional[str] = Query(None),
     was_merge: Optional[bool] = Query(None),
+    job_type: Optional[str] = Query(None, description="Filter by job type: url, file, tag_existing"),
     sort: Optional[str] = Query("created_at_desc", description="Sort: created_at_desc|asc, completed_at_desc|asc, duration_desc|asc"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs for current user with optional status and was_merge filter, paginated and sortable."""
+    """List jobs for current user with optional status, was_merge and job_type filter, paginated and sortable."""
     valid_statuses = {s.value.lower() for s in JobStatus}
     if status:
         status_lower = status.strip().lower()
@@ -320,6 +332,12 @@ async def list_jobs(
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
+            )
+    if job_type is not None:
+        if job_type.strip().lower() not in {v.lower() for v in VALID_JOB_TYPES}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid job_type: {job_type!r}. Must be one of: {sorted(VALID_JOB_TYPES)}.",
             )
     sort_key = (sort or "created_at_desc").strip().lower()
     if sort_key not in VALID_SORT:
@@ -341,6 +359,8 @@ async def list_jobs(
                 Job.szuru_user,
                 Job.szuru_post_id,
                 Job.related_post_ids,
+                Job.target_szuru_post_id,
+                Job.replace_original_tags,
                 Job.created_at,
                 Job.started_at,
                 Job.completed_at,
@@ -356,6 +376,10 @@ async def list_jobs(
         if was_merge is not None:
             query = query.where(Job.was_merge == (1 if was_merge else 0))
             count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
+        if job_type is not None:
+            type_val = job_type.strip().lower()
+            query = query.where(func.lower(cast(Job.job_type, String)) == type_val)
+            count_query = count_query.where(func.lower(cast(Job.job_type, String)) == type_val)
 
         # Auto-filter by current user's szuru_username (JWT auth)
         if current_user.szuru_username:

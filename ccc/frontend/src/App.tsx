@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react";
 import JobList from "./pages/JobList";
 import JobDetail from "./pages/JobDetail";
 import Dashboard from "./pages/Dashboard";
+import Tagger from "./pages/Tagger";
 import Login from "./pages/Login";
 import Settings from "./pages/Settings";
 import { fetchConfig, setDashboardAuth } from "./api";
@@ -71,6 +72,9 @@ function AppContent() {
             <NavLink to="/jobs" className={({ isActive }) => (isActive ? "active" : "")}>
               Jobs
             </NavLink>
+            <NavLink to="/tagger" className={({ isActive }) => (isActive ? "active" : "")}>
+              Tagger
+            </NavLink>
             {auth.user && (
               <NavLink to="/settings" className={({ isActive }) => (isActive ? "active" : "")}>
                 Settings
@@ -89,6 +93,7 @@ function AppContent() {
         <Route path="/login" element={<Login />} />
         <Route path="/jobs" element={<JobList />} />
         <Route path="/jobs/:id" element={<JobDetail />} />
+        <Route path="/tagger" element={<Tagger />} />
         <Route path="/settings" element={<Settings />} />
       </Routes>
     </div>

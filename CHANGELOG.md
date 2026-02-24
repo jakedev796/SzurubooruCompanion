@@ -5,6 +5,8 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Tagger page: form to create tag jobs (by tag or by max tag count), replace-original-tags option, abort-all button, embedded tag job activity list with SSE updates
+- Jobs API and types: job_type filter, target_szuru_post_id and replace_original_tags for tag jobs; discoverTagJobs and abortAllTagJobs
 - Standardize source column truncation: filenames now use the same 30-char limit with ellipsis as URLs
 - Fix layout shifts in job tables: fixed column widths prevent reflow when status/actions change
 - Merge details link into actions column as info icon button
@@ -12,6 +14,9 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Extract shared formatters (formatRelativeDate, formatDurationSeconds) to utils/format.ts
 
 ### CCC - Backend
+- Tag-existing jobs: JobType.TAG_EXISTING, target_szuru_post_id and replace_original_tags columns; POST /api/tag-jobs/discover and POST /api/tag-jobs/abort; discover scopes to posts uploaded by the current user (uploader filter)
+- Szurubooru: search_posts, download_post_content (via contentUrl); worker downloads post content, runs WD14, updates post tags/safety (replace or merge)
+- GET /api/jobs: optional job_type filter for tag_existing
 
 ### Mobile App
 

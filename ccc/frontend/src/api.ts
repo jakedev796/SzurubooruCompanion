@@ -130,6 +130,8 @@ export interface JobSummary {
   dashboard_username?: string;
   szuru_post_id?: number;
   related_post_ids?: number[];
+  target_szuru_post_id?: number | null;
+  replace_original_tags?: boolean;
   created_at?: string;
   updated_at?: string;
   completed_at?: string | null;
@@ -198,14 +200,16 @@ export async function fetchJobs({
   status,
   was_merge,
   szuru_user,
+  job_type,
   offset = 0,
   limit = 50,
   sort = "created_at_desc",
-}: { status?: string; was_merge?: boolean; szuru_user?: string; offset?: number; limit?: number; sort?: string } = {}): Promise<JobsResponse> {
+}: { status?: string; was_merge?: boolean; szuru_user?: string; job_type?: string; offset?: number; limit?: number; sort?: string } = {}): Promise<JobsResponse> {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit), sort });
   if (status) params.set("status", status);
   if (was_merge !== undefined) params.set("was_merge", String(was_merge));
   if (szuru_user) params.set("szuru_user", szuru_user);
+  if (job_type) params.set("job_type", job_type);
   const res = await apiFetch(`${BASE}/jobs?${params}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson<JobsResponse>(res);
@@ -307,6 +311,46 @@ export async function retryJob(jobId: string): Promise<Job> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson<Job>(res);
+}
+
+export interface TagJobsDiscoverRequest {
+  tag_filter?: string | null;
+  max_tag_count?: number | null;
+  replace_original_tags: boolean;
+  limit?: number;
+}
+
+export interface TagJobsDiscoverResponse {
+  job_ids: string[];
+  created: number;
+}
+
+export async function discoverTagJobs(body: TagJobsDiscoverRequest): Promise<TagJobsDiscoverResponse> {
+  const res = await apiFetch(`${BASE}/tag-jobs/discover`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tag_filter: body.tag_filter ?? undefined,
+      max_tag_count: body.max_tag_count ?? undefined,
+      replace_original_tags: body.replace_original_tags,
+      limit: body.limit ?? 100,
+    }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<TagJobsDiscoverResponse>(res);
+}
+
+export interface TagJobsAbortResponse {
+  aborted: number;
+}
+
+export async function abortAllTagJobs(): Promise<TagJobsAbortResponse> {
+  const res = await apiFetch(`${BASE}/tag-jobs/abort`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<TagJobsAbortResponse>(res);
 }
 
 export interface BulkJobAccepted {

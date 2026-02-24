@@ -22,6 +22,7 @@ from app.services import sources as source_utils
 from app.services import tag_utils
 from app.services.config import load_user_config, load_global_config
 from app.services.encryption import decrypt
+from app.utils.mime import extension_from_content_type
 from app.sites.registry import normalize_url as _normalize_site_url
 from app.api.events import publish_job_update
 
@@ -274,7 +275,8 @@ async def _extract_media(
     Phase 1: Determine the list of media items to process.
 
     For URL jobs uses gallery-dl extraction; for FILE jobs builds a
-    synthetic ExtractedMedia from the uploaded file.
+    synthetic ExtractedMedia from the uploaded file. For TAG_EXISTING
+    downloads the post content from Szurubooru.
 
     Returns None (and marks the job as failed) when nothing is found.
     """
@@ -284,6 +286,34 @@ async def _extract_media(
         extracted = await downloader.extract_media_urls(job.url, user_config, gallery_dl_timeout)
         logger.info("Job %s: Found %d media file(s)", job.id, len(extracted))
         return extracted
+
+    if job.job_type == JobType.TAG_EXISTING:
+        target_id = getattr(job, "target_szuru_post_id", None)
+        if target_id is None:
+            await _fail_job(job, "Tag job has no target_szuru_post_id.")
+            return None
+        logger.info("Job %s: Phase 1 - Downloading post %d content from Szurubooru", job.id, target_id)
+        post = await szurubooru.get_post(target_id)
+        if "error" in post:
+            await _fail_job(job, f"Failed to get post {target_id}: {post.get('error', 'unknown')}")
+            return None
+        mime = (post.get("mimeType") or "").strip() or "application/octet-stream"
+        ext = extension_from_content_type(mime) or "bin"
+        if ext != "bin":
+            ext = f".{ext}"
+        else:
+            ext = ".bin"
+        dest_path = Path(job_dir) / f"content{ext}"
+        saved = await szurubooru.download_post_content(target_id, dest_path)
+        if not saved:
+            await _fail_job(job, f"Failed to download content for post {target_id}")
+            return None
+        return [downloader.ExtractedMedia(
+            url=f"file://{saved.name}",
+            source_url=f"file://{saved.name}",
+            filename=saved.name,
+            metadata=None,
+        )]
 
     # FILE job – file was already saved during upload
     for fn in os.listdir(job_dir):
@@ -481,11 +511,56 @@ async def _upload_file(
 ) -> Optional[dict]:
     """
     Upload a single file to Szurubooru (or merge with an existing duplicate).
+    For TAG_EXISTING jobs, updates the existing post with new tags/safety only.
 
     Returns ``{"post": ..., "tags": ..., ...}`` on success, or None.
     """
     all_tags = tag_result["all_tags"]
     safety = tag_result["safety"]
+
+    if job.job_type == JobType.TAG_EXISTING:
+        target_id = getattr(job, "target_szuru_post_id", None)
+        if target_id is None:
+            return None
+        existing = await szurubooru.get_post(target_id)
+        if "error" in existing:
+            logger.warning("Job %s: Failed to get post %d for update: %s",
+                           job.id, target_id, existing.get("error"))
+            return None
+        replace = bool(getattr(job, "replace_original_tags", 0))
+        if replace:
+            final_tags = list(all_tags)
+        else:
+            current_tags = [
+                t["names"][0] if isinstance(t, dict) else t
+                for t in existing.get("tags", [])
+            ]
+            final_tags = list(current_tags)
+            for tag in all_tags:
+                if not any(t.lower() == tag.lower() for t in final_tags):
+                    final_tags.append(tag)
+        char_tags = tag_result.get("wd14_character_tags") or set()
+        for tag in char_tags:
+            await szurubooru.ensure_tag(tag, "character")
+        result = await szurubooru.update_post(
+            post_id=target_id,
+            version=existing["version"],
+            tags=final_tags,
+            safety=safety,
+        )
+        if "error" in result:
+            logger.warning("Job %s: Failed to update post %d: %s", job.id, target_id, result["error"])
+            return None
+        logger.info("Job %s: Updated post %d with %d tags", job.id, target_id, len(final_tags))
+        return {
+            "post": result,
+            "tags": final_tags,
+            "tags_from_source": tag_result["tags_from_source"],
+            "tags_from_ai": tag_result["tags_from_ai"],
+            "safety": safety,
+            "merged": False,
+            "final_source": None,
+        }
 
     # Build source string using normalized deduplication
     # FILE jobs have no meaningful source URLs (media.source_url is "file://...")
