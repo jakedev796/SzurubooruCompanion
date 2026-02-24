@@ -105,7 +105,7 @@ async def _ensure_enum_values() -> None:
         ("jobstatus", "paused"),
         ("jobstatus", "stopped"),
         ("jobstatus", "MERGED"),
-        ("jobtype", "tag_existing"),
+        ("jobtype", "TAG_EXISTING"),
     ]
     
     for enum_name, value in enum_values:

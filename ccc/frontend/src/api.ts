@@ -313,8 +313,23 @@ export async function retryJob(jobId: string): Promise<Job> {
   return parseJson<Job>(res);
 }
 
+export interface TagSearchResult {
+  name: string;
+  usages: number;
+}
+
+export async function searchTagJobsTags(q: string, limit = 20): Promise<TagSearchResult[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (q.trim()) params.set("q", q.trim());
+  const res = await apiFetch(`${BASE}/tag-jobs/tag-search?${params}`, { headers: headers() });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<TagSearchResult[]>(res);
+}
+
 export interface TagJobsDiscoverRequest {
   tag_filter?: string | null;
+  tags?: string[] | null;
+  tag_operator?: "and" | "or" | null;
   max_tag_count?: number | null;
   replace_original_tags: boolean;
   limit?: number;
@@ -331,6 +346,8 @@ export async function discoverTagJobs(body: TagJobsDiscoverRequest): Promise<Tag
     headers: { ...headers(), "Content-Type": "application/json" },
     body: JSON.stringify({
       tag_filter: body.tag_filter ?? undefined,
+      tags: body.tags ?? undefined,
+      tag_operator: body.tag_operator ?? undefined,
       max_tag_count: body.max_tag_count ?? undefined,
       replace_original_tags: body.replace_original_tags,
       limit: body.limit ?? 100,

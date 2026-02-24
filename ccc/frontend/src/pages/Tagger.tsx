@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Play,
@@ -23,14 +23,16 @@ import {
   fetchConfig,
   discoverTagJobs,
   abortAllTagJobs,
+  searchTagJobsTags,
+  type JobSummary,
+  type JobsResponse,
+  type TagSearchResult,
   startJob,
   pauseJob,
   stopJob,
   deleteJob,
   resumeJob,
   retryJob,
-  type JobSummary,
-  type JobsResponse,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
 import { formatRelativeDate, formatDurationSeconds } from "../utils/format";
@@ -67,7 +69,14 @@ export default function Tagger() {
   const [booruUrl, setBooruUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [criteriaMode, setCriteriaMode] = useState<CriteriaMode>("tag");
-  const [tagFilter, setTagFilter] = useState("");
+  const [tagSearchInput, setTagSearchInput] = useState("");
+  const [tagSearchResults, setTagSearchResults] = useState<TagSearchResult[]>([]);
+  const [tagSearchLoading, setTagSearchLoading] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<TagSearchResult[]>([]);
+  const [tagOperator, setTagOperator] = useState<"and" | "or">("and");
+  const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const tagSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tagDropdownRef = useRef<HTMLDivElement | null>(null);
   const [maxTagCount, setMaxTagCount] = useState<string>("5");
   const [replaceOriginalTags, setReplaceOriginalTags] = useState(false);
   const [limit, setLimit] = useState<string>("100");
@@ -93,6 +102,61 @@ export default function Tagger() {
       .then(setData)
       .catch((e: Error) => setError(e.message));
   }, []);
+
+  const runTagSearch = useCallback((q: string) => {
+    if (!q.trim()) {
+      setTagSearchResults([]);
+      setShowTagDropdown(false);
+      return;
+    }
+    setTagSearchLoading(true);
+    searchTagJobsTags(q, 20)
+      .then((results) => {
+        setTagSearchResults(results);
+        setShowTagDropdown(true);
+      })
+      .catch(() => {
+        setTagSearchResults([]);
+        setShowTagDropdown(false);
+      })
+      .finally(() => setTagSearchLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (tagSearchDebounceRef.current) clearTimeout(tagSearchDebounceRef.current);
+    const q = tagSearchInput.trim();
+    if (!q) {
+      setTagSearchResults([]);
+      setShowTagDropdown(false);
+      return () => {};
+    }
+    tagSearchDebounceRef.current = setTimeout(() => runTagSearch(tagSearchInput), 300);
+    return () => {
+      if (tagSearchDebounceRef.current) clearTimeout(tagSearchDebounceRef.current);
+    };
+  }, [tagSearchInput, runTagSearch]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
+        setShowTagDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function addSelectedTag(tag: TagSearchResult) {
+    if (selectedTags.some((t) => t.name.toLowerCase() === tag.name.toLowerCase())) return;
+    setSelectedTags((prev) => [...prev, tag]);
+    setTagSearchInput("");
+    setTagSearchResults([]);
+    setShowTagDropdown(false);
+  }
+
+  function removeSelectedTag(name: string) {
+    setSelectedTags((prev) => prev.filter((t) => t.name !== name));
+  }
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = String(payload.id ?? payload.job_id ?? "");
@@ -122,12 +186,13 @@ export default function Tagger() {
   });
 
   async function handleDiscover() {
-    const tag = tagFilter.trim();
     const maxCount = maxTagCount.trim() ? parseInt(maxTagCount, 10) : null;
     const limitNum = limit.trim() ? Math.max(1, parseInt(limit, 10) || 100) : 100;
-    if (criteriaMode === "tag" && !tag) {
-      setMessage({ type: "err", text: "Enter a tag name." });
-      return;
+    if (criteriaMode === "tag") {
+      if (selectedTags.length === 0) {
+        setMessage({ type: "err", text: "Add at least one tag." });
+        return;
+      }
     }
     if (criteriaMode === "max_tag_count") {
       if (maxCount === null || isNaN(maxCount) || maxCount < 0 || maxCount > 1000) {
@@ -139,7 +204,8 @@ export default function Tagger() {
     setDiscoverLoading(true);
     try {
       const res = await discoverTagJobs({
-        tag_filter: criteriaMode === "tag" ? tag : undefined,
+        tags: criteriaMode === "tag" ? selectedTags.map((t) => t.name) : undefined,
+        tag_operator: criteriaMode === "tag" ? tagOperator : undefined,
         max_tag_count: criteriaMode === "max_tag_count" ? (maxCount ?? undefined) : undefined,
         replace_original_tags: replaceOriginalTags,
         limit: limitNum,
@@ -347,17 +413,16 @@ export default function Tagger() {
   return (
     <>
       <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ marginTop: 0, marginBottom: "1rem" }}>Tag existing posts</h3>
+        <h2 style={{ marginTop: 0, marginBottom: "0.5rem" }}>Tagger</h2>
         <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "1rem" }}>
-          Find posts on Szurubooru and run them through the AI tagger, then update tags (and optionally replace
-          original tags) on the board.
+          Find posts on Szurubooru (uploaded by you) and run them through the AI tagger, then update tags on the board.
         </p>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-start" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <label style={{ fontWeight: 600 }}>Criteria</label>
-            <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+        <div className="settings-form">
+          <div className="form-group">
+            <label>Criteria</label>
+            <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer" }}>
                 <input
                   type="radio"
                   name="criteria"
@@ -366,7 +431,7 @@ export default function Tagger() {
                 />
                 Posts with tag
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer" }}>
                 <input
                   type="radio"
                   name="criteria"
@@ -379,19 +444,129 @@ export default function Tagger() {
           </div>
 
           {criteriaMode === "tag" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <label style={{ fontWeight: 600 }}>Tag name</label>
-              <input
-                type="text"
-                value={tagFilter}
-                onChange={(e) => setTagFilter(e.target.value)}
-                placeholder="e.g. tagme"
-                style={{ width: "12rem" }}
-              />
-            </div>
+            <>
+              <div className="form-group" ref={tagDropdownRef} style={{ position: "relative" }}>
+                <label>Search tags</label>
+                <input
+                  type="text"
+                  value={tagSearchInput}
+                  onChange={(e) => setTagSearchInput(e.target.value)}
+                  placeholder="Type to search your Szurubooru tags..."
+                  autoComplete="off"
+                />
+                {showTagDropdown && (
+                  <div
+                    className="card"
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      marginTop: 4,
+                      maxHeight: 220,
+                      overflowY: "auto",
+                      zIndex: 10,
+                      padding: "0.5rem 0",
+                    }}
+                  >
+                    {tagSearchLoading ? (
+                      <div style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                        Searching...
+                      </div>
+                    ) : tagSearchResults.length === 0 ? (
+                      <div style={{ padding: "0.5rem 0.75rem", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                        No tags found
+                      </div>
+                    ) : (
+                      tagSearchResults.map((t) => (
+                        <button
+                          key={t.name}
+                          type="button"
+                          className="btn btn-sm"
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "0.4rem 0.75rem",
+                            background: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                          onClick={() => addSelectedTag(t)}
+                        >
+                          {t.name} <span style={{ color: "var(--text-muted)" }}>({t.usages})</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {selectedTags.length > 0 && (
+                <div className="form-group">
+                  <label>Selected tags</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+                    {selectedTags.map((t) => (
+                      <span
+                        key={t.name}
+                        className="tag"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                          paddingRight: "0.25rem",
+                        }}
+                      >
+                        {t.name} ({t.usages})
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedTag(t.name)}
+                          title="Remove tag"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            color: "inherit",
+                            opacity: 0.8,
+                            lineHeight: 1,
+                          }}
+                        >
+                          <XCircle size={14} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedTags.length >= 2 && (
+                <div className="form-group">
+                  <label>Match</label>
+                  <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="tag_operator"
+                        checked={tagOperator === "and"}
+                        onChange={() => setTagOperator("and")}
+                      />
+                      Posts with ALL of these tags
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="tag_operator"
+                        checked={tagOperator === "or"}
+                        onChange={() => setTagOperator("or")}
+                      />
+                      Posts with ANY of these tags
+                    </label>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <label style={{ fontWeight: 600 }}>Max tag count (exclusive)</label>
+            <div className="form-group">
+              <label>Max tag count (exclusive)</label>
               <input
                 type="number"
                 min={0}
@@ -399,24 +574,22 @@ export default function Tagger() {
                 value={maxTagCount}
                 onChange={(e) => setMaxTagCount(e.target.value)}
                 placeholder="e.g. 5"
-                style={{ width: "6rem" }}
               />
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-            <label style={{ fontWeight: 600 }}>Limit</label>
+          <div className="form-group">
+            <label>Limit</label>
             <input
               type="number"
               min={1}
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
-              style={{ width: "5rem" }}
             />
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "1.75rem" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", cursor: "pointer" }}>
+          <div className="form-group">
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={replaceOriginalTags}
@@ -426,7 +599,7 @@ export default function Tagger() {
             </label>
           </div>
 
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end", marginTop: "1.5rem" }}>
+          <div className="form-actions">
             <button
               type="button"
               className="btn btn-primary"
@@ -442,7 +615,7 @@ export default function Tagger() {
               disabled={abortLoading}
               title="Stop all pending/paused tag jobs"
             >
-              {abortLoading ? "..." : <AlertOctagon size={16} style={{ verticalAlign: "middle" }} />} Abort all tag jobs
+              {abortLoading ? "..." : <><AlertOctagon size={16} style={{ verticalAlign: "middle" }} /> Abort all tag jobs</>}
             </button>
           </div>
         </div>
@@ -453,6 +626,7 @@ export default function Tagger() {
               marginTop: "1rem",
               marginBottom: 0,
               color: message.type === "err" ? "var(--red)" : "var(--green)",
+              fontSize: "0.9rem",
             }}
           >
             {message.text}

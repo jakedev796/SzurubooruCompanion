@@ -260,6 +260,19 @@ async def upload_post(
 # ---------------------------------------------------------------------------
 
 
+async def search_tags(query: str, limit: int = 20, offset: int = 0) -> dict:
+    """
+    Search tags. Returns {"results": [...], ...} or {"error": ..., "status": ...}.
+    Each tag in results has "names", "usages" (post count), etc.
+    """
+    return await _request(
+        "GET",
+        "/api/tags/",
+        params={"query": query, "limit": limit, "offset": offset},
+        timeout=15,
+    )
+
+
 async def _get_tag_by_name(tag_name: str) -> Optional[Dict]:
     """Fetch a tag by exact name. Returns the tag resource or None."""
     result = await _request(

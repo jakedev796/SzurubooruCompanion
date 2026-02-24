@@ -12,14 +12,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import Job, JobStatus, JobType, User, get_db
 from app.api.deps import get_current_user
-from app.services.szurubooru import search_posts, set_current_user, test_connection
+from app.services.szurubooru import search_posts, search_tags, set_current_user, test_connection
 from app.services.encryption import decrypt
 
 router = APIRouter()
 
 
+class TagSearchResult(BaseModel):
+    name: str
+    usages: int
+
+
 class TagJobsDiscoverRequest(BaseModel):
     tag_filter: Optional[str] = None
+    tags: Optional[List[str]] = None
+    tag_operator: Optional[str] = None
     max_tag_count: Optional[int] = None
     replace_original_tags: bool = False
     limit: int = 100
@@ -78,16 +85,24 @@ async def discover_tag_jobs(
 ):
     """
     Find Szurubooru posts matching criteria and create one tag job per post.
-    Exactly one of tag_filter or max_tag_count must be set.
+    Use tags (with optional tag_operator) or max_tag_count; tag_filter is legacy single-tag.
     """
-    if (body.tag_filter is None) == (body.max_tag_count is None):
+    tags_list: Optional[List[str]] = None
+    if body.tags and len(body.tags) > 0:
+        tags_list = [str(t).strip() for t in body.tags if str(t).strip()]
+    elif body.tag_filter and str(body.tag_filter).strip():
+        tags_list = [str(body.tag_filter).strip()]
+    tag_operator = (body.tag_operator or "and").strip().lower() if tags_list else "and"
+    if tag_operator not in ("and", "or"):
+        tag_operator = "and"
+    use_tag_criteria = bool(tags_list)
+    use_max_count = body.max_tag_count is not None
+    if use_tag_criteria == use_max_count:
         raise HTTPException(
             status_code=400,
-            detail="Set exactly one of tag_filter or max_tag_count.",
+            detail="Set either tags (or tag_filter) or max_tag_count, not both.",
         )
-    if body.tag_filter is not None and not str(body.tag_filter).strip():
-        raise HTTPException(status_code=400, detail="tag_filter must be non-empty.")
-    if body.max_tag_count is not None and (body.max_tag_count < 0 or body.max_tag_count > 1000):
+    if use_max_count and (body.max_tag_count < 0 or body.max_tag_count > 1000):
         raise HTTPException(
             status_code=400,
             detail="max_tag_count must be between 0 and 1000.",
@@ -119,32 +134,61 @@ async def discover_tag_jobs(
     candidate_post_ids: List[int] = []
     replace = 1 if body.replace_original_tags else 0
 
-    if body.tag_filter is not None:
-        tag = str(body.tag_filter).strip()
-        offset = 0
-        page_size = min(body.limit, 100)
-        while len(candidate_post_ids) < body.limit:
-            query = f"tag:{tag} {uploader_filter}".strip()
-            resp = await search_posts(query=query, limit=page_size, offset=offset)
-            if "error" in resp:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Szurubooru search failed: {resp.get('error', 'unknown')}",
-                )
-            results = resp.get("results") or []
-            if not results:
-                break
-            for post in results:
-                pid = post.get("id") if isinstance(post, dict) else getattr(post, "id", None)
-                if pid is not None and pid not in existing_post_ids:
-                    candidate_post_ids.append(pid)
-                    existing_post_ids.add(pid)
-                    if len(candidate_post_ids) >= body.limit:
+    if use_tag_criteria and tags_list:
+        if tag_operator == "and":
+            tag_query = " ".join(f"tag:{t}" for t in tags_list)
+            offset = 0
+            page_size = min(body.limit, 100)
+            while len(candidate_post_ids) < body.limit:
+                query = f"{tag_query} {uploader_filter}".strip()
+                resp = await search_posts(query=query, limit=page_size, offset=offset)
+                if "error" in resp:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Szurubooru search failed: {resp.get('error', 'unknown')}",
+                    )
+                results = resp.get("results") or []
+                if not results:
+                    break
+                for post in results:
+                    pid = post.get("id") if isinstance(post, dict) else getattr(post, "id", None)
+                    if pid is not None and pid not in existing_post_ids:
+                        candidate_post_ids.append(pid)
+                        existing_post_ids.add(pid)
+                        if len(candidate_post_ids) >= body.limit:
+                            break
+                if len(results) < page_size:
+                    break
+                offset += page_size
+        else:
+            seen: set = set()
+            for tag in tags_list:
+                offset = 0
+                page_size = 100
+                while len(candidate_post_ids) < body.limit:
+                    query = f"tag:{tag} {uploader_filter}".strip()
+                    resp = await search_posts(query=query, limit=page_size, offset=offset)
+                    if "error" in resp:
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"Szurubooru search failed: {resp.get('error', 'unknown')}",
+                        )
+                    results = resp.get("results") or []
+                    if not results:
                         break
-            if len(results) < page_size:
-                break
-            offset += page_size
-    else:
+                    for post in results:
+                        pid = post.get("id") if isinstance(post, dict) else getattr(post, "id", None)
+                        if pid is not None and pid not in existing_post_ids and pid not in seen:
+                            seen.add(pid)
+                            candidate_post_ids.append(pid)
+                            if len(candidate_post_ids) >= body.limit:
+                                break
+                    if len(candidate_post_ids) >= body.limit or len(results) < page_size:
+                        break
+                    offset += page_size
+                if len(candidate_post_ids) >= body.limit:
+                    break
+    elif use_max_count:
         max_count = body.max_tag_count
         offset = 0
         page_size = min(body.limit * 2, 200)
@@ -217,3 +261,38 @@ async def abort_all_tag_jobs(
     for job in jobs:
         await publish_job_update(job_id=job.id, status="stopped", progress=0)
     return TagJobsAbortResponse(aborted=aborted)
+
+
+@router.get("/tag-jobs/tag-search", response_model=List[TagSearchResult])
+async def tag_search(
+    q: str = "",
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search tags on the user's Szurubooru instance. Returns tag name and usage count (posts)."""
+    await _ensure_szuru_context(current_user, db)
+    q = (q or "").strip()
+    if not q:
+        return []
+    query = f"name:{q}*"
+    resp = await search_tags(query=query, limit=min(limit, 50), offset=0)
+    if "error" in resp:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Tag search failed: {resp.get('error', 'unknown')}",
+        )
+    results = resp.get("results") or []
+    out = []
+    for tag in results:
+        names = tag.get("names") or []
+        name = ""
+        if names:
+            n0 = names[0]
+            name = n0 if isinstance(n0, str) else (getattr(n0, "name", None) or (n0.get("name") if isinstance(n0, dict) else None) or "")
+        if not name:
+            name = str(tag.get("name") or "")
+        usages = tag.get("usages", 0) if isinstance(tag.get("usages"), (int, float)) else 0
+        if name:
+            out.append(TagSearchResult(name=str(name), usages=int(usages)))
+    return out
