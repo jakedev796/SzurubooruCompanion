@@ -380,6 +380,9 @@ async def list_jobs(
             type_val = job_type.strip().lower()
             query = query.where(func.lower(cast(Job.job_type, String)) == type_val)
             count_query = count_query.where(func.lower(cast(Job.job_type, String)) == type_val)
+        else:
+            query = query.where(Job.job_type != JobType.TAG_EXISTING)
+            count_query = count_query.where(Job.job_type != JobType.TAG_EXISTING)
 
         # Auto-filter by current user's szuru_username (JWT auth)
         if current_user.szuru_username:

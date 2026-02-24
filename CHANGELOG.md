@@ -16,7 +16,8 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 - Tag-existing jobs: POST /api/tag-jobs/discover accepts tags[] and tag_operator (and/or); GET /api/tag-jobs/tag-search for tag autocomplete with usage count; discover scopes to current user's posts
 - Szurubooru: search_posts, download_post_content (via contentUrl); worker downloads post content, runs WD14, updates post tags/safety (replace or merge)
-- GET /api/jobs: optional job_type filter for tag_existing
+- GET /api/jobs: exclude tag_existing jobs by default (dashboard/Jobs page); optional job_type filter to include them
+- GET /api/stats: exclude tag_existing jobs from totals, status counts, 24h count, and daily uploads (dashboard and mobile)
 - Fix jobtype enum: ensure TAG_EXISTING (name) is added for SQLAlchemy compatibility
 
 ### Mobile App

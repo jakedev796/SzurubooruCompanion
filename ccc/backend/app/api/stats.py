@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import String, func, select, cast, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import Job, JobStatus, User, get_db
+from app.database import Job, JobStatus, JobType, User, get_db
 from app.api.deps import get_current_user
 
 router = APIRouter()
@@ -24,24 +24,26 @@ async def get_stats(
     """Return aggregate job statistics for the current authenticated user."""
 
     def _apply_user_filter(q):
-        # Auto-filter by current user's szuru_username (JWT auth)
         if current_user.szuru_username:
             return q.where(Job.szuru_user == current_user.szuru_username)
         return q
 
-    total_q = _apply_user_filter(select(func.count(Job.id)).select_from(Job))
+    def _exclude_tag_jobs(q):
+        return q.where(Job.job_type != JobType.TAG_EXISTING)
+
+    total_q = _exclude_tag_jobs(_apply_user_filter(select(func.count(Job.id)).select_from(Job)))
     total = (await db.execute(total_q)).scalar() or 0
 
     # Single GROUP BY query for all status counts; read status as text to avoid
     # Python/DB enum mismatch leaving the transaction aborted.
-    status_q = _apply_user_filter(
+    status_q = _exclude_tag_jobs(_apply_user_filter(
         select(
             cast(Job.status, String).label("status"),
             func.count(Job.id).label("count"),
         )
         .select_from(Job)
         .group_by(Job.status)
-    )
+    ))
     status_rows = (await db.execute(status_q)).all()
     status_counts = {s.value: 0 for s in JobStatus}
     for row in status_rows:
@@ -59,7 +61,7 @@ async def get_stats(
     # Excludes queue wait; only jobs with both started_at and completed_at are included.
     # Backfilled jobs (completed_at set, no started_at) are excluded for data integrity.
     avg_epoch = func.avg(text("EXTRACT(EPOCH FROM (jobs.completed_at - jobs.started_at))"))
-    duration_q = _apply_user_filter(
+    duration_q = _exclude_tag_jobs(_apply_user_filter(
         select(avg_epoch)
         .select_from(Job)
         .where(
@@ -67,15 +69,15 @@ async def get_stats(
             Job.started_at.isnot(None),
             Job.completed_at.isnot(None),
         )
-    )
+    ))
     avg_seconds = (await db.execute(duration_q)).scalar()
     average_job_duration_seconds = float(avg_seconds) if avg_seconds is not None else None
 
     # Jobs created in the last 24 hours (UTC).
     twenty_four_h_ago = datetime.now(timezone.utc) - timedelta(hours=24)
-    count_24h_q = _apply_user_filter(
+    count_24h_q = _exclude_tag_jobs(_apply_user_filter(
         select(func.count(Job.id)).select_from(Job).where(Job.created_at >= twenty_four_h_ago)
-    )
+    ))
     jobs_last_24h = (await db.execute(count_24h_q)).scalar() or 0
 
     # Uploads per day for the last 30 days, broken down by status.
@@ -84,7 +86,7 @@ async def get_stats(
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     day_utc_expr = text("(jobs.created_at AT TIME ZONE 'UTC')::date")
     day_utc_select = text("(jobs.created_at AT TIME ZONE 'UTC')::date AS day")
-    daily_q = _apply_user_filter(
+    daily_q = _exclude_tag_jobs(_apply_user_filter(
         select(
             day_utc_select,
             cast(Job.status, String).label("status"),
@@ -94,7 +96,7 @@ async def get_stats(
         .where(Job.created_at >= thirty_days_ago)
         .group_by(day_utc_expr, Job.status)
         .order_by(day_utc_expr)
-    )
+    ))
     daily_result = await db.execute(daily_q)
     rows = daily_result.all()
     daily_map: dict[str, dict] = defaultdict(
