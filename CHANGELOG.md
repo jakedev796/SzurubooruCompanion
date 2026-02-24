@@ -5,6 +5,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+
+### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.2.0] - 2026-02-24
+
+### CCC - Frontend
 - Jobs page: when a status filter is set, SSE updates that change a job's status remove it from the list if it no longer matches the filter; exclude tag_existing jobs from the main list when merging SSE updates (add/update/refetch)
 - Dashboard activity and merged reports: exclude tag_existing jobs when merging SSE updates so the activity log and jobs list stay limited to URL/file jobs
 - Tagger page: tag search with debounce (search Szurubooru tags, show post count); selected-tags list with remove (X); AND/OR match (all tags vs any tag)
@@ -26,7 +36,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### Mobile App
 - Exclude tag_existing jobs from main job list when applying SSE updates (do not add on fetch; remove if refetch reveals tag job)
 
-### Browser Extension
 
 ## [1.1.2] - 2026-02-22
 
