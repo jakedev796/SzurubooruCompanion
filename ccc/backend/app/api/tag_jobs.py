@@ -107,8 +107,12 @@ async def discover_tag_jobs(
             status_code=400,
             detail="max_tag_count must be between 0 and 1000.",
         )
-    if body.limit < 1:
-        raise HTTPException(status_code=400, detail="limit must be at least 1.")
+    if body.limit < 0:
+        raise HTTPException(status_code=400, detail="limit must be 0 (no limit) or positive.")
+
+    # 0 means no limit; cap at safety max to avoid runaway job creation
+    NO_LIMIT_CAP = 50_000
+    effective_limit = NO_LIMIT_CAP if body.limit == 0 else body.limit
 
     await _ensure_szuru_context(current_user, db)
 
@@ -138,8 +142,8 @@ async def discover_tag_jobs(
         if tag_operator == "and":
             tag_query = " ".join(f"tag:{t}" for t in tags_list)
             offset = 0
-            page_size = min(body.limit, 100)
-            while len(candidate_post_ids) < body.limit:
+            page_size = min(effective_limit, 100)
+            while len(candidate_post_ids) < effective_limit:
                 query = f"{tag_query} {uploader_filter}".strip()
                 resp = await search_posts(query=query, limit=page_size, offset=offset)
                 if "error" in resp:
@@ -155,17 +159,17 @@ async def discover_tag_jobs(
                     if pid is not None and pid not in existing_post_ids:
                         candidate_post_ids.append(pid)
                         existing_post_ids.add(pid)
-                        if len(candidate_post_ids) >= body.limit:
-                            break
-                if len(results) < page_size:
-                    break
-                offset += page_size
+                    if len(candidate_post_ids) >= effective_limit:
+                        break
+            if len(results) < page_size:
+                break
+            offset += page_size
         else:
             seen: set = set()
             for tag in tags_list:
                 offset = 0
                 page_size = 100
-                while len(candidate_post_ids) < body.limit:
+                while len(candidate_post_ids) < effective_limit:
                     query = f"tag:{tag} {uploader_filter}".strip()
                     resp = await search_posts(query=query, limit=page_size, offset=offset)
                     if "error" in resp:
@@ -181,18 +185,18 @@ async def discover_tag_jobs(
                         if pid is not None and pid not in existing_post_ids and pid not in seen:
                             seen.add(pid)
                             candidate_post_ids.append(pid)
-                            if len(candidate_post_ids) >= body.limit:
+                            if len(candidate_post_ids) >= effective_limit:
                                 break
-                    if len(candidate_post_ids) >= body.limit or len(results) < page_size:
+                    if len(candidate_post_ids) >= effective_limit or len(results) < page_size:
                         break
                     offset += page_size
-                if len(candidate_post_ids) >= body.limit:
+                if len(candidate_post_ids) >= effective_limit:
                     break
     elif use_max_count:
         max_count = body.max_tag_count
         offset = 0
-        page_size = min(body.limit * 2, 200)
-        while len(candidate_post_ids) < body.limit:
+        page_size = min(effective_limit * 2, 200)
+        while len(candidate_post_ids) < effective_limit:
             query = f"sort:id {uploader_filter}".strip()
             resp = await search_posts(query=query, limit=page_size, offset=offset)
             if "error" in resp:
@@ -212,7 +216,7 @@ async def discover_tag_jobs(
                 if tag_count < max_count:
                     candidate_post_ids.append(pid)
                     existing_post_ids.add(pid)
-                    if len(candidate_post_ids) >= body.limit:
+                    if len(candidate_post_ids) >= effective_limit:
                         break
             if len(results) < page_size:
                 break

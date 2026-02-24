@@ -202,7 +202,8 @@ export default function Tagger() {
 
   async function handleDiscover() {
     const maxCount = maxTagCount.trim() ? parseInt(maxTagCount, 10) : null;
-    const limitNum = limit.trim() ? Math.max(1, parseInt(limit, 10) || 100) : 100;
+    const limitNum = limit.trim() ? (parseInt(limit, 10) || 0) : 0;
+  const effectiveLimit = limitNum > 0 ? limitNum : 0;
     if (criteriaMode === "tag") {
       if (selectedTags.length === 0) {
         setMessage({ type: "err", text: "Add at least one tag." });
@@ -223,7 +224,7 @@ export default function Tagger() {
         tag_operator: criteriaMode === "tag" ? tagOperator : undefined,
         max_tag_count: criteriaMode === "max_tag_count" ? (maxCount ?? undefined) : undefined,
         replace_original_tags: replaceOriginalTags,
-        limit: limitNum,
+        limit: effectiveLimit,
       });
       setMessage({ type: "ok", text: `Created ${res.created} tag job(s).` });
       setData((prev) => {
@@ -508,6 +509,7 @@ export default function Tagger() {
                             background: "transparent",
                             border: "none",
                             cursor: "pointer",
+                            color: "var(--text)",
                           }}
                           onClick={() => addSelectedTag(t)}
                         >
@@ -592,10 +594,12 @@ export default function Tagger() {
             <label>Limit</label>
             <input
               type="number"
-              min={1}
+              min={0}
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
+              placeholder="0 = no limit"
             />
+            <small>Leave 0 or empty for no limit (max 50,000 jobs per run).</small>
           </div>
 
           <div className="form-group">
