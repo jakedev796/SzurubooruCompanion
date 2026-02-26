@@ -5,14 +5,21 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+
+### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.2.2] - 2026-02-26
+
+### CCC - Frontend
 - Site credentials: Reddit section notes self-service API ended; link to manual request form
 
 ### CCC - Backend
 - Docker: align production compose volumes with Unraid template (bind mounts ./data, ./config)
 
-### Mobile App
-
-### Browser Extension
 
 ## [1.2.1] - 2026-02-26
 
