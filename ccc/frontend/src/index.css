@@ -1217,3 +1217,222 @@ form input:focus {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text);
 }
+
+/* ============================================================================
+   Onboarding Wizard
+   ============================================================================ */
+
+.onboarding-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+  background: var(--bg);
+}
+
+.onboarding-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 640px;
+  padding: 2rem;
+}
+
+.onboarding-progress {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.onboarding-progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 60px;
+}
+
+.onboarding-progress-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.onboarding-progress-step.active .onboarding-progress-dot {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(196, 30, 58, 0.1);
+}
+
+.onboarding-progress-step.completed .onboarding-progress-dot {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--bg);
+}
+
+.onboarding-progress-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.onboarding-progress-step.active .onboarding-progress-label {
+  color: var(--text);
+  font-weight: 500;
+}
+
+h2.onboarding-step-header {
+  margin: 0 0 0.75rem;
+  font-size: 1.3rem;
+}
+
+.onboarding-step p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.onboarding-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.onboarding-checklist li {
+  padding: 0.4rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.onboarding-checklist li::before {
+  content: "\2022";
+  position: absolute;
+  left: 0.25rem;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.onboarding-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.onboarding-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.onboarding-mappings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.form-group-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 1rem !important;
+}
+
+.form-group-row label {
+  flex-shrink: 0;
+}
+
+.form-group-row select {
+  flex: 1;
+}
+
+.onboarding-sites {
+  margin: 1rem 0;
+}
+
+.onboarding-next-steps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.onboarding-next-steps h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.onboarding-next-steps p {
+  margin: 0 0 0.5rem;
+}
+
+/* ============================================================================
+   Shared Utility Classes
+   ============================================================================ */
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.btn-ghost:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.btn-secondary {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

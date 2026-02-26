@@ -363,6 +363,24 @@ async def get_my_config(
     }
 
 
+@router.get("/users/me/onboarding-status")
+async def get_onboarding_status(
+    current_user: User = Depends(get_current_user),
+):
+    """Check whether the current user has completed onboarding configuration."""
+    szuru_configured = bool(
+        current_user.szuru_url
+        and current_user.szuru_token_encrypted
+    )
+    categories_mapped = bool(current_user.szuru_category_mappings)
+
+    return {
+        "szuru_configured": szuru_configured,
+        "categories_mapped": categories_mapped,
+        "onboarding_complete": szuru_configured,
+    }
+
+
 @router.put("/users/me/config")
 async def update_my_config(
     body: UserConfigRequest,

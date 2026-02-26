@@ -91,6 +91,14 @@ def get_browsable_handlers(user_config: Optional[Dict[str, Dict[str, str]]] = No
     return handlers
 
 
+def get_all_handlers(user_config: Optional[Dict[str, Dict[str, str]]] = None) -> List[SiteHandler]:
+    """Return all handler instances."""
+    settings = get_settings()
+    _init_handler_classes()
+
+    return [handler_cls(settings, user_config) for handler_cls in _HANDLER_CLASSES]
+
+
 def normalize_url(url: str) -> str:
     """Run site-specific URL normalization. Falls through to identity if no handler matches."""
     handler = get_handler(url)

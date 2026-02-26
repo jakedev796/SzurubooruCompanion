@@ -20,6 +20,7 @@ import {
   fetchSzuruCategories,
   fetchCategoryMappings,
   updateCategoryMappings,
+  fetchSupportedSites,
   UserResponse,
   UserConfig,
   GlobalSettings,
@@ -440,16 +441,15 @@ function SiteCredentialsTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expandedSite, setExpandedSite] = useState<string | null>(null);
+  const [sites, setSites] = useState<Array<{ name: string; fields: string[] }>>([]);
 
-  const sites = [
-    { name: "twitter", fields: ["cookies"] },
-    { name: "sankaku", fields: ["username", "password"] },
-    { name: "danbooru", fields: ["api-key", "user-id"] },
-    { name: "gelbooru", fields: ["api-key", "user-id"] },
-    { name: "rule34", fields: ["api-key", "user-id"] },
-    { name: "reddit", fields: ["client-id", "client-secret", "username"] },
-    { name: "misskey", fields: ["access-token", "username", "password"] },
-  ];
+  useEffect(() => {
+    fetchSupportedSites()
+      .then(setSites)
+      .catch(() => {
+        showToast("Failed to load supported sites", "error");
+      });
+  }, [showToast]);
 
   useEffect(() => {
     fetchMyConfig()

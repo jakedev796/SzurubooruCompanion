@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import SchemaMigration, User, UserRole, async_session, engine
+from app.database import SchemaMigration, async_session, engine
 
 logger = logging.getLogger(__name__)
 
@@ -117,54 +117,6 @@ async def _ensure_enum_values() -> None:
             )
 
 
-async def _bootstrap_admin_user() -> None:
-    """
-    Create admin user from ENV if ADMIN_USER and ADMIN_PASSWORD are set.
-    This is a one-time bootstrap - runs only if the user doesn't exist.
-    After this, all user management is done via the database/dashboard.
-    """
-    import os
-    from app.database import User, UserRole
-
-    admin_user = os.getenv("ADMIN_USER", "").strip()
-    admin_pass = os.getenv("ADMIN_PASSWORD", "").strip()
-
-    if not admin_user or not admin_pass:
-        logger.info("ADMIN_USER/ADMIN_PASSWORD not set - skipping admin user bootstrap")
-        return
-
-    async with async_session() as session:
-        # Check if admin user already exists
-        result = await session.execute(
-            select(User).where(User.username == admin_user)
-        )
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            logger.info("Admin user '%s' already exists - skipping bootstrap", admin_user)
-            return
-
-        # Import here to avoid circular dependency (auth service imports database)
-        try:
-            from app.services.auth import hash_password
-        except ImportError:
-            # If auth service doesn't exist yet (during development), use a placeholder
-            # This will be replaced once we create the auth service
-            logger.warning("auth service not available yet - cannot create admin user")
-            return
-
-        # Create admin user
-        admin = User(
-            username=admin_user,
-            password_hash=hash_password(admin_pass),
-            role=UserRole.ADMIN,
-            is_active=1,
-        )
-        session.add(admin)
-        await session.commit()
-        logger.info("Created admin user: %s", admin_user)
-
-
 async def run_migrations() -> None:
     """Apply any pending migrations from app/migrations/sql/*.sql."""
     async with async_session() as session:
@@ -187,9 +139,6 @@ async def run_migrations() -> None:
     # Ensure enum values exist - this is now the primary way we add enum values
     # It's idempotent and handles all edge cases
     await _ensure_enum_values()
-
-    # Bootstrap admin user from ENV (one-time, idempotent)
-    await _bootstrap_admin_user()
 
 
 async def _applied_versions(session: AsyncSession) -> set:
