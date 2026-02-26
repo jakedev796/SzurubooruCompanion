@@ -7,6 +7,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- Docker: align production compose volumes with Unraid template (bind mounts ./data, ./config)
 
 ### Mobile App
 

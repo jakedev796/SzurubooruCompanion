@@ -2,6 +2,8 @@
 # Image is built by the release workflow and published to GHCR.
 # Use: docker compose up -d
 # For local development use: docker compose -f docker-compose.dev.yml up -d
+#
+# Volume targets: /data (DB, jobs, WD14 cache), /config (gallery-dl config).
 
 services:
   ccc:
@@ -13,9 +15,5 @@ services:
     env_file:
       - ./ccc/backend/.env
     volumes:
-      - ccc-data:/data
-      - ccc-config:/config
-
-volumes:
-  ccc-data:
-  ccc-config:
+      - ./data:/data
+      - ./config:/config
