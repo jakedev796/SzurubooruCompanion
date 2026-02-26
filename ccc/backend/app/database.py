@@ -62,6 +62,7 @@ class JobStatus(str, PyEnum):
 class JobType(str, PyEnum):
     URL = "url"
     FILE = "file"
+    TAG_EXISTING = "tag_existing"
 
 
 class UserRole(str, PyEnum):
@@ -90,6 +91,10 @@ class Job(Base):
     skip_tagging = Column(Integer, nullable=False, default=0)
     szuru_user = Column(String(255), nullable=True)  # Which Szurubooru user to upload as
 
+    # Tag-existing job input (job_type=TAG_EXISTING)
+    target_szuru_post_id = Column(Integer, nullable=True)  # Post to retag
+    replace_original_tags = Column(Integer, nullable=False, default=0)  # 1 = replace all tags with AI result
+
     # Output
     szuru_post_id = Column(Integer, nullable=True)
     related_post_ids = Column(ARRAY(Integer), default=list)  # Related posts from multi-file sources
@@ -104,6 +109,8 @@ class Job(Base):
 
     # Timestamps (always UTC)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime(timezone=True), nullable=True)  # When worker began processing (left PENDING)
+    completed_at = Column(DateTime(timezone=True), nullable=True)  # When job reached completed/merged
     updated_at = Column(
         DateTime(timezone=True),
         nullable=False,

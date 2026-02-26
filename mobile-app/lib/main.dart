@@ -14,6 +14,7 @@ import 'src/services/notification_service.dart';
 import 'src/services/settings_model.dart';
 import 'src/services/update_service.dart';
 import 'src/theme/app_theme.dart';
+import 'src/utils/markdown_plain_text.dart';
 import 'src/widgets/app_lock_gate.dart';
 
 void main() async {
@@ -70,6 +71,25 @@ class _AppRootState extends State<_AppRoot> {
       } else {
         final pending = updateService.getPendingUpdate();
         if (pending != null) {
+          // Pending data exists but pendingCode <= currentCode: update was just installed.
+          // Show the changelog before clearing.
+          if (mounted && pending.changelog.isNotEmpty) {
+            await showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text('Updated to ${pending.versionName}'),
+                content: SingleChildScrollView(
+                  child: Text(markdownToPlainText(pending.changelog)),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          }
           updateService.clearPendingUpdate();
         }
         await updateService.checkAndNotifyUpdate(ignoreSkipped: false);

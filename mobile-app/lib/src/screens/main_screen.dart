@@ -24,6 +24,19 @@ import 'discover_screen.dart';
 import 'first_launch_permissions.dart';
 import 'settings_screen.dart';
 
+String _formatDurationSeconds(double? seconds) {
+  if (seconds == null || seconds.isNaN || seconds < 0) return '—';
+  final s = seconds.round();
+  if (s < 60) return '${s}s';
+  final m = s ~/ 60;
+  final sRem = s % 60;
+  if (m < 60) return sRem > 0 ? '${m}m ${sRem}s' : '${m}m';
+  final h = m ~/ 60;
+  final mRem = m % 60;
+  if (mRem > 0) return '${h}h ${mRem}m';
+  return '${h}h';
+}
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -466,6 +479,34 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 12),
           const Text(
+            'Summary',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              StatCard(
+                label: 'Total jobs',
+                value: appState.totalJobs ?? 0,
+                color: AppColors.text,
+              ),
+              const SizedBox(width: 8),
+              StatCard(
+                label: 'Avg job time',
+                value: 0,
+                valueLabel: _formatDurationSeconds(appState.averageJobDurationSeconds),
+                color: AppColors.text,
+              ),
+              const SizedBox(width: 8),
+              StatCard(
+                label: 'Jobs (24h)',
+                value: appState.jobsLast24h ?? 0,
+                color: AppColors.text,
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Text(
             'Live Queue Stats',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
@@ -481,7 +522,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
             ),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               StatCard(
                 label: 'Pending',
@@ -496,11 +536,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                     (stats['uploading'] ?? 0),
                 color: AppColors.accent,
               ),
-              const SizedBox(width: 8),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
               StatCard(
                 label: 'Completed',
                 value: stats['completed'] ?? 0,
                 color: AppColors.green,
+              ),
+              const SizedBox(width: 8),
+              StatCard(
+                label: 'Merged',
+                value: stats['merged'] ?? 0,
+                color: AppColors.purple,
               ),
               const SizedBox(width: 8),
               StatCard(

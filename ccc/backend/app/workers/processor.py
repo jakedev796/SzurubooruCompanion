@@ -22,6 +22,7 @@ from app.services import sources as source_utils
 from app.services import tag_utils
 from app.services.config import load_user_config, load_global_config
 from app.services.encryption import decrypt
+from app.utils.mime import extension_from_content_type
 from app.sites.registry import normalize_url as _normalize_site_url
 from app.api.events import publish_job_update
 
@@ -71,12 +72,39 @@ def _extract_metadata_sources(metadata: Dict) -> List[str]:
 # ---------------------------------------------------------------------------
 
 
+INFLIGHT_STATUSES = (JobStatus.DOWNLOADING, JobStatus.TAGGING, JobStatus.UPLOADING)
+
+
+async def _reset_inflight_jobs_on_startup() -> None:
+    """
+    On worker startup, reset any jobs left in DOWNLOADING/TAGGING/UPLOADING (e.g. after
+    a container reboot) to PENDING so they get picked up again.
+    """
+    async with async_session() as db:
+        result = await db.execute(
+            select(Job).where(Job.status.in_(INFLIGHT_STATUSES))
+        )
+        jobs = result.scalars().all()
+        if not jobs:
+            return
+        for job in jobs:
+            job.status = JobStatus.PENDING
+            job.started_at = None
+            job.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        for job in jobs:
+            await publish_job_update(job_id=job.id, status="pending", progress=0)
+        logger.info("Reset %d in-flight job(s) to pending after startup", len(jobs))
+
+
 async def start_worker(worker_id: int = 0) -> None:
     """Main worker loop – polls for pending jobs."""
     global _running
     _running = True
     tag = f"[W{worker_id}]"
     logger.info("%s Worker started.", tag)
+
+    await _reset_inflight_jobs_on_startup()
 
     while _running:
         try:
@@ -115,8 +143,11 @@ async def _claim_next_job():
         )
         job = result.scalar_one_or_none()
         if job:
+            now = datetime.now(timezone.utc)
             job.status = JobStatus.DOWNLOADING
-            job.updated_at = datetime.now(timezone.utc)
+            job.updated_at = now
+            if job.started_at is None:
+                job.started_at = now
             await db.commit()
             await db.refresh(job)
             # Publish SSE update
@@ -213,7 +244,9 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                     created_posts.append(post_info)
                     all_sources.append(media.source_url)
                 elif post_info is None:
-                    # None means download or upload failed
+                    # Abort returned None too — don't treat pause/stop as failure
+                    if await _abort_if_paused_or_stopped(job):
+                        return
                     last_error = f"Failed to process {media.filename}"
             except Exception as exc:
                 logger.exception("%s Job %s: Failed to process media %d (%s)",
@@ -237,6 +270,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 related_post_ids=related_ids,
                 stored_sources=primary.get("final_source"),
                 was_merge=primary.get("merged", False),
+                safety=primary.get("safety"),
             )
         elif last_error:
             await _fail_job(job, last_error, max_retries=max_retries, retry_delay=retry_delay)
@@ -245,7 +279,9 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
 
     except Exception as exc:
         logger.exception("%s Job %s failed", tag, job.id)
-        await _fail_job(job, str(exc), max_retries=max_retries, retry_delay=retry_delay)
+        # Don't overwrite PAUSED/STOPPED status with a failure
+        if not await _abort_if_paused_or_stopped(job):
+            await _fail_job(job, str(exc), max_retries=max_retries, retry_delay=retry_delay)
     finally:
         try:
             if os.path.isdir(job_dir):
@@ -266,7 +302,8 @@ async def _extract_media(
     Phase 1: Determine the list of media items to process.
 
     For URL jobs uses gallery-dl extraction; for FILE jobs builds a
-    synthetic ExtractedMedia from the uploaded file.
+    synthetic ExtractedMedia from the uploaded file. For TAG_EXISTING
+    downloads the post content from Szurubooru.
 
     Returns None (and marks the job as failed) when nothing is found.
     """
@@ -276,6 +313,34 @@ async def _extract_media(
         extracted = await downloader.extract_media_urls(job.url, user_config, gallery_dl_timeout)
         logger.info("Job %s: Found %d media file(s)", job.id, len(extracted))
         return extracted
+
+    if job.job_type == JobType.TAG_EXISTING:
+        target_id = getattr(job, "target_szuru_post_id", None)
+        if target_id is None:
+            await _fail_job(job, "Tag job has no target_szuru_post_id.")
+            return None
+        logger.info("Job %s: Phase 1 - Downloading post %d content from Szurubooru", job.id, target_id)
+        post = await szurubooru.get_post(target_id)
+        if "error" in post:
+            await _fail_job(job, f"Failed to get post {target_id}: {post.get('error', 'unknown')}")
+            return None
+        mime = (post.get("mimeType") or "").strip() or "application/octet-stream"
+        ext = extension_from_content_type(mime) or "bin"
+        if ext != "bin":
+            ext = f".{ext}"
+        else:
+            ext = ".bin"
+        dest_path = Path(job_dir) / f"content{ext}"
+        saved = await szurubooru.download_post_content(target_id, dest_path)
+        if not saved:
+            await _fail_job(job, f"Failed to download content for post {target_id}")
+            return None
+        return [downloader.ExtractedMedia(
+            url=f"file://{saved.name}",
+            source_url=f"file://{saved.name}",
+            filename=saved.name,
+            metadata=None,
+        )]
 
     # FILE job – file was already saved during upload
     for fn in os.listdir(job_dir):
@@ -413,10 +478,11 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
         tags_from_source.append("video")
 
         if _global_config and _global_config.video_tagging_enabled and not job.skip_tagging:
+            video_confidence = _global_config.video_confidence_threshold if _global_config else 0.45
             wd14 = await tagger.tag_video(
                 fp,
                 wd14_enabled=wd14_enabled,
-                confidence_threshold=wd14_confidence,
+                confidence_threshold=video_confidence,
                 max_tags=wd14_max_tags,
                 scene_threshold=_global_config.video_scene_threshold,
                 max_frames=_global_config.video_max_frames,
@@ -472,11 +538,56 @@ async def _upload_file(
 ) -> Optional[dict]:
     """
     Upload a single file to Szurubooru (or merge with an existing duplicate).
+    For TAG_EXISTING jobs, updates the existing post with new tags/safety only.
 
     Returns ``{"post": ..., "tags": ..., ...}`` on success, or None.
     """
     all_tags = tag_result["all_tags"]
     safety = tag_result["safety"]
+
+    if job.job_type == JobType.TAG_EXISTING:
+        target_id = getattr(job, "target_szuru_post_id", None)
+        if target_id is None:
+            return None
+        existing = await szurubooru.get_post(target_id)
+        if "error" in existing:
+            logger.warning("Job %s: Failed to get post %d for update: %s",
+                           job.id, target_id, existing.get("error"))
+            return None
+        replace = bool(getattr(job, "replace_original_tags", 0))
+        if replace:
+            final_tags = list(all_tags)
+        else:
+            current_tags = [
+                t["names"][0] if isinstance(t, dict) else t
+                for t in existing.get("tags", [])
+            ]
+            final_tags = list(current_tags)
+            for tag in all_tags:
+                if not any(t.lower() == tag.lower() for t in final_tags):
+                    final_tags.append(tag)
+        char_tags = tag_result.get("wd14_character_tags") or set()
+        for tag in char_tags:
+            await szurubooru.ensure_tag(tag, "character")
+        result = await szurubooru.update_post(
+            post_id=target_id,
+            version=existing["version"],
+            tags=final_tags,
+            safety=safety,
+        )
+        if "error" in result:
+            logger.warning("Job %s: Failed to update post %d: %s", job.id, target_id, result["error"])
+            return None
+        logger.info("Job %s: Updated post %d with %d tags", job.id, target_id, len(final_tags))
+        return {
+            "post": result,
+            "tags": final_tags,
+            "tags_from_source": tag_result["tags_from_source"],
+            "tags_from_ai": tag_result["tags_from_ai"],
+            "safety": safety,
+            "merged": False,
+            "final_source": None,
+        }
 
     # Build source string using normalized deduplication
     # FILE jobs have no meaningful source URLs (media.source_url is "file://...")
@@ -537,6 +648,7 @@ async def _upload_file(
         "tags": all_tags,
         "tags_from_source": tag_result["tags_from_source"],
         "tags_from_ai": tag_result["tags_from_ai"],
+        "safety": safety,
         "merged": merged,
         "final_source": final_source,
     }
@@ -769,12 +881,15 @@ async def _complete_job(
     related_post_ids: Optional[List[int]] = None,
     stored_sources: Optional[str] = None,
     was_merge: bool = False,
+    safety: Optional[str] = None,
 ) -> None:
     async with async_session() as db:
         result = await db.execute(select(Job).where(Job.id == job.id))
         j = result.scalar_one()
         j.status = JobStatus.MERGED if was_merge else JobStatus.COMPLETED
         j.szuru_post_id = szuru_post_id
+        if safety:
+            j.safety = safety
         # Exclude primary post from relations so a post is never its own relation
         raw = related_post_ids or []
         j.related_post_ids = [pid for pid in raw if pid != szuru_post_id]
@@ -785,7 +900,11 @@ async def _complete_job(
         if stored_sources:
             j.source_override = stored_sources
 
-        j.updated_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        j.updated_at = now
+        j.completed_at = now
+        started = getattr(j, "started_at", None)
+        duration_seconds = (now - started).total_seconds() if started else None
         await db.commit()
     logger.info("Job %s completed -> Szuru post %d (related: %s)",
                 job.id, szuru_post_id, related_post_ids or [])
@@ -797,4 +916,6 @@ async def _complete_job(
         related_post_ids=related_post_ids,
         tags=tags,
         was_merge=was_merge,
+        completed_at=now,
+        duration_seconds=duration_seconds,
     )

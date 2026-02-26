@@ -184,6 +184,8 @@ async def publish_job_update(
     was_merge: Optional[bool] = None,
     retries_exhausted: Optional[bool] = None,
     retry_count: Optional[int] = None,
+    completed_at: Optional[datetime] = None,
+    duration_seconds: Optional[float] = None,
 ) -> None:
     """
     Publish a job update to Redis for SSE distribution.
@@ -202,6 +204,8 @@ async def publish_job_update(
         was_merge: Optional; True if job was merged into an existing post
         retries_exhausted: Optional; True if all retries have been exhausted (only set when True)
         retry_count: Optional; Current retry count (included when retries_exhausted is True)
+        completed_at: Optional; when job reached completed/merged (for SSE time display)
+        duration_seconds: Optional; processing duration in seconds (for SSE time display)
     """
     redis = get_redis_client()
 
@@ -233,6 +237,10 @@ async def publish_job_update(
             data["retries_exhausted"] = retries_exhausted
         if retry_count is not None:
             data["retry_count"] = retry_count
+        if completed_at is not None:
+            data["completed_at"] = completed_at.isoformat()
+        if duration_seconds is not None:
+            data["duration_seconds"] = duration_seconds
 
         await redis.publish(JOB_UPDATES_CHANNEL, json.dumps(data))
         logger.debug("Published job update: %s", data)

@@ -130,7 +130,12 @@ class NotificationService {
   static const _updateChannelId = 'app_updates';
   static const _updateChannelName = 'App updates';
   static const _updateChannelDescription =
-      'Update available and download progress';
+      'Update available and ready-to-install notifications';
+
+  static const _updateDownloadChannelId = 'app_update_download';
+  static const _updateDownloadChannelName = 'Update download progress';
+  static const _updateDownloadChannelDescription =
+      'Silent progress notifications while downloading updates';
 
   /// Update available: tap to start download. Uses BigText for changelog (markdown stripped to plain text).
   Future<void> showUpdateAvailable({
@@ -162,18 +167,21 @@ class NotificationService {
 
   /// Download in progress; [progressPercent] 0–100.
   /// Uses a stable [tag] so Android replaces the same notification on each update instead of creating new ones.
+  /// Uses a dedicated silent channel so progress updates don't vibrate/sound.
   Future<void> showUpdateDownloading(int progressPercent) async {
-    const androidDetails = AndroidNotificationDetails(
-      _updateChannelId,
-      _updateChannelName,
-      channelDescription: _updateChannelDescription,
+    final androidDetails = AndroidNotificationDetails(
+      _updateDownloadChannelId,
+      _updateDownloadChannelName,
+      channelDescription: _updateDownloadChannelDescription,
       importance: Importance.low,
       priority: Priority.low,
       showProgress: true,
       maxProgress: 100,
-      progress: 0,
+      progress: progressPercent,
       tag: _updateDownloadTag,
       onlyAlertOnce: true,
+      enableVibration: false,
+      playSound: false,
     );
     final details = NotificationDetails(android: androidDetails);
     await _notifications.show(
@@ -191,9 +199,9 @@ class NotificationService {
   Future<void> updateUpdateDownloadProgress(int progressPercent) async {
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        _updateChannelId,
-        _updateChannelName,
-        channelDescription: _updateChannelDescription,
+        _updateDownloadChannelId,
+        _updateDownloadChannelName,
+        channelDescription: _updateDownloadChannelDescription,
         importance: Importance.low,
         priority: Priority.low,
         showProgress: true,
@@ -201,6 +209,8 @@ class NotificationService {
         progress: progressPercent,
         tag: _updateDownloadTag,
         onlyAlertOnce: true,
+        enableVibration: false,
+        playSound: false,
       ),
     );
     await _notifications.show(

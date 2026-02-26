@@ -14,6 +14,7 @@ import {
   GitMerge,
   XCircle,
   Ban,
+  Info,
 } from "lucide-react";
 import {
   fetchJobs,
@@ -76,14 +77,21 @@ const STATUS_FILTER_ORDER: { value: string; label: string; icon: React.ReactNode
   { value: "failed", label: "Failed", icon: <XCircle size={12} /> },
 ];
 
-function formatDate(iso: string | undefined): string {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString();
-}
+const SORT_OPTIONS = [
+  { value: "created_at_desc", label: "Newest first" },
+  { value: "created_at_asc", label: "Oldest first" },
+  { value: "completed_at_desc", label: "Completed (newest)" },
+  { value: "completed_at_asc", label: "Completed (oldest)" },
+  { value: "duration_desc", label: "Longest time first" },
+  { value: "duration_asc", label: "Shortest time first" },
+] as const;
+
+import { formatRelativeDate, formatDurationSeconds } from "../utils/format";
 
 export default function JobList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get("status") || "";
+  const sort = searchParams.get("sort") || "created_at_desc";
   const page = parseInt(searchParams.get("page") || "0", 10);
 
   const [data, setData] = useState<JobsResponse | null>(null);
@@ -108,13 +116,14 @@ export default function JobList() {
       status: statusFilter || undefined,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
+      sort,
     })
       .then((d) => {
         setData(d);
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
-  }, [statusFilter, page]);
+  }, [statusFilter, sort, page]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = String(payload.id ?? payload.job_id ?? "");
@@ -123,11 +132,24 @@ export default function JobList() {
     const status = String(payload.status ?? "").toLowerCase();
     const hasTerminalStatus =
       status === "completed" || status === "merged" || status === "failed";
+    const statusFilterLower = statusFilter ? statusFilter.toLowerCase() : "";
+
+    const noLongerMatchesFilter =
+      statusFilterLower && status !== statusFilterLower;
 
     setData((prevData) => {
       if (!prevData) return prevData;
       const index = prevData.results.findIndex((j) => j.id === id);
       if (index >= 0) {
+        if (noLongerMatchesFilter) {
+          const newResults = prevData.results.filter((j) => j.id !== id);
+          return {
+            ...prevData,
+            results: newResults,
+            total: Math.max(0, prevData.total - 1),
+          };
+        }
+
         const existing = prevData.results[index];
         const prevStatus = existing?.status?.toLowerCase();
         const statusChanged = prevStatus != null && prevStatus !== status;
@@ -139,26 +161,60 @@ export default function JobList() {
               setData((current) => {
                 if (!current) return current;
                 const idx = current.results.findIndex((j) => j.id === id);
-                if (idx >= 0) {
-                  const newResults = [...current.results];
-                  newResults[idx] = fullJob as JobSummary;
-                  return { ...current, results: newResults };
+                if (idx < 0) return current;
+                const fullStatus = String(fullJob.status ?? "").toLowerCase();
+                if (statusFilterLower && fullStatus !== statusFilterLower) {
+                  const newResults = current.results.filter((j) => j.id !== id);
+                  return {
+                    ...current,
+                    results: newResults,
+                    total: Math.max(0, current.total - 1),
+                  };
                 }
-                return current;
+                // Main jobs list excludes tag_existing; remove if refetch reveals it is one
+                const jobType = String(fullJob.job_type ?? "").toLowerCase();
+                if (jobType === "tag_existing") {
+                  const newResults = current.results.filter((j) => j.id !== id);
+                  return {
+                    ...current,
+                    results: newResults,
+                    total: Math.max(0, current.total - 1),
+                  };
+                }
+                const newResults = [...current.results];
+                newResults[idx] = fullJob as JobSummary;
+                return { ...current, results: newResults };
               });
             })
             .catch((e: Error) => {
               console.error(`Failed to refetch job ${id} after SSE update:`, e.message);
-              // Fallback: at least update with SSE payload
-              const newResults = [...prevData.results];
-              newResults[index] = { ...existing, ...updatedJob };
-              setData({ ...prevData, results: newResults });
+              if (noLongerMatchesFilter) {
+                setData((current) => {
+                  if (!current) return current;
+                  const newResults = current.results.filter((j) => j.id !== id);
+                  return {
+                    ...current,
+                    results: newResults,
+                    total: Math.max(0, current.total - 1),
+                  };
+                });
+              } else {
+                const newResults = [...prevData.results];
+                newResults[index] = { ...existing, ...updatedJob };
+                setData({ ...prevData, results: newResults });
+              }
             });
           return prevData; // Return unchanged while fetching
         }
 
+        const merged = { ...existing, ...updatedJob };
+        const mergedJobType = String(merged.job_type ?? "").toLowerCase();
+        if (mergedJobType === "tag_existing") {
+          const newResults = prevData.results.filter((j) => j.id !== id);
+          return { ...prevData, results: newResults, total: Math.max(0, prevData.total - 1) };
+        }
         const newResults = [...prevData.results];
-        newResults[index] = { ...existing, ...updatedJob };
+        newResults[index] = merged;
         return { ...prevData, results: newResults };
       }
       // Job not in the current page; try to fetch and insert it if visible to this user
@@ -169,8 +225,13 @@ export default function JobList() {
             const exists = current.results.some((j) => j.id === id);
             if (exists) return current;
 
+            // Main jobs list excludes tag_existing; do not add them when they appear via SSE
+            const jobType = String(fullJob.job_type ?? "").toLowerCase();
+            if (jobType === "tag_existing") return current;
+
             // Respect current status filter if present
-            if (statusFilter && fullJob.status !== statusFilter) {
+            const fullStatus = String(fullJob.status ?? "").toLowerCase();
+            if (statusFilterLower && fullStatus !== statusFilterLower) {
               return current;
             }
 
@@ -491,6 +552,26 @@ export default function JobList() {
             </button>
           );
         })}
+        <select
+          className="filter-pill"
+          style={{ marginLeft: "auto", minWidth: "160px" }}
+          value={sort}
+          onChange={(e) => {
+            setSearchParams((p) => {
+              const next = new URLSearchParams(p);
+              next.set("sort", e.target.value);
+              next.set("page", "0");
+              return next;
+            });
+          }}
+          title="Sort order"
+        >
+          {SORT_OPTIONS.map(({ value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {selectedJobIds.size > 0 && (
@@ -617,14 +698,14 @@ export default function JobList() {
                   title="Select all on this page"
                 />
               </th>
-              <th>Status</th>
-              <th>Type</th>
-              <th>User</th>
-              <th>Source</th>
-              <th>Szuru Post</th>
-              <th>Created</th>
-              <th>Actions</th>
-              <th></th>
+              <th className="col-status">Status</th>
+              <th className="col-type">Type</th>
+              <th className="col-user">User</th>
+              <th className="col-source">Source</th>
+              <th className="col-szuru">Szuru Post</th>
+              <th className="col-created">Created</th>
+              <th className="col-time">Time</th>
+              <th className="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -681,21 +762,22 @@ export default function JobList() {
                         </div>
                       </div>
                     ) : j.original_filename ? (
-                      <span>{j.original_filename}</span>
+                      <div className="source-cell" title={j.original_filename}>
+                        <span className="source-filename">{truncate(j.original_filename)}</span>
+                      </div>
                     ) : (
                       "-"
                     )}
                   </td>
                   <td>
-                    {(j.post?.id ?? j.szuru_post_id) ? (
+                    {j.szuru_post_id ? (
                       <span className="post-links">
                         {(() => {
                           const allIds = Array.from(
                             new Set(
-                              [
-                                j.post?.id ?? j.szuru_post_id,
-                                ...((j.post?.relations ?? j.related_post_ids) ?? []),
-                              ].filter((id): id is number => id != null)
+                              [j.szuru_post_id, ...(j.related_post_ids ?? [])].filter(
+                                (id): id is number => id != null
+                              )
                             )
                           );
                           const maxVisible = 3;
@@ -727,14 +809,15 @@ export default function JobList() {
                       "-"
                     )}
                   </td>
-                  <td>{formatDate(j.created_at)}</td>
+                  <td title={j.created_at ? new Date(j.created_at).toLocaleString() : ""}>{formatRelativeDate(j.created_at)}</td>
+                  <td>{formatDurationSeconds(j.duration_seconds)}</td>
                   <td>
-                    <div className="quick-actions" style={{ display: "flex", gap: "0.25rem" }}>
+                    <div className="quick-actions">
                       {getQuickActions(j)}
+                      <Link to={`/jobs/${j.id}`} className="btn btn-sm btn-info" title="Job details">
+                        <Info size={14} />
+                      </Link>
                     </div>
-                  </td>
-                  <td>
-                    <Link to={`/jobs/${j.id}`}>details</Link>
                   </td>
                 </tr>
               );

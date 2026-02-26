@@ -16,7 +16,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import cast, func, select, String
+from sqlalchemy import cast, func, select, String, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -79,6 +79,8 @@ class JobOut(BaseModel):
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
     was_merge: bool = False
+    target_szuru_post_id: Optional[int] = None
+    replace_original_tags: bool = False
     error_message: Optional[str] = None
     tags_applied: Optional[List[str]] = None
     tags_from_source: Optional[List[str]] = None
@@ -86,6 +88,8 @@ class JobOut(BaseModel):
     retry_count: int = 0
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
     post: Optional[SzuruPostMirror] = None
 
     class Config:
@@ -105,8 +109,12 @@ class JobSummaryOut(BaseModel):
     dashboard_username: Optional[str] = None
     szuru_post_id: Optional[int] = None
     related_post_ids: Optional[List[int]] = None
+    target_szuru_post_id: Optional[int] = None
+    replace_original_tags: bool = False
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = None
+    duration_seconds: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -144,6 +152,18 @@ class _BulkUserContext:
         self.szuru_username = szuru_username
 
 
+def _job_duration_seconds(job: Job) -> Optional[float]:
+    """Processing time if started_at and completed_at set; else submit-to-complete for old jobs."""
+    if not getattr(job, "completed_at", None):
+        return None
+    completed_at = job.completed_at
+    start = getattr(job, "started_at", None) or job.created_at
+    if not start or not completed_at:
+        return None
+    delta = completed_at - start if hasattr(completed_at, "__sub__") else None
+    return delta.total_seconds() if delta is not None else None
+
+
 def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSummaryOut:
     return JobSummaryOut(
         id=str(job.id),
@@ -157,8 +177,12 @@ def _job_to_summary(job: Job, dashboard_username: Optional[str] = None) -> JobSu
         dashboard_username=dashboard_username,
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
+        target_szuru_post_id=getattr(job, "target_szuru_post_id", None),
+        replace_original_tags=bool(getattr(job, "replace_original_tags", 0)),
         created_at=job.created_at,
         updated_at=job.updated_at,
+        completed_at=getattr(job, "completed_at", None),
+        duration_seconds=_job_duration_seconds(job),
     )
 
 
@@ -189,6 +213,8 @@ def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
         szuru_post_id=job.szuru_post_id,
         related_post_ids=job.related_post_ids,
         was_merge=bool(job.was_merge),
+        target_szuru_post_id=getattr(job, "target_szuru_post_id", None),
+        replace_original_tags=bool(getattr(job, "replace_original_tags", 0)),
         error_message=job.error_message,
         tags_applied=tags_applied,
         tags_from_source=_parse_json_tags(job.tags_from_source),
@@ -196,6 +222,8 @@ def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
         retry_count=job.retry_count,
         created_at=job.created_at,
         updated_at=job.updated_at,
+        completed_at=getattr(job, "completed_at", None),
+        duration_seconds=_job_duration_seconds(job),
         post=post,
     )
 
@@ -279,16 +307,24 @@ async def create_job_file(
     return _job_to_out(job)
 
 
+VALID_SORT = {"created_at_desc", "created_at_asc", "completed_at_desc", "completed_at_asc", "duration_desc", "duration_asc"}
+
+
+VALID_JOB_TYPES = {t.value for t in JobType}
+
+
 @router.get("/jobs", response_model=dict)
 async def list_jobs(
     status: Optional[str] = Query(None),
     was_merge: Optional[bool] = Query(None),
+    job_type: Optional[str] = Query(None, description="Filter by job type: url, file, tag_existing"),
+    sort: Optional[str] = Query("created_at_desc", description="Sort: created_at_desc|asc, completed_at_desc|asc, duration_desc|asc"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List jobs for current user with optional status and was_merge filter, paginated."""
+    """List jobs for current user with optional status, was_merge and job_type filter, paginated and sortable."""
     valid_statuses = {s.value.lower() for s in JobStatus}
     if status:
         status_lower = status.strip().lower()
@@ -297,6 +333,18 @@ async def list_jobs(
                 status_code=400,
                 detail=f"Invalid status: {status!r}. Must be one of: {sorted(valid_statuses)}.",
             )
+    if job_type is not None:
+        if job_type.strip().lower() not in {v.lower() for v in VALID_JOB_TYPES}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid job_type: {job_type!r}. Must be one of: {sorted(VALID_JOB_TYPES)}.",
+            )
+    sort_key = (sort or "created_at_desc").strip().lower()
+    if sort_key not in VALID_SORT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid sort: {sort!r}. Must be one of: {sorted(VALID_SORT)}.",
+        )
 
     try:
         query = select(Job).options(
@@ -311,7 +359,11 @@ async def list_jobs(
                 Job.szuru_user,
                 Job.szuru_post_id,
                 Job.related_post_ids,
+                Job.target_szuru_post_id,
+                Job.replace_original_tags,
                 Job.created_at,
+                Job.started_at,
+                Job.completed_at,
                 Job.updated_at,
             )
         )
@@ -324,13 +376,36 @@ async def list_jobs(
         if was_merge is not None:
             query = query.where(Job.was_merge == (1 if was_merge else 0))
             count_query = count_query.where(Job.was_merge == (1 if was_merge else 0))
+        if job_type is not None:
+            type_val = job_type.strip().lower()
+            query = query.where(func.lower(cast(Job.job_type, String)) == type_val)
+            count_query = count_query.where(func.lower(cast(Job.job_type, String)) == type_val)
+        else:
+            query = query.where(Job.job_type != JobType.TAG_EXISTING)
+            count_query = count_query.where(Job.job_type != JobType.TAG_EXISTING)
 
         # Auto-filter by current user's szuru_username (JWT auth)
         if current_user.szuru_username:
             query = query.where(Job.szuru_user == current_user.szuru_username)
             count_query = count_query.where(Job.szuru_user == current_user.szuru_username)
 
-        query = query.order_by(Job.created_at.desc()).offset(offset).limit(limit)
+        if sort_key == "created_at_desc":
+            query = query.order_by(Job.created_at.desc())
+        elif sort_key == "created_at_asc":
+            query = query.order_by(Job.created_at.asc())
+        elif sort_key == "completed_at_desc":
+            query = query.order_by(Job.completed_at.desc().nulls_last())
+        elif sort_key == "completed_at_asc":
+            query = query.order_by(Job.completed_at.asc().nulls_last())
+        elif sort_key == "duration_desc":
+            query = query.order_by(
+                text("(jobs.completed_at - COALESCE(jobs.started_at, jobs.created_at)) DESC NULLS LAST")
+            )
+        else:
+            query = query.order_by(
+                text("(jobs.completed_at - COALESCE(jobs.started_at, jobs.created_at)) ASC NULLS LAST")
+            )
+        query = query.offset(offset).limit(limit)
 
         result = await db.execute(query)
         jobs = result.scalars().all()
@@ -540,6 +615,7 @@ async def _bg_bulk_resume(job_ids: List[str], user_ctx: _BulkUserContext) -> Non
                 if not job or not _user_ctx_can_access_job(job, user_ctx) or job.status not in allowed:
                     continue
                 job.status = JobStatus.PENDING
+                job.started_at = None
                 job.updated_at = datetime.now(timezone.utc)
                 await db.commit()
                 await db.refresh(job)
@@ -865,6 +941,7 @@ async def resume_job(
         )
 
     job.status = JobStatus.PENDING
+    job.started_at = None
     job.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(job)

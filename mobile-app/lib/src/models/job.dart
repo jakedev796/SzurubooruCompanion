@@ -50,6 +50,8 @@ class Job {
   final int retryCount;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? completedAt;
+  final double? durationSeconds;
   final SzuruPostMirror? post;
 
   Job({
@@ -72,6 +74,8 @@ class Job {
     this.retryCount = 0,
     required this.createdAt,
     required this.updatedAt,
+    this.completedAt,
+    this.durationSeconds,
     this.post,
   });
 
@@ -96,6 +100,10 @@ class Job {
       retryCount: json['retry_count'] as int? ?? 0,
       createdAt: _parseDateTime(json['created_at']) ?? DateTime.now(),
       updatedAt: _parseDateTime(json['updated_at']) ?? DateTime.now(),
+      completedAt: _parseDateTime(json['completed_at']),
+      durationSeconds: (json['duration_seconds'] is num)
+          ? (json['duration_seconds'] as num).toDouble()
+          : null,
       post: json['post'] is Map<String, dynamic>
           ? SzuruPostMirror.fromJson(json['post'] as Map<String, dynamic>)
           : null,
@@ -170,6 +178,20 @@ class Job {
       default:
         return 0.0;
     }
+  }
+
+  /// Formatted duration (e.g. "5s", "2m 30s") when durationSeconds is set; null otherwise.
+  String? get durationDisplay {
+    final s = durationSeconds;
+    if (s == null || s.isNaN || s < 0) return null;
+    final sec = s.round();
+    if (sec < 60) return '${sec}s';
+    final m = sec ~/ 60;
+    final sRem = sec % 60;
+    if (m < 60) return sRem > 0 ? '${m}m ${sRem}s' : '${m}m';
+    final h = m ~/ 60;
+    final mRem = m % 60;
+    return mRem > 0 ? '${h}h ${mRem}m' : '${h}h';
   }
 
   /// All tags combined from different sources
@@ -282,6 +304,8 @@ class Job {
       'retry_count': retryCount,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      if (completedAt != null) 'completed_at': completedAt!.toIso8601String(),
+      if (durationSeconds != null) 'duration_seconds': durationSeconds,
       if (post != null)
         'post': {
           'id': post!.id,

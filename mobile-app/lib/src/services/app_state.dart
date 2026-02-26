@@ -42,8 +42,12 @@ class AppState extends ChangeNotifier {
     'tagging': 0,
     'uploading': 0,
     'completed': 0,
+    'merged': 0,
     'failed': 0,
   };
+  int? totalJobs;
+  double? averageJobDurationSeconds;
+  int? jobsLast24h;
   String? errorMessage;
   DateTime? lastUpdated;
   
@@ -126,6 +130,9 @@ class AppState extends ChangeNotifier {
     _connectSse();
   }
 
+  static bool _isTagExisting(Job job) =>
+      job.jobType.toLowerCase() == 'tag_existing';
+
   /// Handle a job update from SSE
   Future<void> _handleJobUpdate(JobUpdate update) async {
     // Find and update the job in the list
@@ -161,12 +168,21 @@ class AppState extends ChangeNotifier {
         retryCount: existingJob.retryCount,
         createdAt: existingJob.createdAt,
         updatedAt: update.timestamp,
+        completedAt: update.completedAt ?? existingJob.completedAt,
+        durationSeconds: update.durationSeconds ?? existingJob.durationSeconds,
       );
 
       if (isTerminal || hasPostId || hasTags) {
         try {
           final full = await backendClient.fetchJob(update.jobId);
           if (full != null) {
+            if (_isTagExisting(full)) {
+              jobs.removeAt(index);
+              refreshStats();
+              lastUpdated = DateTime.now();
+              notifyListeners();
+              return;
+            }
             updatedJob = full;
           }
         } catch (e) {
@@ -203,10 +219,10 @@ class AppState extends ChangeNotifier {
       // Job not in current list - it might be:
       // - A new job for the current user created from another device / background flow
       // - A job belonging to another user (which the backend will hide)
+      // - A tag_existing job (main list excludes these; do not add when they appear via SSE)
       try {
         final full = await backendClient.fetchJob(update.jobId);
-        if (full != null) {
-          // Only append if backend confirms it is visible to this user
+        if (full != null && !_isTagExisting(full)) {
           jobs.insert(0, full);
         }
       } catch (e) {
@@ -239,7 +255,10 @@ class AppState extends ChangeNotifier {
     } else {
       _disconnectSse();
       jobs = [];
-      stats = {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'failed': 0};
+      stats = {'pending': 0, 'downloading': 0, 'tagging': 0, 'uploading': 0, 'completed': 0, 'merged': 0, 'failed': 0};
+      totalJobs = null;
+      averageJobDurationSeconds = null;
+      jobsLast24h = null;
       notifyListeners();
     }
   }
@@ -364,7 +383,11 @@ class AppState extends ChangeNotifier {
 
     try {
       // Stats are automatically filtered by authenticated user on backend
-      stats = await backendClient.fetchStats();
+      final result = await backendClient.fetchStats();
+      stats = result.byStatus;
+      totalJobs = result.totalJobs;
+      averageJobDurationSeconds = result.averageJobDurationSeconds;
+      jobsLast24h = result.jobsLast24h;
       errorMessage = null;
     } catch (error) {
       errorMessage = userFriendlyErrorMessage(error);

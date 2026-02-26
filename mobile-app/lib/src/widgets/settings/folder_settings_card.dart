@@ -92,6 +92,14 @@ class FolderSettingsCard extends StatelessWidget {
             onAutoSave();
           },
         ),
+        if (!deleteMediaAfterSync)
+          const Padding(
+            padding: EdgeInsets.only(left: 16, right: 16, bottom: 4),
+            child: Text(
+              'When disabled, only new files added since the last sync will be uploaded. Previously synced files are skipped based on their modification time.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ),
         const SizedBox(height: 12),
         SwitchListTile(
           title: const Text('Show persistent status notification'),

@@ -48,6 +48,7 @@ class GlobalConfig:
     video_scene_threshold: float
     video_max_frames: int
     video_tag_min_frame_ratio: float
+    video_confidence_threshold: float
 
 
 def _get_redis() -> Redis:
@@ -163,6 +164,7 @@ async def load_global_config(db: AsyncSession) -> GlobalConfig:
         "video_scene_threshold": 0.3,
         "video_max_frames": 10,
         "video_tag_min_frame_ratio": 0.3,
+        "video_confidence_threshold": 0.45,
     }
 
     result = await db.execute(select(GlobalSetting))
@@ -197,4 +199,5 @@ async def load_global_config(db: AsyncSession) -> GlobalConfig:
         video_scene_threshold=get_setting("video_scene_threshold", DEFAULTS["video_scene_threshold"], "float"),
         video_max_frames=get_setting("video_max_frames", DEFAULTS["video_max_frames"], "int"),
         video_tag_min_frame_ratio=get_setting("video_tag_min_frame_ratio", DEFAULTS["video_tag_min_frame_ratio"], "float"),
+        video_confidence_threshold=get_setting("video_confidence_threshold", DEFAULTS["video_confidence_threshold"], "float"),
     )

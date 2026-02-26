@@ -105,6 +105,8 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 export interface JobsResponse {
   results: JobSummary[];
   total: number;
+  offset?: number;
+  limit?: number;
 }
 
 /** Mirrors the post as stored on Szurubooru (what we offload to them). */
@@ -128,8 +130,12 @@ export interface JobSummary {
   dashboard_username?: string;
   szuru_post_id?: number;
   related_post_ids?: number[];
+  target_szuru_post_id?: number | null;
+  replace_original_tags?: boolean;
   created_at?: string;
   updated_at?: string;
+  completed_at?: string | null;
+  duration_seconds?: number | null;
 }
 
 export interface Job extends JobSummary {
@@ -148,7 +154,10 @@ export interface Job extends JobSummary {
 
 export interface StatsResponse {
   by_status: Record<string, number>;
-  daily_uploads?: { date: string; count: number; failed?: number }[];
+  daily_uploads?: { date: string; count: number; completed?: number; merged?: number; failed?: number }[];
+  total_jobs?: number;
+  average_job_duration_seconds?: number | null;
+  jobs_last_24h?: number;
 }
 
 export interface ConfigResponse {
@@ -191,13 +200,16 @@ export async function fetchJobs({
   status,
   was_merge,
   szuru_user,
+  job_type,
   offset = 0,
   limit = 50,
-}: { status?: string; was_merge?: boolean; szuru_user?: string; offset?: number; limit?: number } = {}): Promise<JobsResponse> {
-  const params = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  sort = "created_at_desc",
+}: { status?: string; was_merge?: boolean; szuru_user?: string; job_type?: string; offset?: number; limit?: number; sort?: string } = {}): Promise<JobsResponse> {
+  const params = new URLSearchParams({ offset: String(offset), limit: String(limit), sort });
   if (status) params.set("status", status);
   if (was_merge !== undefined) params.set("was_merge", String(was_merge));
   if (szuru_user) params.set("szuru_user", szuru_user);
+  if (job_type) params.set("job_type", job_type);
   const res = await apiFetch(`${BASE}/jobs?${params}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson<JobsResponse>(res);
@@ -299,6 +311,63 @@ export async function retryJob(jobId: string): Promise<Job> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson<Job>(res);
+}
+
+export interface TagSearchResult {
+  name: string;
+  usages: number;
+}
+
+export async function searchTagJobsTags(q: string, limit = 20): Promise<TagSearchResult[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (q.trim()) params.set("q", q.trim());
+  const res = await apiFetch(`${BASE}/tag-jobs/tag-search?${params}`, { headers: headers() });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<TagSearchResult[]>(res);
+}
+
+export interface TagJobsDiscoverRequest {
+  tag_filter?: string | null;
+  tags?: string[] | null;
+  tag_operator?: "and" | "or" | null;
+  max_tag_count?: number | null;
+  replace_original_tags: boolean;
+  limit?: number;
+}
+
+export interface TagJobsDiscoverResponse {
+  job_ids: string[];
+  created: number;
+}
+
+export async function discoverTagJobs(body: TagJobsDiscoverRequest): Promise<TagJobsDiscoverResponse> {
+  const res = await apiFetch(`${BASE}/tag-jobs/discover`, {
+    method: "POST",
+    headers: { ...headers(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tag_filter: body.tag_filter ?? undefined,
+      tags: body.tags ?? undefined,
+      tag_operator: body.tag_operator ?? undefined,
+      max_tag_count: body.max_tag_count ?? undefined,
+      replace_original_tags: body.replace_original_tags,
+      limit: body.limit ?? 100,
+    }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<TagJobsDiscoverResponse>(res);
+}
+
+export interface TagJobsAbortResponse {
+  aborted: number;
+}
+
+export async function abortAllTagJobs(): Promise<TagJobsAbortResponse> {
+  const res = await apiFetch(`${BASE}/tag-jobs/abort`, {
+    method: "POST",
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<TagJobsAbortResponse>(res);
 }
 
 export interface BulkJobAccepted {
@@ -549,6 +618,7 @@ export interface GlobalSettings {
   video_scene_threshold: number;
   video_max_frames: number;
   video_tag_min_frame_ratio: number;
+  video_confidence_threshold: number;
 }
 
 export async function fetchGlobalSettings(): Promise<GlobalSettings> {

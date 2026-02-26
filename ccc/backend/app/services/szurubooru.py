@@ -260,6 +260,19 @@ async def upload_post(
 # ---------------------------------------------------------------------------
 
 
+async def search_tags(query: str, limit: int = 20, offset: int = 0) -> dict:
+    """
+    Search tags. Returns {"results": [...], ...} or {"error": ..., "status": ...}.
+    Each tag in results has "names", "usages" (post count), etc.
+    """
+    return await _request(
+        "GET",
+        "/api/tags/",
+        params={"query": query, "limit": limit, "offset": offset},
+        timeout=15,
+    )
+
+
 async def _get_tag_by_name(tag_name: str) -> Optional[Dict]:
     """Fetch a tag by exact name. Returns the tag resource or None."""
     result = await _request(
@@ -387,13 +400,66 @@ async def ensure_tags_batch(tags_with_categories: List[Tuple[str, str]]) -> None
 
 
 # ---------------------------------------------------------------------------
-# Post retrieval
+# Post retrieval and listing
 # ---------------------------------------------------------------------------
 
 
 async def get_post(post_id: int) -> dict:
     """Fetch a post by ID. Returns the full post resource or {"error": ..., "status": ...}."""
     return await _request("GET", f"/api/post/{post_id}", timeout=10)
+
+
+async def search_posts(query: str, limit: int = 100, offset: int = 0) -> dict:
+    """
+    Search/list posts. Returns {"results": [...], "query": "...", ...} or {"error": ..., "status": ...}.
+    """
+    return await _request(
+        "GET",
+        "/api/posts/",
+        params={"query": query, "limit": limit, "offset": offset},
+        timeout=60,
+    )
+
+
+async def download_post_content(post_id: int, dest_path: Path) -> Optional[Path]:
+    """
+    Fetch post by ID, then download its content to dest_path using contentUrl.
+    Returns dest_path on success, None on failure. Caller must set user context.
+    """
+    post = await get_post(post_id)
+    if "error" in post:
+        logger.warning("Failed to get post %d: %s", post_id, post.get("error"))
+        return None
+    content_url = post.get("contentUrl") or post.get("content_url")
+    if not content_url:
+        logger.warning("Post %d has no contentUrl", post_id)
+        return None
+    szuru_url = _current_szuru_url.get()
+    if not szuru_url:
+        return None
+    if content_url.startswith("http://") or content_url.startswith("https://"):
+        url = content_url
+    else:
+        base = szuru_url.rstrip("/")
+        url = f"{base}{content_url}" if content_url.startswith("/") else f"{base}/{content_url}"
+    global _session
+    if _session is None or _session.closed:
+        await init_session()
+    try:
+        headers = _auth_headers()
+        async with _session.get(
+            url, headers=headers, timeout=aiohttp.ClientTimeout(total=120)
+        ) as resp:
+            if resp.status != 200:
+                logger.warning("Post %d content fetch failed: HTTP %s", post_id, resp.status)
+                return None
+            content = await resp.read()
+    except Exception as exc:
+        logger.warning("Post %d content download failed: %s", post_id, exc)
+        return None
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    dest_path.write_bytes(content)
+    return dest_path
 
 
 # ---------------------------------------------------------------------------

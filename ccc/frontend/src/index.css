@@ -144,6 +144,35 @@ header nav .user-select {
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
+.stat-grid--summary {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.stat-card--summary {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  text-align: center;
+  background: var(--bg-card);
+}
+.stat-card--summary .value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+}
+.stat-card--summary .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}
 .stat-card {
   text-align: center;
 }
@@ -262,12 +291,15 @@ header nav .user-select {
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 th,
 td {
   text-align: left;
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 th {
   font-size: 0.75rem;
@@ -279,6 +311,16 @@ tr:hover td {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Fixed column widths to prevent layout shifts */
+.col-status { width: 120px; }
+.col-type { width: 80px; }
+.col-user { width: 80px; }
+.col-source { width: auto; }
+.col-szuru { width: 100px; }
+.col-created { width: 80px; }
+.col-time { width: 60px; }
+.col-actions { width: 140px; }
+
 /* Status badges – distinct colors by meaning (waiting / active / success / merged / paused / stopped / error) */
 .badge {
   display: inline-flex;
@@ -289,6 +331,7 @@ tr:hover td {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .badge-icon {
   display: inline-flex;
@@ -458,9 +501,12 @@ tr:hover td {
 
 /* Multi-source display: 2 stacked, then +N */
 .source-cell {
-  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.source-filename {
+  color: var(--text);
+  white-space: nowrap;
 }
 .multi-source {
   display: flex;
@@ -483,6 +529,7 @@ tr:hover td {
 .source-link {
   color: var(--accent);
   text-decoration: none;
+  white-space: nowrap;
 }
 .source-link:hover {
   text-decoration: underline;
@@ -568,6 +615,12 @@ tr:hover td {
 }
 
 /* Job action buttons */
+.quick-actions {
+  display: flex;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -617,6 +670,15 @@ tr:hover td {
 }
 .btn-danger:hover:not(:disabled) {
   background: rgba(248, 113, 113, 0.2);
+}
+.btn-info {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-muted);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+.btn-info:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text);
 }
 
 .btn-sm {

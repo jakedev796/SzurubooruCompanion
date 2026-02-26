@@ -9,6 +9,93 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+
+### Browser Extension
+
+## [1.2.0] - 2026-02-24
+
+### CCC - Frontend
+- Jobs page: when a status filter is set, SSE updates that change a job's status remove it from the list if it no longer matches the filter; exclude tag_existing jobs from the main list when merging SSE updates (add/update/refetch)
+- Dashboard activity and merged reports: exclude tag_existing jobs when merging SSE updates so the activity log and jobs list stay limited to URL/file jobs
+- Tagger page: tag search with debounce (search Szurubooru tags, show post count); selected-tags list with remove (X); AND/OR match (all tags vs any tag)
+- Jobs API and types: job_type filter, target_szuru_post_id and replace_original_tags for tag jobs; discoverTagJobs and abortAllTagJobs
+- Standardize source column truncation: filenames now use the same 30-char limit with ellipsis as URLs
+- Fix layout shifts in job tables: fixed column widths prevent reflow when status/actions change
+- Merge details link into actions column as info icon button
+- Use relative timestamps in job tables (e.g. "3m ago") with full date on hover
+- Extract shared formatters (formatRelativeDate, formatDurationSeconds) to utils/format.ts
+
+### CCC - Backend
+- Worker: on startup, reset jobs stuck in downloading/tagging/uploading (e.g. after reboot) to pending so they are picked up again
+- Tag-existing jobs: POST /api/tag-jobs/discover accepts tags[] and tag_operator (and/or); GET /api/tag-jobs/tag-search for tag autocomplete with usage count; discover scopes to current user's posts
+- Szurubooru: search_posts, download_post_content (via contentUrl); worker downloads post content, runs WD14, updates post tags/safety (replace or merge)
+- GET /api/jobs: exclude tag_existing jobs by default (dashboard/Jobs page); optional job_type filter to include them
+- GET /api/stats: exclude tag_existing jobs from totals, status counts, 24h count, and daily uploads (dashboard and mobile)
+- Fix jobtype enum: ensure TAG_EXISTING (name) is added for SQLAlchemy compatibility
+
+### Mobile App
+- Exclude tag_existing jobs from main job list when applying SSE updates (do not add on fetch; remove if refetch reveals tag job)
+
+
+## [1.1.2] - 2026-02-22
+
+### CCC - Frontend
+- Dashboard summary cards: total jobs, average job time, jobs (24h)
+- Job list and dashboard: Time column (duration); sortable list (created, completed, duration) with server-side pagination
+- Refetch stats on completed/merged SSE so avg job time and time column update in real time
+
+### CCC - Backend
+- Migrations: use .sql files in app/migrations/sql/ with $$-aware statement splitting (no more inline SQL in __init__.py)
+- Add average_job_duration_seconds and jobs_last_24h to GET /api/stats
+- Fix average job time to use processing time only (started_at to updated_at); add started_at to jobs, set when worker claims job
+- Add completed_at to jobs; backfill existing completed/merged jobs; average duration uses completed_at - started_at
+- GET /api/jobs: sort param (created_at, completed_at, duration asc/desc), return completed_at and duration_seconds in list
+- SSE job updates include completed_at and duration_seconds for real-time time display
+- Fix paused/stopped jobs incorrectly entering the failure/retry workflow instead of staying in their paused/stopped state
+- Reset started_at on job resume so duration reflects the resumed run, not time spent paused
+
+### Mobile App
+- Dashboard stats from API: total jobs, average job time, jobs (24h); reuse stats endpoint
+- Job model and cards: completed_at, duration_seconds; show duration on job card when available
+- JobUpdate from SSE includes completedAt/durationSeconds; job list time updates in real time
+
+
+## [1.1.1] - 2026-02-22
+
+### CCC - Frontend
+- Add video confidence threshold setting to Global Settings page
+
+### CCC - Backend
+- Fix AI safety rating not persisting to the Job record after tagging (folder sync default was shown instead of AI result)
+- Add separate video confidence threshold setting (default 0.45, higher than image threshold) for stricter per-frame tag filtering
+
+### Mobile App
+- Split overview stat cards into two rows (stages / outcomes) to prevent crowding
+- Show full folder path in folder config screen instead of just "Tap to change folder"
+
+
+## [1.1.0] - 2026-02-22
+
+### CCC - Frontend
+- Dashboard chart now shows completed, merged, and failed jobs as overlaid areas with distinct colors (green, purple, red)
+- Fix daily chart status breakdown (failed/merged counts were always zero due to enum CASE mismatch)
+
+### CCC - Backend
+- Stats endpoint returns per-day completed and merged counts alongside failed for the daily uploads chart
+
+### Mobile App
+- Add app icon to app lock screen
+- Fix vibration on update download progress by using a dedicated silent notification channel
+- Show changelog dialog after an app update completes
+- Skip previously synced files in folder sync when media deletion is off (filter by modification time)
+- Add merged stat card to main screen to match the frontend dashboard
+
+
+## [1.0.11]
+
+### Mobile Feature: App lock
+
+### Mobile App
 - Fix app lock authentication: use FlutterFragmentActivity so system PIN/biometric prompt is shown; log auth failure codes for diagnosis
 - Fix app lock loop: only require re-auth when app goes to background (resumed→paused), not when system auth dialog dismisses (avoids re-lock on every resumed)
 - App lock is Android-only: gate and settings card hidden on Darwin/Windows; local_auth not used on non-Android
@@ -18,8 +105,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Persistent notification now reflects connection status when app is in background (SseBackgroundService updates notification on connect/disconnect)
 - Reconnect SSE when connection dies: SseBackgroundService listens for disconnect and reconnects; connection status card and app bar icon trigger reconnect when tapped; share flow reconnects if disconnected when bubble is used
 - Add note to overlay permission dialog about unlocking restricted settings on sideloaded installs
-
-### Browser Extension
 
 ## [1.0.10] - 2026-02-21
 

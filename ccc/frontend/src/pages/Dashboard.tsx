@@ -14,6 +14,7 @@ import {
   GitMerge,
   XCircle,
   Ban,
+  Info,
 } from "lucide-react";
 import {
   fetchStats,
@@ -45,7 +46,8 @@ import {
 } from "recharts";
 
 const ACTIVITY_LIMIT = 10;
-const CHART_ACCENT = "#C41E3A";
+const CHART_COMPLETED = "#4ade80";
+const CHART_MERGED = "#a855f7";
 const CHART_FAIL = "#f87171";
 const CHART_GRID = "rgba(255, 255, 255, 0.06)";
 const CHART_TOOLTIP_BG = "#252220";
@@ -75,10 +77,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatDate(iso: string | undefined): string {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleString();
-}
+import { formatRelativeDate, formatDurationSeconds } from "../utils/format";
 
 const MERGED_REPORT_LIMIT = 50;
 
@@ -129,8 +128,14 @@ export default function Dashboard() {
       if (!prev?.results) return prev;
       const index = prev.results.findIndex((j) => j.id === id);
       if (index >= 0) {
+        const merged = { ...prev.results[index], ...updatedJob };
+        const jobType = String(merged.job_type ?? "").toLowerCase();
+        if (jobType === "tag_existing") {
+          const newResults = prev.results.filter((j) => j.id !== id);
+          return { ...prev, results: newResults, total: Math.max(0, prev.total - 1) };
+        }
         const newResults = [...prev.results];
-        newResults[index] = { ...prev.results[index], ...updatedJob };
+        newResults[index] = merged;
         return { ...prev, results: newResults };
       }
       fetchJob(id)
@@ -139,6 +144,9 @@ export default function Dashboard() {
             if (!p) return p;
             const idx = p.results.findIndex((j) => j.id === id);
             if (idx >= 0) return p;
+            // Activity log excludes tag_existing; do not add them when they appear via SSE
+            const jobType = String(fullJob.job_type ?? "").toLowerCase();
+            if (jobType === "tag_existing") return p;
             const results = [{ ...fullJob, ...updatedJob }, ...p.results].slice(0, ACTIVITY_LIMIT);
             return { ...p, results, total: p.total + 1 };
           });
@@ -154,11 +162,16 @@ export default function Dashboard() {
           setMergedJobs((prev) => {
             const list = prev?.results ?? [];
             if (list.some((j) => j.id === id)) return prev;
+            const jobType = String(job.job_type ?? "").toLowerCase();
+            if (jobType === "tag_existing") return prev;
             const next = [job, ...list].slice(0, MERGED_REPORT_LIMIT);
             return { results: next, total: (prev?.total ?? 0) + 1, offset: 0, limit: prev?.limit ?? MERGED_REPORT_LIMIT };
           });
         })
         .catch(() => {});
+    }
+    if (payload.status === "completed" || payload.status === "merged") {
+      fetchStats().then(setStats).catch(() => {});
     }
   });
 
@@ -330,6 +343,24 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* Summary row: total jobs, avg job time, jobs (24h) */}
+      <div className="stat-grid stat-grid--summary">
+        <div className="stat-card stat-card--summary">
+          <div className="value">{stats.total_jobs ?? 0}</div>
+          <div className="label">Total jobs</div>
+        </div>
+        <div className="stat-card stat-card--summary">
+          <div className="value">{formatDurationSeconds(stats.average_job_duration_seconds)}</div>
+          <div className="label">
+            <Clock size={14} className="stat-label-icon" /> Avg job time
+          </div>
+        </div>
+        <div className="stat-card stat-card--summary">
+          <div className="value">{stats.jobs_last_24h ?? 0}</div>
+          <div className="label">Jobs (24h)</div>
+        </div>
+      </div>
+
       {/* Primary stat cards – order: in-progress, then completed/merged, then terminal (stopped/failed) */}
       <div className="stat-grid--primary">
         <div className="stat-card--colored stat-card--pending">
@@ -392,9 +423,13 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={daily_uploads}>
                 <defs>
-                  <linearGradient id="uploadGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={CHART_ACCENT} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={CHART_ACCENT} stopOpacity={0.02} />
+                  <linearGradient id="completedGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_COMPLETED} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={CHART_COMPLETED} stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="mergedGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={CHART_MERGED} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={CHART_MERGED} stopOpacity={0.02} />
                   </linearGradient>
                   <linearGradient id="failedGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={CHART_FAIL} stopOpacity={0.35} />
@@ -418,11 +453,19 @@ export default function Dashboard() {
                 />
                 <Area
                   type="monotone"
-                  dataKey="count"
-                  name="Jobs"
-                  stroke={CHART_ACCENT}
+                  dataKey="completed"
+                  name="Completed"
+                  stroke={CHART_COMPLETED}
                   strokeWidth={2}
-                  fill="url(#uploadGradient)"
+                  fill="url(#completedGradient)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="merged"
+                  name="Merged"
+                  stroke={CHART_MERGED}
+                  strokeWidth={2}
+                  fill="url(#mergedGradient)"
                 />
                 <Area
                   type="monotone"
@@ -456,14 +499,14 @@ export default function Dashboard() {
             <table>
               <thead>
                 <tr>
-                  <th>Status</th>
-                  <th>Type</th>
-                  <th>User</th>
-                  <th>Source</th>
-                  <th>Szuru Post</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                  <th></th>
+                  <th className="col-status">Status</th>
+                  <th className="col-type">Type</th>
+                  <th className="col-user">User</th>
+                  <th className="col-source">Source</th>
+                  <th className="col-szuru">Szuru Post</th>
+                  <th className="col-created">Created</th>
+                  <th className="col-time">Time</th>
+                  <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -512,21 +555,22 @@ export default function Dashboard() {
                             </div>
                           </div>
                         ) : j.original_filename ? (
-                          <span>{j.original_filename}</span>
+                          <div className="source-cell" title={j.original_filename}>
+                            <span className="source-filename">{truncate(j.original_filename)}</span>
+                          </div>
                         ) : (
                           "-"
                         )}
                       </td>
                       <td>
-                        {(j.post?.id ?? j.szuru_post_id) ? (
+                        {j.szuru_post_id ? (
                           <span className="post-links">
                             {(() => {
                               const allIds = Array.from(
                                 new Set(
-                                  [
-                                    j.post?.id ?? j.szuru_post_id,
-                                    ...((j.post?.relations ?? j.related_post_ids) ?? []),
-                                  ].filter((id): id is number => id != null)
+                                  [j.szuru_post_id, ...(j.related_post_ids ?? [])].filter(
+                                    (id): id is number => id != null
+                                  )
                                 )
                               );
                               const maxVisible = 3;
@@ -558,14 +602,15 @@ export default function Dashboard() {
                           "-"
                         )}
                       </td>
-                      <td>{formatDate(j.created_at)}</td>
+                      <td title={j.created_at ? new Date(j.created_at).toLocaleString() : ""}>{formatRelativeDate(j.created_at)}</td>
+                      <td>{formatDurationSeconds(j.duration_seconds)}</td>
                       <td>
-                        <div className="quick-actions" style={{ display: "flex", gap: "0.25rem" }}>
+                        <div className="quick-actions">
                           {getQuickActions(j)}
+                          <Link to={`/jobs/${j.id}`} className="btn btn-sm btn-info" title="Job details">
+                            <Info size={14} />
+                          </Link>
                         </div>
-                      </td>
-                      <td>
-                        <Link to={`/jobs/${j.id}`}>details</Link>
                       </td>
                     </tr>
                   );

@@ -8,24 +8,36 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.1.0)'
+        required: true
 
 jobs:
   scope:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     outputs:
       scope_ccc: ${{ steps.scope.outputs.scope_ccc }}
       scope_ext: ${{ steps.scope.outputs.scope_ext }}
       scope_mobile: ${{ steps.scope.outputs.scope_mobile }}
       version_name: ${{ steps.version.outputs.version_name }}
       version_code: ${{ steps.version.outputs.version_code }}
+      tag: ${{ steps.resolve-tag.outputs.tag }}
     steps:
+      - name: Resolve tag
+        id: resolve-tag
+        run: echo "tag=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve-tag.outputs.tag }}
 
       - name: Parse scope from tag
         id: scope
         run: |
-          TAG="${{ github.ref_name }}"
+          TAG="${{ steps.resolve-tag.outputs.tag }}"
           case "$TAG" in
             *-ccc)  C=1; E=0; M=0 ;;
             *-ext)  C=0; E=1; M=0 ;;
@@ -46,13 +58,15 @@ jobs:
           echo "version_code=${VC:-0}" >> "$GITHUB_OUTPUT"
 
   create-release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: scope
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Extract release notes for this version
         run: |
@@ -92,7 +106,7 @@ jobs:
       - name: Create release (draft)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           name: ${{ steps.title.outputs.title }}
           body_path: release-notes.md
           draft: true
@@ -102,7 +116,7 @@ jobs:
   ccc:
     needs: scope
     if: needs.scope.outputs.scope_ccc == '1'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: read
       packages: write
@@ -112,6 +126,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -130,8 +146,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ needs.scope.outputs.version_name }}
             type=sha,prefix=
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -143,25 +158,30 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=local,src=/runner/persistent_files/.buildx-cache
+          cache-to: type=local,dest=/runner/persistent_files/.buildx-cache-new,mode=max
+
+      - name: Rotate buildx cache
+        run: |
+          rm -rf /runner/persistent_files/.buildx-cache
+          mv /runner/persistent_files/.buildx-cache-new /runner/persistent_files/.buildx-cache
 
   browser:
     needs: [scope, create-release]
     if: needs.scope.outputs.scope_ext == '1'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: browser-ext/package-lock.json
 
       - name: Inject version from VERSION
         run: |
@@ -170,6 +190,8 @@ jobs:
           cd browser-ext && npm pkg set version="$VN"
 
       - name: Install and build
+        env:
+          npm_config_cache: /runner/persistent_files/.npm-cache
         run: |
           cd browser-ext
           npm ci
@@ -184,7 +206,7 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           draft: true
           files: |
             browser-ext/chrome-mv3.zip
@@ -195,12 +217,17 @@ jobs:
   mobile:
     needs: [scope, create-release]
     if: needs.scope.outputs.scope_mobile == '1'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     permissions:
       contents: write
+    env:
+      PUB_CACHE: /runner/persistent_files/.pub-cache
+      GRADLE_USER_HOME: /runner/persistent_files/.gradle
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.scope.outputs.tag }}
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -208,35 +235,20 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 11076708
+          log-accepted-android-sdk-licenses: false
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.41.1'
           channel: 'stable'
-          cache: true
 
-      - name: Cache pub dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-            mobile-app/.dart_tool
-            mobile-app/workmanager_patch/.dart_tool
-          key: ${{ runner.os }}-pub-${{ hashFiles('mobile-app/pubspec.lock', 'mobile-app/workmanager_patch/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            mobile-app/android/.gradle
-            mobile-app/workmanager_patch/android/.gradle
-          key: ${{ runner.os }}-gradle-${{ hashFiles('mobile-app/android/gradle/wrapper/gradle-wrapper.properties', 'mobile-app/workmanager_patch/android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+      - name: Fix Flutter SDK ownership
+        run: git config --global --add safe.directory "$(which flutter | xargs dirname | xargs dirname)"
 
       - name: Inject version from VERSION into pubspec
         run: |
@@ -298,7 +310,7 @@ jobs:
       - name: Attach assets to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           draft: true
           files: |
             release-artifacts/SzuruCompanion.apk
@@ -307,7 +319,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [scope, create-release, ccc, browser, mobile]
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     permissions:
@@ -353,24 +365,36 @@ jobs:
           echo "" >> release-notes.md
           echo "**Note:** Be sure to update your local Docker images. Docker builds should be live." >> release-notes.md
 
-      - name: Update README version badge
-        run: |
-          VN="${{ needs.scope.outputs.version_name }}"
-          sed -i "s|badge/version-[0-9.]*-blue|badge/version-$VN-blue|g" README.md
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          if ! git diff --staged --quiet; then
-            git commit -m "chore: update version badge to ${{ needs.scope.outputs.version_name }}"
-            git push
-          fi
-
       - name: Publish release (set draft to false)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.scope.outputs.tag }}
           name: ${{ steps.title.outputs.title }}
           body_path: release-notes.md
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup-draft:
+    runs-on: [self-hosted, linux, x64]
+    needs: [scope, create-release, ccc, browser, mobile]
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    permissions:
+      contents: write
+    steps:
+      - name: Delete draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.scope.outputs.tag }}"
+          REPO="${{ github.repository }}"
+          RELEASE_ID=$(curl -sf -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/releases" \
+            | python3 -c "import sys,json; releases=json.load(sys.stdin); print(next((str(r['id']) for r in releases if r['tag_name']=='$TAG' and r['draft']), ''))")
+          if [ -n "$RELEASE_ID" ]; then
+            curl -sf -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/releases/$RELEASE_ID"
+            echo "Deleted draft release $RELEASE_ID for tag $TAG"
+          else
+            echo "No draft release found for tag $TAG"
+          fi
