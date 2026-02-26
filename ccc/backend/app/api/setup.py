@@ -3,6 +3,8 @@ Setup endpoints for initial onboarding (first admin creation).
 These endpoints are public — no authentication required.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select, func
@@ -10,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import User, UserRole, get_db
 from app.services.auth import hash_password, create_jwt_token, create_refresh_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -61,13 +65,20 @@ async def setup_status(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(func.count()).select_from(User))
     user_count = result.scalar_one()
 
+    has_admin = False
+    if user_count > 0:
+        admin_result = await db.execute(
+            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
+        )
+        has_admin = admin_result.scalar_one() > 0
+
     return SetupStatusResponse(
         needs_setup=user_count == 0,
-        has_admin=user_count > 0,
+        has_admin=has_admin,
     )
 
 
-@router.post("/setup/admin", response_model=CreateAdminResponse)
+@router.post("/setup/admin", response_model=CreateAdminResponse, status_code=201)
 async def create_admin(
     body: CreateAdminRequest,
     db: AsyncSession = Depends(get_db),
@@ -90,6 +101,7 @@ async def create_admin(
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    logger.info("Setup: created admin user '%s'", user.username)
 
     access_token = create_jwt_token(str(user.id), user.username, user.role.value)
     refresh_token = create_refresh_token(str(user.id), user.username)
