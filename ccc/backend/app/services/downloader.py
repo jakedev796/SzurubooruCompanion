@@ -201,10 +201,18 @@ async def download_url(
 
     result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout)
     if result.files:
-        # Override source_url if provided
         if source_url:
             result.source_url = source_url
         return result
+
+    if _is_rule34_url(url):
+        logger.info("gallery-dl produced no files for rule34 URL, retrying once: %s", url)
+        await asyncio.sleep(2)
+        result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout)
+        if result.files:
+            if source_url:
+                result.source_url = source_url
+            return result
 
     logger.info("gallery-dl produced no files for %s – falling back to yt-dlp", url)
     result = await _try_ytdlp(url, dest_dir, ytdlp_timeout)

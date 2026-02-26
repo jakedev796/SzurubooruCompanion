@@ -124,6 +124,8 @@
             "user-id": "${RULE34_USER_ID}"
         },
 
+        "e621": {},
+
         "yandere": {
             "tags": true
         },

@@ -19,6 +19,7 @@ CCC supports any site that [gallery-dl](https://github.com/mikf/gallery-dl) or [
 | Gelbooru | Optional API key for rate limits |
 | Rule34.xxx | Optional API key for rate limits |
 | Rule34Vault | |
+| e621.net | |
 | Misskey | Optional credentials for private posts |
 | Reddit | Optional credentials for private content |
 | Moeview | Use source link, not viewer page `*` |

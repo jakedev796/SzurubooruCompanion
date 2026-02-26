@@ -30,6 +30,7 @@ def _init_handler_classes() -> None:
     from app.sites.yandere import YandereHandler
     from app.sites.reddit import RedditHandler
     from app.sites.rule34vault import Rule34VaultHandler
+    from app.sites.e621 import E621Handler
 
     _HANDLER_CLASSES = [
         SankakuHandler,
@@ -41,6 +42,7 @@ def _init_handler_classes() -> None:
         GelbooruHandler,
         YandereHandler,
         RedditHandler,
+        E621Handler,
     ]
     _initialized = True
     logger.debug("Registered %d site handler classes", len(_HANDLER_CLASSES))

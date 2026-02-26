@@ -155,22 +155,25 @@ export const rule34Extractor: SiteExtractor = {
       return null;
     }
 
-    // Post view page: DOM extraction (single post)
+    // Post view page: submit post URL so backend can fetch tags via gallery-dl; keep DOM tags as initial_tags
+    const postId = getPostId();
+    const postUrl =
+      postId
+        ? `https://rule34.xxx/index.php?page=post&s=view&id=${postId}`
+        : pageUrl;
     const originalUrl = getOriginalUrl();
     const downloadUrl = originalUrl || mediaUrl;
-
     const { tags, safety } = extractRule34Tags();
-    const postId = getPostId();
     const isVideo = isVideoMedia(mediaElement, downloadUrl);
 
     return {
-      url: downloadUrl,
-      source: pageUrl,
+      url: postUrl,
+      source: postUrl,
       tags: tags.length > 0 ? tags : ['tagme'],
       safety,
       type: isVideo ? 'video' : 'image',
       filename: extractFilename(downloadUrl),
-      skipTagging: true,
+      skipTagging: false,
       metadata: {
         postId,
         originalUrl,

@@ -16,10 +16,14 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Added onboarding wizard backend: setup status, admin creation, and onboarding status endpoints
 - Added supported sites endpoint for dynamic site credential forms
 - Removed ENV-based admin account bootstrap (ADMIN_USER/ADMIN_PASSWORD no longer needed)
+- Fix tag category mapping: apply user category mappings to client-submitted category prefixes (artist:, etc.) and WD14 character tags
+- Rule34: retry gallery-dl once when it returns 0 files (intermittent failures observed with same URL)
+- Add e621.net site handler
 
 ### Mobile App
 
 ### Browser Extension
+- Rule34: when sending from inside a post, submit post URL instead of direct image URL so backend fetches tags
 
 ## [1.2.2] - 2026-02-26
 
