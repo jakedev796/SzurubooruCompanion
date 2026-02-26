@@ -5,8 +5,14 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Added onboarding wizard with guided setup for first-time users (admin account, Szurubooru connection, category mapping, site credentials, next steps)
+- New users created by an admin also see a personal config wizard on first login
+- Settings page now fetches supported sites from backend instead of hardcoded list
 
 ### CCC - Backend
+- Added onboarding wizard backend: setup status, admin creation, and onboarding status endpoints
+- Added supported sites endpoint for dynamic site credential forms
+- Removed ENV-based admin account bootstrap (ADMIN_USER/ADMIN_PASSWORD no longer needed)
 
 ### Mobile App
 
