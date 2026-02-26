@@ -32,6 +32,7 @@ Thumbs.db
 
 # Data / local dev volumes
 /data/
+/config/
 /local-dev/
 *.log
 
@@ -94,3 +95,4 @@ mobile-app/android/szuruqueue_android.iml
 
 builds/
 docs/release-workflow.md
+docs/plans/
