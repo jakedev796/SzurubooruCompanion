@@ -78,7 +78,7 @@ async def create_admin(
     db: AsyncSession = Depends(get_db),
 ):
     """Create the first admin account. Only works when zero users exist."""
-    result = await db.execute(select(func.count()).select_from(User).with_for_update())
+    result = await db.execute(select(func.count()).select_from(User))
     user_count = result.scalar_one()
 
     if user_count > 0:

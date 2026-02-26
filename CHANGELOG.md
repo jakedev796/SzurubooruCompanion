@@ -4,6 +4,9 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ## [Unreleased]
 
+### New Major Feature: Onboarding Wizard for Frontend Dashboard
+- Guided install wizard that takes you through each step to setup critical settings. More details below.
+
 ### CCC - Frontend
 - Added onboarding wizard with guided setup for first-time users (admin account, Szurubooru connection, category mapping, site credentials, next steps)
 - New users created by an admin also see a personal config wizard on first login

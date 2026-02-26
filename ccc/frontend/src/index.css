@@ -1365,12 +1365,7 @@ h2.onboarding-step-header {
 }
 
 .onboarding-sites {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
   margin: 1rem 0;
-  max-height: 350px;
-  overflow-y: auto;
 }
 
 .onboarding-next-steps {

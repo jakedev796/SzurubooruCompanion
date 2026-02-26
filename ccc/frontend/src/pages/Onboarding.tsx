@@ -11,6 +11,8 @@ import {
 import {
   createSetupAdmin,
   fetchSzuruCategories,
+  fetchOnboardingStatus,
+  fetchMyConfig,
   updateMyConfig,
   updateCategoryMappings,
   fetchSupportedSites,
@@ -33,6 +35,7 @@ interface StepDef {
 
 interface SharedState {
   szuruUrl: string;
+  szuruPublicUrl: string;
   szuruUsername: string;
   szuruToken: string;
   szuruSkipped: boolean;
@@ -44,6 +47,8 @@ interface SharedState {
 // ============================================================================
 
 export default function Onboarding({ variant }: { variant: "admin" | "user" }) {
+  const auth = useAuth();
+
   const adminSteps: StepDef[] = [
     { key: "welcome", label: "Welcome" },
     { key: "account", label: "Account" },
@@ -64,13 +69,75 @@ export default function Onboarding({ variant }: { variant: "admin" | "user" }) {
 
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [initializing, setInitializing] = useState(true);
   const [shared, setShared] = useState<SharedState>({
     szuruUrl: "",
+    szuruPublicUrl: "",
     szuruUsername: "",
     szuruToken: "",
     szuruSkipped: false,
     szuruCategories: [],
   });
+
+  // On mount, check backend for already-completed steps and resume from there
+  useEffect(() => {
+    async function restoreProgress() {
+      if (!auth.user) {
+        setInitializing(false);
+        return;
+      }
+
+      try {
+        const [status, config] = await Promise.all([
+          fetchOnboardingStatus(),
+          fetchMyConfig(),
+        ]);
+
+        // Pre-fill shared state from existing config
+        if (config.szuru_url || config.szuru_username || config.szuru_token) {
+          setShared((prev) => ({
+            ...prev,
+            szuruUrl: config.szuru_url || prev.szuruUrl,
+            szuruPublicUrl: config.szuru_public_url || prev.szuruPublicUrl,
+            szuruUsername: config.szuru_username || prev.szuruUsername,
+            szuruToken: config.szuru_token || prev.szuruToken,
+          }));
+        }
+
+        // Determine which step to resume at
+        const szuruIdx = steps.findIndex((s) => s.key === "szurubooru");
+        const catIdx = steps.findIndex((s) => s.key === "categories");
+        const sitesIdx = steps.findIndex((s) => s.key === "sites");
+
+        const completed = new Set<number>();
+
+        // Mark all steps before the resume point as completed
+        if (status.szuru_configured && szuruIdx >= 0) {
+          for (let i = 0; i <= szuruIdx; i++) completed.add(i);
+        }
+        if (status.categories_mapped && catIdx >= 0) {
+          for (let i = 0; i <= catIdx; i++) completed.add(i);
+        }
+
+        setCompletedSteps(completed);
+
+        // Resume at the first incomplete step
+        if (status.categories_mapped && sitesIdx >= 0) {
+          setCurrentStep(sitesIdx);
+        } else if (status.szuru_configured && catIdx >= 0) {
+          setCurrentStep(catIdx);
+        } else if (szuruIdx >= 0) {
+          setCurrentStep(szuruIdx);
+        }
+      } catch {
+        // If status fetch fails, just start from the beginning
+      } finally {
+        setInitializing(false);
+      }
+    }
+
+    restoreProgress();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function advance(skipCategories?: boolean) {
     setCompletedSteps((prev) => new Set([...prev, currentStep]));
@@ -98,6 +165,18 @@ export default function Onboarding({ variant }: { variant: "admin" | "user" }) {
   }
 
   const stepKey = steps[currentStep]?.key;
+
+  if (initializing) {
+    return (
+      <div className="onboarding-container">
+        <div className="onboarding-card">
+          <p style={{ textAlign: "center", padding: "2rem 0" }}>
+            <Loader size={20} className="spinning" /> Loading...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="onboarding-container">
@@ -194,7 +273,7 @@ function CreateAdminStep({
 }) {
   const auth = useAuth();
   const { showToast } = useToast();
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
@@ -342,6 +421,7 @@ function SzuruboruStep({
     try {
       await updateMyConfig({
         szuru_url: shared.szuruUrl,
+        szuru_public_url: shared.szuruPublicUrl || undefined,
         szuru_username: shared.szuruUsername,
         szuru_token: shared.szuruToken,
       });
@@ -378,7 +458,21 @@ function SzuruboruStep({
             placeholder="http://192.168.1.100:8080"
           />
           <span className="form-hint">
-            Internal URL used for API calls (can be a local IP)
+            Internal URL used for API calls. Must include http:// or https://
+          </span>
+        </div>
+        <div className="form-group">
+          <label>Public URL (optional)</label>
+          <input
+            type="text"
+            value={shared.szuruPublicUrl}
+            onChange={(e) =>
+              setShared((prev) => ({ ...prev, szuruPublicUrl: e.target.value }))
+            }
+            placeholder="https://szuru.example.com"
+          />
+          <span className="form-hint">
+            External URL for browser links. Must include http:// or https://
           </span>
         </div>
         <div className="form-group">
@@ -552,7 +646,7 @@ function CategoryMappingStep({
       <div className="onboarding-mappings">
         <div className="settings-form">
           {SOURCE_CATEGORIES.map((src) => (
-            <div key={src} className="form-group-row">
+            <div key={src} className="form-group form-group-row">
               <label style={{ textTransform: "capitalize" }}>{src}</label>
               {categories.length > 0 ? (
                 <select
