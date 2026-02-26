@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import User, UserRole, get_db
 from app.services.auth import hash_password, create_jwt_token, create_refresh_token
+from app.sites.registry import get_all_handlers
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,11 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Request / Response models
 # ---------------------------------------------------------------------------
+
+
+class SiteInfo(BaseModel):
+    name: str
+    fields: list[str]
 
 
 class SetupStatusResponse(BaseModel):
@@ -115,3 +121,18 @@ async def create_admin(
             "role": user.role.value,
         },
     )
+
+
+@router.get("/setup/sites", response_model=list[SiteInfo])
+async def list_supported_sites():
+    """List all supported sites and their credential fields. Public endpoint."""
+    handlers = get_all_handlers()
+    sites = []
+    for handler in handlers:
+        fields = [spec.gallery_dl_key for spec in handler.credentials]
+        # Twitter uses cookies stored as site credential but not via CredentialSpec
+        if handler.name == "twitter" and "cookies" not in fields:
+            fields.append("cookies")
+        if fields:
+            sites.append(SiteInfo(name=handler.name, fields=fields))
+    return sites
