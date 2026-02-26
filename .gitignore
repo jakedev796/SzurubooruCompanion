@@ -18,6 +18,7 @@ browser-ext/.output/
 # Env files
 .env
 ccc/backend/.env
+ccc/backend/.env.dev
 
 # IDE
 .idea/

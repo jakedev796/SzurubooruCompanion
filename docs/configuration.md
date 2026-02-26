@@ -9,16 +9,34 @@ Complete configuration reference for Szurubooru Companion.
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 
-2. **Configure environment variables** in `ccc/backend/.env`:
+2. **Configure environment variables:**
+
+   **Production** (single s6 image — `docker-compose.yml`):
+   ```bash
+   cp ccc/backend/.env.example ccc/backend/.env
+   ```
+
+   **Development** (separate services — `docker-compose.dev.yml`):
+   ```bash
+   cp ccc/backend/.env.dev.example ccc/backend/.env.dev
+   ```
+
+   Edit the copied file with your credentials:
    ```env
    ADMIN_USER=admin
    ADMIN_PASSWORD=your-secure-password
    ENCRYPTION_KEY=<key-from-step-1>
    ```
 
+   The dev example includes `DATABASE_URL` and `REDIS_URL` with the correct container hostnames. The production image has these baked in and they can be omitted.
+
 3. **Start the stack:**
    ```bash
+   # Production
    docker compose up -d
+
+   # Development
+   docker compose -f docker-compose.dev.yml up -d
    ```
 
 4. **Login to dashboard** at `http://localhost:21425` (or `http://localhost:21430` in dev compose) with your admin credentials
@@ -63,7 +81,8 @@ Fetch categories directly from Szurubooru using "Fetch Tag Categories" button.
 
 ## Environment Variables Reference
 
-See [ccc/backend/.env.example](../ccc/backend/.env.example) for all available options.
+- **Production:** [ccc/backend/.env.example](../ccc/backend/.env.example)
+- **Development:** [ccc/backend/.env.dev.example](../ccc/backend/.env.dev.example)
 
 ## Site-Specific Configuration
 

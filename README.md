@@ -183,8 +183,13 @@ flowchart LR
    - Enter your Szurubooru URL, username, and API token
    - Configure site credentials if needed (Settings → Site Credentials)
 
-**Development:** For local development with separate backend, frontend, Postgres, and Redis, use the dev compose:
-`docker compose -f docker-compose.dev.yml up -d`. Backend at 21425, dashboard at 21430.
+**Development:** For local development with separate backend, frontend, Postgres, and Redis:
+```bash
+cp ccc/backend/.env.dev.example ccc/backend/.env.dev
+# Edit ccc/backend/.env.dev with your credentials
+docker compose -f docker-compose.dev.yml up -d
+```
+Backend at 21425, dashboard at 21430.
 
 ---
 
@@ -192,7 +197,7 @@ flowchart LR
 
 | Component | Tech | Port | Docs |
 |-----------|------|------|------|
-| **CCC Backend** | Python, FastAPI, gallery-dl, yt-dlp, wdtagger | 21425 | [.env.example](ccc/backend/.env.example) |
+| **CCC Backend** | Python, FastAPI, gallery-dl, yt-dlp, wdtagger | 21425 | [.env.example](ccc/backend/.env.example), [.env.dev.example](ccc/backend/.env.dev.example) |
 | **CCC Dashboard** | React, Vite | 21430 (dev) / 21425 (prod) | — |
 | **Browser Extension** | WXT (Chrome MV3, Firefox MV2) | — | [docs/browser-extension.md](docs/browser-extension.md) |
 | **Mobile App** | Flutter (Android) | — | [docs/mobile-app.md](docs/mobile-app.md) |

@@ -14,7 +14,7 @@ services:
     ports:
       - "21425:21425"
     env_file:
-      - ./ccc/backend/.env
+      - ./ccc/backend/.env.dev
     volumes:
       - ./local-dev/jobs:/data/jobs
       - ./config.json:/config.json:ro
