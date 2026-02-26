@@ -127,6 +127,11 @@ void callbackDispatcher() {
             }
           }
 
+          if (!await client.ensureValidToken()) {
+            await NotificationService.instance.showCredentialsExpired();
+            return Future.value(false);
+          }
+
           await client.enqueueFromUrl(
             url: url,
             tags: tags,
@@ -257,6 +262,12 @@ Future<FolderScanOutcome> processScheduledFolders() async {
       } catch (e) {
         debugPrint('[FolderSync] Failed to load auth tokens: $e');
       }
+    }
+
+    if (!await backendClient.ensureValidToken()) {
+      debugPrint('[FolderSync] Credentials invalid or expired, skipping sync');
+      await NotificationService.instance.showCredentialsExpired();
+      return (success: false, uploaded: 0);
     }
 
     final folders = await settings.getScheduledFolders();

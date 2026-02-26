@@ -267,6 +267,19 @@ class BackendClient {
     }
   }
 
+  /// Ensures the current session is valid before doing work.
+  /// Calls GET /api/auth/me; on 401 the interceptor will try refresh and retry.
+  /// Returns true if the token is valid (or was refreshed), false if not authenticated or refresh failed.
+  /// Use before folder sync, SSE connect, and share upload to avoid spamming errors and to refresh expired tokens.
+  Future<bool> ensureValidToken() async {
+    try {
+      await _dio.get('/api/auth/me');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Set access token for JWT authentication
   void setAccessToken(String? token) {
     _accessToken = token;
@@ -565,10 +578,11 @@ class BackendClient {
 
       return Job.fromJson(response.data as Map<String, dynamic>);
     } on DioException catch (e) {
-      throw BackendException(
-        _friendlyLabelForStatusCode(e.response?.statusCode),
-        statusCode: e.response?.statusCode,
-      );
+      final code = e.response?.statusCode;
+      final message = code == 401
+          ? 'Session expired. Please log in again.'
+          : (_messageFromDioException(e) ?? _friendlyLabelForStatusCode(code));
+      throw BackendException(message, statusCode: code);
     }
   }
 
@@ -618,20 +632,72 @@ class BackendClient {
         final jobId = data['id']?.toString();
         debugPrint('[BackendClient] Upload successful, jobId: $jobId');
         return (jobId: jobId, error: null);
-      } else {
-        debugPrint('[BackendClient] Upload failed: ${response.statusCode} - ${response.body}');
-        String message = _friendlyLabelForStatusCode(response.statusCode);
-        try {
-          final data = jsonDecode(response.body) as Map<String, dynamic>?;
-          if (data != null) {
-            final msg = data['error'] ?? data['message'] ?? data['detail'];
-            if (msg != null && msg.toString().isNotEmpty) {
-              message = msg.toString();
-            }
-          }
-        } catch (_) {}
-        return (jobId: null, error: message);
       }
+      if (response.statusCode == 401) {
+        final prefs = await SharedPreferences.getInstance();
+        final authJson = prefs.getString('auth_tokens');
+        if (authJson != null) {
+          try {
+            final tokens = AuthTokens.fromJson(
+              jsonDecode(authJson) as Map<String, dynamic>,
+            );
+            final newAccessToken = await refreshAccessToken(tokens.refreshToken);
+            if (newAccessToken != null) {
+              setAccessToken(newAccessToken);
+              await prefs.setString(
+                'auth_tokens',
+                jsonEncode(AuthTokens(
+                  accessToken: newAccessToken,
+                  refreshToken: tokens.refreshToken,
+                ).toJson()),
+              );
+              final retryRequest = http.MultipartRequest('POST', uri);
+              retryRequest.headers['Authorization'] = 'Bearer $newAccessToken';
+              retryRequest.files
+                  .add(await http.MultipartFile.fromPath('file', file.path));
+              if (source != null && source.isNotEmpty) {
+                retryRequest.fields['source'] = source;
+              }
+              if (tags != null && tags.isNotEmpty) {
+                retryRequest.fields['tags'] = tags.join(',');
+              }
+              if (safety != null && safety.isNotEmpty) {
+                retryRequest.fields['safety'] = safety;
+              }
+              if (skipTagging != null) {
+                retryRequest.fields['skip_tagging'] = skipTagging.toString();
+              }
+              final retryStream = await retryRequest.send();
+              final retryResponse =
+                  await http.Response.fromStream(retryStream);
+              if (retryResponse.statusCode == 200 ||
+                  retryResponse.statusCode == 201) {
+                final data =
+                    jsonDecode(retryResponse.body) as Map<String, dynamic>;
+                final jobId = data['id']?.toString();
+                return (jobId: jobId, error: null);
+              }
+            }
+          } catch (_) {}
+        }
+        return (
+          jobId: null,
+          error: 'Session expired. Please log in again.',
+        );
+      }
+      debugPrint(
+          '[BackendClient] Upload failed: ${response.statusCode} - ${response.body}');
+      String message = _friendlyLabelForStatusCode(response.statusCode);
+      try {
+        final data = jsonDecode(response.body) as Map<String, dynamic>?;
+        if (data != null) {
+          final msg = data['error'] ?? data['message'] ?? data['detail'];
+          if (msg != null && msg.toString().isNotEmpty) {
+            message = msg.toString();
+          }
+        }
+      } catch (_) {}
+      return (jobId: null, error: message);
     } catch (e, stackTrace) {
       debugPrint('[BackendClient] Exception during upload: $e');
       debugPrint('[BackendClient] Stack trace: $stackTrace');
@@ -944,6 +1010,18 @@ class BackendException implements Exception {
   String toString() => 'BackendException: $message${statusCode != null ? ' (status: $statusCode)' : ''}';
 }
 
+/// Extracts backend error message from DioException response body (e.g. FastAPI detail).
+String? _messageFromDioException(DioException e) {
+  final data = e.response?.data;
+  if (data is Map) {
+    final msg = data['detail'] ?? data['message'] ?? data['error'];
+    if (msg != null && msg.toString().trim().isNotEmpty) {
+      return msg is List ? msg.join(' ') : msg.toString();
+    }
+  }
+  return null;
+}
+
 /// Returns a short label for an HTTP status code for display to the user.
 String _friendlyLabelForStatusCode(int? code) {
   if (code == null) return 'Connection error';
@@ -951,7 +1029,7 @@ String _friendlyLabelForStatusCode(int? code) {
     case 400:
       return 'Bad request ($code)';
     case 401:
-      return 'Unauthorized ($code)';
+      return 'Session expired. Please log in again.';
     case 403:
       return 'Forbidden ($code)';
     case 404:
@@ -971,6 +1049,11 @@ String _friendlyLabelForStatusCode(int? code) {
 
 /// Converts any error from backend/API calls into a short user-facing message.
 String userFriendlyErrorMessage(Object error) {
-  if (error is BackendException) return error.message;
+  if (error is BackendException) {
+    if (error.statusCode == 401) {
+      return 'Session expired. Please log in again.';
+    }
+    return error.message;
+  }
   return 'Something went wrong';
 }
