@@ -119,6 +119,28 @@ class NotificationService {
     );
   }
 
+  /// Single notification when session is invalid so we do not spam per-job or per-file errors.
+  static const int kCredentialsExpiredNotificationId = 4;
+  static const String _authChannelId = 'auth';
+  static const String _authChannelName = 'Account';
+
+  Future<void> showCredentialsExpired() async {
+    const androidDetails = AndroidNotificationDetails(
+      _authChannelId,
+      _authChannelName,
+      channelDescription: 'Login expired and session notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+    );
+    const details = NotificationDetails(android: androidDetails);
+    await _notifications.show(
+      id: kCredentialsExpiredNotificationId,
+      title: 'Login expired',
+      body: 'Please log in again to continue using uploads and sync.',
+      notificationDetails: details,
+    );
+  }
+
   /// Request notification permission (Android 13+). Returns true if granted, false if denied, null if not applicable.
   Future<bool?> requestNotificationPermission() async {
     return _notifications

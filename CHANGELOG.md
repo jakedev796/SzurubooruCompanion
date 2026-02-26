@@ -9,6 +9,10 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+- Validate and refresh credentials before folder sync, SSE, and share uploads; show a single "Login expired" notification instead of per-job or per-file errors
+- Add ensureValidToken() and showCredentialsExpired() for consistent session handling; floating bubble and all services refresh token before work
+- Proactive ensureValidToken before URL enqueue in UI; 401 shown as "Session expired. Please log in again."; file upload retries once on 401 after refresh; backend error detail (e.g. FastAPI detail) shown when API returns 4xx/5xx
+- Floating bubble / SSE background service: periodic token revalidation every 12h, refresh and reconnect SSE so connection stays valid without opening the app; reconnect path sets _isRunning = false when credentials invalid to avoid reconnect spam
 
 ### Browser Extension
 

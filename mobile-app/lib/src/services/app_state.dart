@@ -70,19 +70,22 @@ class AppState extends ChangeNotifier {
     if (!settings.isConfigured || !settings.canMakeApiCalls) {
       return;
     }
-    
-    _connectSse();
+    Future<void>.microtask(() => _connectSse());
   }
-  
-  /// Connect to SSE endpoint
-  void _connectSse() {
-    // Disconnect existing connection
+
+  /// Connect to SSE endpoint. Validates/refreshes token before connecting.
+  Future<void> _connectSse() async {
     _disconnectSse();
-    
+
     if (!settings.isConfigured || !settings.canMakeApiCalls) {
       return;
     }
-    
+
+    if (!await backendClient.ensureValidToken()) {
+      await settings.loadSettings();
+      return;
+    }
+
     // Listen to SSE events
     final sseStream = backendClient.connectSse(autoReconnect: true);
     
@@ -414,6 +417,10 @@ class AppState extends ChangeNotifier {
 
     if (!settings.canMakeApiCalls) {
       return 'Backend URL is required';
+    }
+
+    if (!await backendClient.ensureValidToken()) {
+      return 'Session expired. Please log in again.';
     }
 
     // Add tagme if no tags provided
