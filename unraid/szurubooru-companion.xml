@@ -13,8 +13,7 @@
 
     Compatible with both Szurubooru (https://github.com/rr-/szurubooru) and Oxibooru (https://github.com/liamw1/oxibooru).
 
-    NEW: Database-backed multi-user system. All configuration done via dashboard UI at http://[IP]:21425/settings.
-    Only ADMIN_USER, ADMIN_PASSWORD, and ENCRYPTION_KEY are needed - everything else configured after login!
+    Database-backed multi-user system. Set ENCRYPTION_KEY only; on first launch open the Web UI and complete the onboarding wizard to create the admin account and configure Szurubooru, sites, and credentials.
   </Overview>
   <Category>MediaApp:Other</Category>
   <WebUI>http://[IP]:[PORT:21425]/</WebUI>
@@ -25,7 +24,7 @@
     Szurubooru Companion (CCC) - A multi-component workflow for uploading media to Szurubooru or Oxibooru with AI tagging.
     Includes: FastAPI backend, React dashboard, PostgreSQL, Redis (all in one container via s6-overlay).
 
-    After first startup, login at /login with ADMIN_USER/ADMIN_PASSWORD, then configure your Szurubooru/Oxibooru + site credentials in Settings.
+    After first startup, open the Web UI and complete the onboarding wizard to create the admin account, connect Szurubooru/Oxibooru, and configure site credentials.
   </Description>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -40,10 +39,8 @@
   <Config Name="Config" Target="/config" Default="/mnt/user/appdata/szurubooru-companion/config" Mode="rw" Description="Configuration files (place config.json here for gallery-dl)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/szurubooru-companion/config</Config>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <!-- REQUIRED: Admin User and Encryption Key                            -->
+  <!-- REQUIRED: Encryption Key (admin account created via onboarding UI) -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
-  <Config Name="Admin Username" Target="ADMIN_USER" Default="admin" Mode="" Description="Admin username (created on first startup, then stored in database)" Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
-  <Config Name="Admin Password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Admin password (REQUIRED - set a strong password)" Type="Variable" Display="always" Required="true" Mask="true"/>
   <Config Name="Encryption Key" Target="ENCRYPTION_KEY" Default="" Mode="" Description="Fernet encryption key for credentials. Generate with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'" Type="Variable" Display="always" Required="true" Mask="true"/>
   <Config Name="API Key" Target="API_KEY" Default="" Mode="" Description="API key for mobile app and external access (leave empty to disable)" Type="Variable" Display="always" Required="false" Mask="true"/>
 

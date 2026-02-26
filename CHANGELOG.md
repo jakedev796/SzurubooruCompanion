@@ -16,6 +16,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Added onboarding wizard backend: setup status, admin creation, and onboarding status endpoints
 - Added supported sites endpoint for dynamic site credential forms
 - Removed ENV-based admin account bootstrap (ADMIN_USER/ADMIN_PASSWORD no longer needed)
+- Unraid template: align with onboarding wizard (remove ADMIN_USER/ADMIN_PASSWORD; only ENCRYPTION_KEY required; docs point to onboarding UI)
 
 ### Mobile App
 
