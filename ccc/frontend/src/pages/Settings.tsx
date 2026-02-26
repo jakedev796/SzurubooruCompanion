@@ -500,6 +500,13 @@ function SiteCredentialsTab() {
           </button>
           {expandedSite === site.name && (
             <div className="accordion-content">
+              {site.name === "reddit" && (
+                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+                  Reddit has ended self-service API access. Request API access manually via{" "}
+                  <a href="https://support.reddithelp.com/hc/en-us/requests/new?ticket_form_id=14868593862164&tf_14867328473236=api_request_type_enterprise" target="_blank" rel="noopener noreferrer">Reddit support</a>.
+                  Use the client ID, secret, and username they provide in the fields below.
+                </p>
+              )}
               <div className="settings-form">
                 {site.fields.map((field) => (
                   <div key={field} className="form-group">
