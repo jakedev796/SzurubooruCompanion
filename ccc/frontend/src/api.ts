@@ -467,6 +467,64 @@ export async function fetchMe(): Promise<{ id: string; username: string; role: s
 }
 
 // ============================================================================
+// Setup / Onboarding endpoints
+// ============================================================================
+
+export interface SetupStatus {
+  needs_setup: boolean;
+  has_admin: boolean;
+}
+
+export async function fetchSetupStatus(): Promise<SetupStatus> {
+  // No auth headers — this is a public endpoint
+  const res = await fetch(`${BASE}/setup/status`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<SetupStatus>(res);
+}
+
+export async function createSetupAdmin(
+  username: string,
+  password: string
+): Promise<LoginResponse> {
+  const res = await fetch(`${BASE}/setup/admin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) await handleError(res);
+  return parseJson<LoginResponse>(res);
+}
+
+export interface OnboardingStatus {
+  szuru_configured: boolean;
+  categories_mapped: boolean;
+  onboarding_complete: boolean;
+}
+
+export async function fetchOnboardingStatus(): Promise<OnboardingStatus> {
+  const res = await apiFetch(`${BASE}/users/me/onboarding-status`, {
+    headers: headers(),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<OnboardingStatus>(res);
+}
+
+export interface SiteInfo {
+  name: string;
+  fields: string[];
+}
+
+export async function fetchSupportedSites(): Promise<SiteInfo[]> {
+  const res = await fetch(`${BASE}/setup/sites`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<SiteInfo[]>(res);
+}
+
+// ============================================================================
 // User management endpoints
 // ============================================================================
 
