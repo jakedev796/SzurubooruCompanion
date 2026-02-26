@@ -31,7 +31,6 @@ class SiteInfo(BaseModel):
 
 class SetupStatusResponse(BaseModel):
     needs_setup: bool
-    has_admin: bool
 
 
 class CreateAdminRequest(BaseModel):
@@ -66,22 +65,11 @@ class CreateAdminResponse(BaseModel):
 
 
 @router.get("/setup/status", response_model=SetupStatusResponse)
-async def setup_status(db: AsyncSession = Depends(get_db)):
-    """Check whether the instance needs initial setup (no users exist)."""
+async def get_setup_status(db: AsyncSession = Depends(get_db)):
+    """Check if initial setup is needed. Public endpoint — no auth required."""
     result = await db.execute(select(func.count()).select_from(User))
     user_count = result.scalar_one()
-
-    has_admin = False
-    if user_count > 0:
-        admin_result = await db.execute(
-            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN)
-        )
-        has_admin = admin_result.scalar_one() > 0
-
-    return SetupStatusResponse(
-        needs_setup=user_count == 0,
-        has_admin=has_admin,
-    )
+    return SetupStatusResponse(needs_setup=user_count == 0)
 
 
 @router.post("/setup/admin", response_model=CreateAdminResponse, status_code=201)
@@ -90,7 +78,7 @@ async def create_admin(
     db: AsyncSession = Depends(get_db),
 ):
     """Create the first admin account. Only works when zero users exist."""
-    result = await db.execute(select(func.count()).select_from(User))
+    result = await db.execute(select(func.count()).select_from(User).with_for_update())
     user_count = result.scalar_one()
 
     if user_count > 0:

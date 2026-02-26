@@ -1294,7 +1294,7 @@ form input:focus {
   font-weight: 500;
 }
 
-.onboarding-step-header h2 {
+h2.onboarding-step-header {
   margin: 0 0 0.75rem;
   font-size: 1.3rem;
 }

@@ -472,7 +472,6 @@ export async function fetchMe(): Promise<{ id: string; username: string; role: s
 
 export interface SetupStatus {
   needs_setup: boolean;
-  has_admin: boolean;
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {

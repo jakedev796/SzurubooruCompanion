@@ -99,6 +99,7 @@ function AppContent() {
   if (
     loggedIn &&
     onboardingComplete === false &&
+    !localStorage.getItem("ccc_onboarding_dismissed") &&
     !onOnboardingPage &&
     !onLoginPage &&
     location.pathname !== "/settings"

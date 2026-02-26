@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Check,
   ExternalLink,
-  AlertTriangle,
   Loader,
 } from "lucide-react";
 import {
@@ -20,6 +19,8 @@ import {
 } from "../api";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+
+const ONBOARDING_DISMISSED_KEY = "ccc_onboarding_dismissed";
 
 // ============================================================================
 // Types
@@ -71,20 +72,16 @@ export default function Onboarding({ variant }: { variant: "admin" | "user" }) {
     szuruCategories: [],
   });
 
-  function advance() {
+  function advance(skipCategories?: boolean) {
     setCompletedSteps((prev) => new Set([...prev, currentStep]));
-
-    let next = currentStep + 1;
-
-    // Auto-skip Categories if Szurubooru was skipped
-    if (shared.szuruSkipped && steps[next]?.key === "categories") {
-      setCompletedSteps((prev) => new Set([...prev, next]));
-      next += 1;
-    }
-
-    if (next < steps.length) {
-      setCurrentStep(next);
-    }
+    setCurrentStep((prev) => {
+      let next = prev + 1;
+      if (steps[next]?.key === "categories" && (shared.szuruSkipped || skipCategories)) {
+        setCompletedSteps((p) => new Set([...p, next]));
+        next += 1;
+      }
+      return next;
+    });
   }
 
   function goBack() {
@@ -297,7 +294,7 @@ function SzuruboruStep({
 }: {
   shared: SharedState;
   setShared: React.Dispatch<React.SetStateAction<SharedState>>;
-  onNext: () => void;
+  onNext: (skipCategories?: boolean) => void;
   onBack: () => void;
   showBack: boolean;
 }) {
@@ -359,7 +356,7 @@ function SzuruboruStep({
 
   function handleSkip() {
     setShared((prev) => ({ ...prev, szuruSkipped: true }));
-    onNext();
+    onNext(true);
   }
 
   return (
@@ -793,6 +790,11 @@ const REPO_URL = "https://github.com/jakedev796/SzurubooruCompanion";
 function NextStepsStep({ onBack }: { onBack: () => void }) {
   const navigate = useNavigate();
 
+  function handleFinish() {
+    localStorage.setItem(ONBOARDING_DISMISSED_KEY, "true");
+    navigate("/");
+  }
+
   return (
     <>
       <h2 className="onboarding-step-header">You are all set!</h2>
@@ -850,7 +852,7 @@ function NextStepsStep({ onBack }: { onBack: () => void }) {
         <button className="btn btn-ghost" onClick={onBack}>
           <ChevronLeft size={16} /> Back
         </button>
-        <button className="btn btn-primary" onClick={() => navigate("/")}>
+        <button className="btn btn-primary" onClick={handleFinish}>
           Go to Dashboard <ChevronRight size={16} />
         </button>
       </div>
