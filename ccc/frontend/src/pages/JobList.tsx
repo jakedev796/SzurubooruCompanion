@@ -38,6 +38,8 @@ import {
   type JobsResponse,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
+import { JOB_CREATED_EVENT } from "../components/AddUrlFab";
+import SzuruConfigRequired from "../components/SzuruConfigRequired";
 
 const PAGE_SIZE = 20;
 
@@ -123,6 +125,21 @@ export default function JobList() {
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
+  }, [statusFilter, sort, page]);
+
+  useEffect(() => {
+    const refetch = () => {
+      fetchJobs({
+        status: statusFilter || undefined,
+        offset: page * PAGE_SIZE,
+        limit: PAGE_SIZE,
+        sort,
+      })
+        .then(setData)
+        .catch((e: Error) => setError(e.message));
+    };
+    window.addEventListener(JOB_CREATED_EVENT, refetch);
+    return () => window.removeEventListener(JOB_CREATED_EVENT, refetch);
   }, [statusFilter, sort, page]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
@@ -517,6 +534,7 @@ export default function JobList() {
   }
 
   if (!data && !error) return <p>Loading...</p>;
+  if (data?.szuru_config_required) return <SzuruConfigRequired />;
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 

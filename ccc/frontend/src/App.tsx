@@ -8,6 +8,7 @@ import Tagger from "./pages/Tagger";
 import Login from "./pages/Login";
 import Settings from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
+import AddUrlFab from "./components/AddUrlFab";
 import { fetchConfig, fetchSetupStatus, fetchOnboardingStatus, setDashboardAuth } from "./api";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -148,6 +149,7 @@ function AppContent() {
         <Route path="/onboarding" element={<Onboarding variant="admin" />} />
         <Route path="/onboarding/user" element={<Onboarding variant="user" />} />
       </Routes>
+      {loggedIn && !onLoginPage && <AddUrlFab />}
     </div>
   );
 }

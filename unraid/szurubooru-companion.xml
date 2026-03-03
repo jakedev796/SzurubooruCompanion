@@ -36,7 +36,7 @@
   <!-- Volumes                                                          -->
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <Config Name="App Data" Target="/data" Default="/mnt/user/appdata/szurubooru-companion/data" Mode="rw" Description="Application data (database, jobs, WD14 model cache)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/szurubooru-companion/data</Config>
-  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/szurubooru-companion/config" Mode="rw" Description="Configuration files (place config.json here for gallery-dl)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/szurubooru-companion/config</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/szurubooru-companion/config" Mode="rw" Description="Optional config directory (gallery-dl is configured via dashboard)" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/szurubooru-companion/config</Config>
 
   <!-- ══════════════════════════════════════════════════════════════════ -->
   <!-- REQUIRED: Encryption Key (admin account created via onboarding UI) -->

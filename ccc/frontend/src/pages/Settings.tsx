@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { Pencil, Circle, X, ChevronDown } from "lucide-react";
+import { Pencil, Circle, X, ChevronDown, Check, XCircle, Ban, AlertTriangle, HelpCircle } from "lucide-react";
 import ConfirmModal from "../components/ConfirmModal";
 import {
   fetchMyConfig,
@@ -21,12 +21,14 @@ import {
   fetchCategoryMappings,
   updateCategoryMappings,
   fetchSupportedSites,
+  fetchSupportedSitesList,
+  SupportedSite,
   UserResponse,
   UserConfig,
   GlobalSettings,
 } from "../api";
 
-type Tab = "profile" | "site-creds" | "global" | "users";
+type Tab = "profile" | "site-creds" | "supported-sites" | "global" | "users";
 
 export default function Settings() {
   const { isAdmin } = useAuth();
@@ -49,6 +51,12 @@ export default function Settings() {
         >
           Site Credentials
         </button>
+        <button
+          onClick={() => setActiveTab("supported-sites")}
+          className={`tab-button ${activeTab === "supported-sites" ? "active" : ""}`}
+        >
+          Supported Sites
+        </button>
         {isAdmin && (
           <>
             <button
@@ -70,6 +78,7 @@ export default function Settings() {
       <div className="tab-content">
         {activeTab === "profile" && <ProfileTab />}
         {activeTab === "site-creds" && <SiteCredentialsTab />}
+        {activeTab === "supported-sites" && <SupportedSitesTab />}
         {activeTab === "global" && isAdmin && <GlobalSettingsTab />}
         {activeTab === "users" && isAdmin && <UsersTab />}
       </div>
@@ -541,6 +550,136 @@ function SiteCredentialsTab() {
         <button type="submit" onClick={handleSave} disabled={saving} className="btn btn-primary">
           {saving ? "Saving..." : "Save Credentials"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Supported Sites Tab
+// ============================================================================
+
+function SupportStatusIcon({ status }: { status: "yes" | "no" | "na" }) {
+  if (status === "yes") return <Check size={18} style={{ color: "var(--green)" }} aria-label="Supported" />;
+  if (status === "no") return <XCircle size={18} style={{ color: "var(--red)" }} aria-label="Not supported" />;
+  return <Ban size={18} style={{ color: "var(--text-muted)" }} aria-label="Not eligible" />;
+}
+
+function ConfigStatusIcon({ status }: { status: "required" | "optional" | "none" }) {
+  if (status === "required") return <AlertTriangle size={18} style={{ color: "var(--red)" }} aria-label="Config required" />;
+  if (status === "optional") return <HelpCircle size={18} style={{ color: "var(--yellow)" }} aria-label="Config optional" />;
+  return <Check size={18} style={{ color: "var(--green)" }} aria-label="No config needed" />;
+}
+
+function SupportedSitesTab() {
+  const { showToast } = useToast();
+  const [sites, setSites] = useState<SupportedSite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    fetchSupportedSitesList()
+      .then(setSites)
+      .catch(() => showToast("Failed to load supported sites", "error"))
+      .finally(() => setLoading(false));
+  }, [showToast]);
+
+  const searchLower = search.trim().toLowerCase();
+  const filteredSites = searchLower
+    ? sites.filter(
+        (s) =>
+          s.name.toLowerCase().includes(searchLower) ||
+          s.url.toLowerCase().includes(searchLower) ||
+          (s.notes && s.notes.toLowerCase().includes(searchLower))
+      )
+    : sites;
+
+  if (loading) return <div className="card"><p>Loading...</p></div>;
+
+  return (
+    <div className="card">
+      <h3>Supported Sites</h3>
+      <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+        Sites that CCC can download from via gallery-dl. Configure credentials in Site Credentials when required.
+      </p>
+      <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+        If you confirm a site is working (or not), you can let us know on{" "}
+        <a href="https://github.com/jakedev796/SzurubooruCompanion" target="_blank" rel="noopener noreferrer">GitHub</a> so we can expand the list over time.
+      </p>
+      <div
+        style={{
+          display: "flex",
+          gap: "1.5rem",
+          flexWrap: "wrap",
+          fontSize: "0.8rem",
+          color: "var(--text-muted)",
+          marginBottom: "1rem",
+          padding: "0.5rem 0",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+          <Check size={14} style={{ color: "var(--green)" }} /> Supported
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+          <XCircle size={14} style={{ color: "var(--red)" }} /> Not supported
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+          <Ban size={14} style={{ color: "var(--text-muted)" }} /> Not eligible
+        </span>
+        <span style={{ marginLeft: "0.5rem", borderLeft: "1px solid var(--border)", paddingLeft: "1rem", display: "inline-flex", alignItems: "center", gap: "1rem" }}>
+          <span style={{ fontWeight: 500 }}>Config:</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+            <AlertTriangle size={14} style={{ color: "var(--red)" }} /> Required
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+            <HelpCircle size={14} style={{ color: "var(--yellow)" }} /> Optional
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+            <Check size={14} style={{ color: "var(--green)" }} /> None
+          </span>
+        </span>
+      </div>
+      <div className="form-group" style={{ marginBottom: "1rem" }}>
+        <label htmlFor="supported-sites-search">Search</label>
+        <input
+          id="supported-sites-search"
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name, URL, or notes..."
+          style={{ maxWidth: "24rem" }}
+        />
+        {search.trim() && (
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginLeft: "0.5rem" }}>
+            {filteredSites.length} of {sites.length}
+          </span>
+        )}
+      </div>
+      <div className="table-wrap" style={{ overflowX: "auto" }}>
+        <table className="users-table">
+          <thead>
+            <tr>
+              <th>Website</th>
+              <th>Download</th>
+              <th>Tag Extraction</th>
+              <th>Config Needed</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredSites.map((site) => (
+              <tr key={site.name}>
+                <td style={{ textTransform: "capitalize", fontWeight: 500 }}>{site.name.replace(/-/g, " ")}</td>
+                <td><SupportStatusIcon status={site.download_supported} /></td>
+                <td><SupportStatusIcon status={site.tag_extraction_supported} /></td>
+                <td><ConfigStatusIcon status={site.config_needed} /></td>
+                <td style={{ fontSize: "0.85rem", color: "var(--text-muted)", maxWidth: "20rem" }} title={site.notes || undefined}>
+                  {site.notes || "\u2014"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

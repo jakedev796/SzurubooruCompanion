@@ -78,12 +78,18 @@ class SiteHandler:
         """True if individual files should be downloaded via HTTP (not gallery-dl)."""
         return False
 
+    @property
+    def retry_on_empty(self) -> bool:
+        """True if gallery-dl should be retried once when it returns 0 files (e.g. intermittent failures)."""
+        return False
+
     # -- gallery-dl CLI options --
 
-    def gallery_dl_options(self) -> List[str]:
+    def gallery_dl_options(self, url: Optional[str] = None) -> List[str]:
         """
         Extra -o flags for gallery-dl.
         Built from `credentials` and `gallery_dl_tag_options`; credentials from user config (dashboard) only.
+        `url` is passed so handlers can add URL-derived options (e.g. Misskey instance root).
         """
         opts: List[str] = []
         ext = self.gallery_dl_extractor

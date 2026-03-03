@@ -17,7 +17,6 @@ services:
       - ./ccc/backend/.env.dev
     volumes:
       - ./local-dev/jobs:/data/jobs
-      - ./config.json:/config.json:ro
     depends_on:
       postgres:
         condition: service_healthy

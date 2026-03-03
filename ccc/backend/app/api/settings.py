@@ -7,14 +7,26 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from app.database import GlobalSetting, User, get_db
 from app.api.deps import require_admin, get_current_user
 from app.config import get_settings as get_env_settings
 from app.services import szurubooru
+from app.sites.registry import get_all_handlers
+from app.sites.site_info import SITE_DISPLAY_INFO, DOWNLOAD_NA, TAG_EXTRACTION_NA
 
 router = APIRouter()
+
+
+class SupportedSiteOut(BaseModel):
+    name: str
+    url: str
+    auth_required: bool
+    notes: str
+    download_supported: str  # "yes" | "no" | "na"
+    tag_extraction_supported: str  # "yes" | "no" | "na"
+    config_needed: str  # "required" | "optional" | "none"
 
 
 class GlobalSettingsResponse(BaseModel):
@@ -138,6 +150,49 @@ async def fetch_szuru_categories(
 
     result = await szurubooru.fetch_tag_categories(szuru_url, szuru_username, szuru_token)
     return result
+
+
+@router.get("/settings/supported-sites", response_model=List[SupportedSiteOut])
+async def get_supported_sites(
+    current_user: User = Depends(get_current_user),
+):
+    """List curated supported sites (only those in SITE_DISPLAY_INFO). Add sites there as they are tested."""
+    handlers = get_all_handlers()
+    out = []
+    for h in handlers:
+        if h.name not in SITE_DISPLAY_INFO:
+            continue
+        info = SITE_DISPLAY_INFO[h.name]
+        auth = bool(h.credentials) or (h.name == "twitter")
+
+        download_supported = info.get("download_supported")
+        if download_supported is None:
+            download_supported = "na" if h.name in DOWNLOAD_NA else "yes"
+
+        tag_extraction_supported = info.get("tag_extraction_supported")
+        if tag_extraction_supported is None:
+            if h.name in TAG_EXTRACTION_NA:
+                tag_extraction_supported = "na"
+            elif h.gallery_dl_tag_options:
+                tag_extraction_supported = "yes"
+            else:
+                tag_extraction_supported = "no"
+
+        config_needed = info.get("config", "none")
+
+        out.append(
+            SupportedSiteOut(
+                name=h.name,
+                url=info.get("url", ""),
+                auth_required=auth,
+                notes=info.get("notes", ""),
+                download_supported=download_supported,
+                tag_extraction_supported=tag_extraction_supported,
+                config_needed=config_needed,
+            )
+        )
+    out.sort(key=lambda x: x.name.lower())
+    return out
 
 
 @router.get("/settings/category-mappings")

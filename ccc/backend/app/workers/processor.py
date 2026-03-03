@@ -184,7 +184,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
         szuru_token = None
         szuru_url = None
         if job.szuru_user:
-            result = await db.execute(select(User).where(User.szuru_username == job.szuru_user))
+            result = await db.execute(select(User).where(User.szuru_username == job.szuru_user).limit(1))
             user = result.scalar_one_or_none()
             if user:
                 user_config_obj = await load_user_config(db, str(user.id))
@@ -506,12 +506,14 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
     tag_to_category = tag_categories.resolve_categories(
         all_tags, metadata=metadata, job_url=job.url, user_category_mappings=user_category_mappings
     )
+    mappings = user_category_mappings or {}
     for t in wd14_character_tags:
-        tag_to_category[t] = "character"
+        tag_to_category[t] = mappings.get("character", "character")
     for tag in all_tags:
         tag_lower = tag.strip().lower()
         if tag_lower in client_tag_categories:
-            tag_to_category[tag] = client_tag_categories[tag_lower]
+            slot = client_tag_categories[tag_lower]
+            tag_to_category[tag] = mappings.get(slot, slot)
 
     # Ensure all tags exist in Szurubooru with correct categories (concurrent)
     tags_with_categories = [

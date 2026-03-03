@@ -106,6 +106,7 @@ export interface JobsResponse {
   results: JobSummary[];
   total: number;
   offset?: number;
+  szuru_config_required?: boolean;
   limit?: number;
 }
 
@@ -158,6 +159,7 @@ export interface StatsResponse {
   total_jobs?: number;
   average_job_duration_seconds?: number | null;
   jobs_last_24h?: number;
+  szuru_config_required?: boolean;
 }
 
 export interface ConfigResponse {
@@ -217,7 +219,11 @@ export async function fetchJobs({
 
 export async function fetchJob(id: string): Promise<Job> {
   const res = await apiFetch(`${BASE}/jobs/${id}`, { headers: headers() });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = body?.detail;
+    throw new Error(typeof detail === "string" ? detail : `HTTP ${res.status}`);
+  }
   return parseJson<Job>(res);
 }
 
@@ -521,6 +527,22 @@ export async function fetchSupportedSites(): Promise<SiteInfo[]> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson<SiteInfo[]>(res);
+}
+
+export interface SupportedSite {
+  name: string;
+  url: string;
+  auth_required: boolean;
+  notes: string;
+  download_supported: "yes" | "no" | "na";
+  tag_extraction_supported: "yes" | "no" | "na";
+  config_needed: "required" | "optional" | "none";
+}
+
+export async function fetchSupportedSitesList(): Promise<SupportedSite[]> {
+  const res = await apiFetch(`${BASE}/settings/supported-sites`, { headers: headers() });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseJson<SupportedSite[]>(res);
 }
 
 // ============================================================================
