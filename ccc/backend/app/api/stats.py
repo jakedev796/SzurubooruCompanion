@@ -22,6 +22,15 @@ async def get_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """Return aggregate job statistics for the current authenticated user."""
+    if not current_user.szuru_username:
+        return {
+            "total_jobs": 0,
+            "by_status": {s.value: 0 for s in JobStatus},
+            "daily_uploads": [],
+            "average_job_duration_seconds": None,
+            "jobs_last_24h": 0,
+            "szuru_config_required": True,
+        }
 
     def _apply_user_filter(q):
         if current_user.szuru_username:

@@ -347,6 +347,15 @@ async def list_jobs(
         )
 
     try:
+        if not current_user.szuru_username:
+            return {
+                "results": [],
+                "total": 0,
+                "offset": offset,
+                "limit": limit,
+                "szuru_config_required": True,
+            }
+
         query = select(Job).options(
             load_only(
                 Job.id,
@@ -448,18 +457,22 @@ async def get_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    # Enforce per-user scoping: users should only see their own jobs
-    if current_user.szuru_username and job.szuru_user != current_user.szuru_username:
-        # Hide existence of other users' jobs
+    if not current_user.szuru_username:
+        raise HTTPException(
+            status_code=403,
+            detail="Configure your Szurubooru connection in Settings to view jobs.",
+        )
+    if job.szuru_user != current_user.szuru_username:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    # Look up dashboard username for this job's szuru_user
+    # Look up dashboard username for this job's szuru_user (szuru_username not unique; take first)
     dashboard_username = None
     if job.szuru_user:
         user_result = await db.execute(
-            select(User.username).where(User.szuru_username == job.szuru_user)
+            select(User.username).where(User.szuru_username == job.szuru_user).limit(1)
         )
-        dashboard_username = user_result.scalar_one_or_none()
+        row = user_result.first()
+        dashboard_username = row[0] if row else None
 
     return _job_to_out(job, dashboard_username)
 

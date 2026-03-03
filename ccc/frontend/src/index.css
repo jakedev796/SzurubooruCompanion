@@ -1107,6 +1107,36 @@ form input:focus {
   padding: 1.5rem;
 }
 
+/* Floating action button */
+.fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(196, 30, 58, 0.4);
+  transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+  z-index: 100;
+}
+
+.fab:hover {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(196, 30, 58, 0.5);
+}
+
+.fab:active {
+  transform: scale(0.98);
+}
+
 /* ============================================================================
    Toast Notifications
    ============================================================================ */

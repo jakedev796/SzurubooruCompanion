@@ -93,7 +93,7 @@ def parse_initial_tags(
 
 
 def _parse_metadata_tag_value(raw: object) -> List[str]:
-    """Parse a single metadata tag value (list, dict-with-name, or string) into tag names."""
+    """Parse a single metadata tag value (list, dict-with-name, dict-of-lists, or string) into tag names."""
     out: List[str] = []
     if isinstance(raw, list):
         for item in raw:
@@ -101,6 +101,10 @@ def _parse_metadata_tag_value(raw: object) -> List[str]:
                 out.append(item)
             elif isinstance(item, dict) and "name" in item:
                 out.append(item["name"])
+    elif isinstance(raw, dict):
+        # e621 API returns tags as {category: [names]}; flatten all category lists
+        for val in raw.values():
+            out.extend(_parse_metadata_tag_value(val))
     elif isinstance(raw, str):
         out.extend(t for t in re.split(r"[,\s]+", raw) if t.strip())
     return out

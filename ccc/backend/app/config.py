@@ -7,7 +7,6 @@ is stored in the database and loaded via app.services.config.
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -44,9 +43,6 @@ class Settings:
     # worker_concurrency requires a restart (workers are spawned at startup), so it lives in ENV.
     worker_concurrency: int = int(os.getenv("WORKER_CONCURRENCY", "1"))
     job_data_dir: str = os.getenv("JOB_DATA_DIR", "/data/jobs")
-
-    # --- Gallery-DL ---
-    gallery_dl_config_file: Optional[str] = os.getenv("GALLERY_DL_CONFIG_FILE")
 
     # --- Server ---
     host: str = os.getenv("HOST", "0.0.0.0")

@@ -26,6 +26,7 @@ import {
   type Job,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
+import SzuruConfigRequired from "../components/SzuruConfigRequired";
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
   pending: <Clock size={12} />,
@@ -192,7 +193,11 @@ export default function JobDetail() {
     }
   }
 
-  if (error) return <p style={{ color: "var(--red)" }}>Error: {error}</p>;
+  if (error) {
+    if (error.includes("Configure") && error.includes("Szurubooru"))
+      return <SzuruConfigRequired />;
+    return <p style={{ color: "var(--red)" }}>Error: {error}</p>;
+  }
   if (!job) return <p>Loading...</p>;
 
   const sources = getJobSources(job);

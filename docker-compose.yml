@@ -3,7 +3,7 @@
 # Use: docker compose up -d
 # For local development use: docker compose -f docker-compose.dev.yml up -d
 #
-# Volume targets: /data (DB, jobs, WD14 cache), /config (gallery-dl config).
+# Volume targets: /data (DB, jobs, WD14 cache), /config (optional; gallery-dl is configured via code).
 
 services:
   ccc:

@@ -1,4 +1,4 @@
-"""Site handler registry. Maps URLs to handlers."""
+"""Site handler registry. Builds handlers from site_registry + overrides."""
 
 from __future__ import annotations
 
@@ -6,43 +6,78 @@ import logging
 from typing import Dict, List, Optional, Type
 
 from app.config import Settings, get_settings
-from app.sites.base import SiteHandler
+from app.sites.base import CredentialSpec, SiteHandler
+from app.sites.site_registry import get_auth_site_defs, get_no_auth_site_defs
+from app.sites.overrides import get_override
 
 logger = logging.getLogger(__name__)
 
-# List of handler classes (not instances)
 _HANDLER_CLASSES: List[Type[SiteHandler]] = []
 _initialized = False
 
 
+def _make_handler_class(defn: dict) -> Type[SiteHandler]:
+    """Build a SiteHandler class from a registry definition."""
+    sid = defn["id"]
+    extractor = defn["extractor"]
+    domains = defn["domains"]
+    cred_names = defn["credentials"]
+    tags_value = defn.get("tags_value")
+    override_key = defn.get("override_key")
+    uses_resolve_urls = defn.get("uses_resolve_urls", False)
+    uses_direct_download = defn.get("uses_direct_download", False)
+    retry_on_empty = defn.get("retry_on_empty", False)
+    supports_browse = defn.get("supports_browse", False)
+
+    credentials = [CredentialSpec(name) for name in cred_names]
+    gallery_dl_tag_options = [("tags", tags_value)] if tags_value else []
+
+    def _matches_url(self, url: str) -> bool:
+        return any(d in url.lower() for d in domains)
+
+    attrs = {
+        "name": sid,
+        "gallery_dl_extractor": extractor,
+        "credentials": credentials,
+        "gallery_dl_tag_options": gallery_dl_tag_options,
+        "matches_url": _matches_url,
+        "uses_resolve_urls": property(lambda self: uses_resolve_urls),
+        "uses_direct_download": property(lambda self: uses_direct_download),
+        "retry_on_empty": property(lambda self: retry_on_empty),
+        "supports_browse": property(lambda self: supports_browse),
+    }
+
+    base_class: Type[SiteHandler] = type(
+        f"RegistryHandler_{sid}",
+        (SiteHandler,),
+        attrs,
+    )
+
+    override_cls = get_override(override_key)
+    if override_cls:
+        final_class = type(
+            f"Handler_{sid}",
+            (override_cls, base_class),
+            {},
+        )
+    else:
+        final_class = base_class
+
+    final_class.__name__ = f"Handler_{sid.replace('-', '_')}"
+    return final_class
+
+
 def _init_handler_classes() -> None:
-    """Import all site handler classes. Called once."""
+    """Build handler classes from registry. Called once."""
     global _HANDLER_CLASSES, _initialized
     if _initialized:
         return
 
-    from app.sites.sankaku import SankakuHandler
-    from app.sites.twitter import TwitterHandler
-    from app.sites.misskey import MisskeyHandler
-    from app.sites.rule34 import Rule34Handler
-    from app.sites.danbooru import DanbooruHandler
-    from app.sites.gelbooru import GelbooruHandler
-    from app.sites.yandere import YandereHandler
-    from app.sites.reddit import RedditHandler
-    from app.sites.rule34vault import Rule34VaultHandler
-    from app.sites.e621 import E621Handler
+    auth_defs = get_auth_site_defs()
+    no_auth_defs = get_no_auth_site_defs()
 
     _HANDLER_CLASSES = [
-        SankakuHandler,
-        TwitterHandler,
-        MisskeyHandler,
-        Rule34Handler,
-        Rule34VaultHandler,
-        DanbooruHandler,
-        GelbooruHandler,
-        YandereHandler,
-        RedditHandler,
-        E621Handler,
+        _make_handler_class(d) for d in auth_defs + no_auth_defs
     ]
     _initialized = True
     logger.debug("Registered %d site handler classes", len(_HANDLER_CLASSES))
@@ -61,7 +96,6 @@ def get_handler(url: str, user_config: Optional[Dict[str, Dict[str, str]]] = Non
     _init_handler_classes()
 
     for handler_cls in _HANDLER_CLASSES:
-        # Create instance with settings and user_config
         handler = handler_cls(settings, user_config)
         if handler.matches_url(url):
             return handler

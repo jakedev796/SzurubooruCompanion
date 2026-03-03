@@ -184,7 +184,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
         szuru_token = None
         szuru_url = None
         if job.szuru_user:
-            result = await db.execute(select(User).where(User.szuru_username == job.szuru_user))
+            result = await db.execute(select(User).where(User.szuru_username == job.szuru_user).limit(1))
             user = result.scalar_one_or_none()
             if user:
                 user_config_obj = await load_user_config(db, str(user.id))

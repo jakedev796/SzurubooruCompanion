@@ -51,9 +51,6 @@ COPY ccc/backend/app/ ./app/
 # Frontend static files
 COPY --from=frontend-build /build/dist /app/frontend
 
-# Default gallery-dl config (copied to /config on first run if missing)
-COPY config.json /defaults/config.json
-
 # Data directories
 RUN mkdir -p /data/jobs /data/postgres /data/wd14-models /config /run/postgresql \
  && chown -R postgres:postgres /data/postgres /run/postgresql
@@ -69,8 +66,7 @@ ENV PYTHONUNBUFFERED=1 \
     REDIS_URL=redis://localhost:6379/0 \
     STATIC_FILES_DIR=/app/frontend \
     JOB_DATA_DIR=/data/jobs \
-    HF_HOME=/data/wd14-models \
-    GALLERY_DL_CONFIG_FILE=/config/config.json
+    HF_HOME=/data/wd14-models
 
 EXPOSE 21425
 

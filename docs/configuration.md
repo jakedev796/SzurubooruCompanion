@@ -101,9 +101,10 @@ If the onboarding wizard doesn't appear or you need to reconfigure after skippin
 - **Production:** [ccc/backend/.env.example](../ccc/backend/.env.example)
 - **Development:** [ccc/backend/.env.dev.example](../ccc/backend/.env.dev.example)
 
+## Gallery-dl and tag extraction
+
+Gallery-dl is configured entirely from code; no config file is used. Per-user site credentials (Twitter, Sankaku, Rule34, etc.) are stored encrypted in the database and passed to gallery-dl via `-o` options at run time. Handlers (explicit and no-auth) supply tag options (e.g. `tags=true`, `tags=extended`) so gallery-dl returns categorized tags for Szurubooru. No-auth sites that support tags are listed in `site_registry.NO_AUTH_TAG_OPTIONS`.
+
 ## Site-Specific Configuration
 
-Some sites require cookies or special handling. See [Supported Sites](sites.md) for:
-- Confirmed working sites
-- Cookie/authentication setup
-- Special cases (Moeview, 4chan, etc.)
+Some sites require cookies or special handling. See [Supported Sites](sites.md) for the full list (dashboard), cookie setup, and special cases (Moeview, 4chan).

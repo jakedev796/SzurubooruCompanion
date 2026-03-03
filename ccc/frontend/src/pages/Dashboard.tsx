@@ -35,6 +35,8 @@ import {
   type StatsResponse,
 } from "../api";
 import { useJobUpdates } from "../hooks/useJobUpdates";
+import { JOB_CREATED_EVENT } from "../components/AddUrlFab";
+import SzuruConfigRequired from "../components/SzuruConfigRequired";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -119,6 +121,15 @@ export default function Dashboard() {
         }),
     ]).then(() => {});
   }, [navigate]);
+
+  useEffect(() => {
+    const refetch = () => {
+      fetchStats().then(setStats).catch(() => {});
+      fetchJobs({ offset: 0, limit: ACTIVITY_LIMIT }).then(setRecentJobs).catch(() => {});
+    };
+    window.addEventListener(JOB_CREATED_EVENT, refetch);
+    return () => window.removeEventListener(JOB_CREATED_EVENT, refetch);
+  }, []);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = String(payload.id ?? payload.job_id ?? "");
@@ -338,6 +349,7 @@ export default function Dashboard() {
 
   if (error) return <p style={{ color: "var(--red)" }}>Error: {error}</p>;
   if (!stats) return <p>Loading...</p>;
+  if (stats.szuru_config_required) return <SzuruConfigRequired />;
 
   const { by_status, daily_uploads } = stats;
 

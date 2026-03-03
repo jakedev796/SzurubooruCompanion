@@ -190,7 +190,7 @@ async def _run_gallery_dl_browse(
     Run gallery-dl --dump-json --no-download on a search URL.
     Returns raw metadata dicts from gallery-dl output.
     """
-    opts = handler.gallery_dl_options()
+    opts = handler.gallery_dl_options(search_url)
     cmd = [
         "gallery-dl",
         "--dump-json",

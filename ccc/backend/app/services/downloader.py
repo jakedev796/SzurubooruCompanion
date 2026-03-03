@@ -8,15 +8,15 @@ import asyncio
 import json
 import logging
 import os
-import re
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 
 from app.config import get_settings
+from app.sites.registry import get_handler
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -58,35 +58,6 @@ class ExtractedMedia:
         if self.source_url and self.source_url != self.url:
             return self.source_url
         return self.url
-
-
-# ---------------------------------------------------------------------------
-# URL type detection
-# ---------------------------------------------------------------------------
-
-
-def _is_twitter_url(url: str) -> bool:
-    """True if URL is from Twitter/X."""
-    lower = url.lower()
-    return "twitter.com" in lower or "x.com" in lower
-
-
-def _is_misskey_url(url: str) -> bool:
-    """True if URL is from a Misskey instance."""
-    lower = url.lower()
-    # Common Misskey instances
-    misskey_domains = [
-        "misskey.io", "misskey.art", "misskey.net", "misskey.love", "misskey.jp",
-        "misskey.design", "misskey.xyz", "mi.0px.io", "misskey.pizza"
-    ]
-    return any(domain in lower for domain in misskey_domains)
-
-
-def _needs_resolve_urls(url: str) -> bool:
-    """True if URL needs --resolve-urls to get direct media URLs. Sankaku uses generic --dump-json so we get tags."""
-    if _is_sankaku_url(url):
-        return False
-    return _is_twitter_url(url) or _is_misskey_url(url)
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +167,8 @@ async def download_url(
         gallery_dl_timeout: gallery-dl subprocess timeout in seconds.
         ytdlp_timeout: yt-dlp subprocess timeout in seconds.
     """
-    url = normalize_sankaku_url(url)
+    handler = get_handler(url, user_config)
+    url = handler.normalize_url(url) if handler else url
     os.makedirs(dest_dir, exist_ok=True)
 
     result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout)
@@ -205,8 +177,8 @@ async def download_url(
             result.source_url = source_url
         return result
 
-    if _is_rule34_url(url):
-        logger.info("gallery-dl produced no files for rule34 URL, retrying once: %s", url)
+    if handler and handler.retry_on_empty:
+        logger.info("gallery-dl produced no files for %s URL, retrying once: %s", handler.name, url)
         await asyncio.sleep(2)
         result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout)
         if result.files:
@@ -361,13 +333,10 @@ async def extract_media_urls(
     For single-file sources, returns a list with one ExtractedMedia.
     For multi-file sources (galleries), returns one ExtractedMedia per file.
     """
-    url = normalize_sankaku_url(url)
-    if _is_sankaku_url(url):
-        return await _extract_generic_media(url, user_config, gallery_dl_timeout)
-    # Twitter/Misskey: use --resolve-urls for direct media URLs
-    if _needs_resolve_urls(url):
+    handler = get_handler(url, user_config)
+    url = handler.normalize_url(url) if handler else url
+    if handler and handler.uses_resolve_urls:
         return await _extract_twitter_misskey_media(url, user_config, gallery_dl_timeout)
-    # All other sites: --dump-json for metadata
     return await _extract_generic_media(url, user_config, gallery_dl_timeout)
 
 
@@ -528,7 +497,17 @@ async def _extract_generic_media(
                 seen_ids.add(post_id)
 
             # Extract the direct media URL from gallery-dl's JSON
-            media_url = direct_url or item.get("url") or item.get("file_url") or item.get("sample_url") or item.get("download_url") or url
+            # e621/danbooru-style APIs nest file URL under "file"
+            file_obj = item.get("file") or {}
+            media_url = (
+                direct_url
+                or item.get("url")
+                or item.get("file_url")
+                or (file_obj.get("url") if isinstance(file_obj, dict) else None)
+                or item.get("sample_url")
+                or item.get("download_url")
+                or url
+            )
             extension = item.get("extension", "") or (item.get("file_ext") or "")
             base_filename = item.get("filename") or item.get("name") or _extract_filename_from_url(media_url)
 
@@ -615,141 +594,42 @@ def _extension_from_media_url(url: str) -> str:
 # gallery-dl
 # ---------------------------------------------------------------------------
 
-def normalize_sankaku_url(url: str) -> str:
-    """
-    Normalize Sankaku URLs for gallery-dl compatibility.
-    
-    Normalizes apex domain (sankakucomplex.com) to www.sankakucomplex.com.
-    Does NOT normalize chan.sankakucomplex.com as it uses different post ID format
-    (numeric IDs vs hash-like IDs) and gallery-dl handles it directly.
-    """
-    if not url or not url.strip():
-        return url
-    parsed = urlparse(url.strip())
-    netloc_lower = parsed.netloc.lower()
-    # Don't normalize chan.sankakucomplex.com - it uses different post ID format
-    if netloc_lower == "chan.sankakucomplex.com":
-        return url
-    if netloc_lower == "sankakucomplex.com":
-        return parsed._replace(netloc="www.sankakucomplex.com").geturl()
-    return url
-
-
-def _is_sankaku_url(url: str) -> bool:
-    """True if URL is a Sankaku image board (sankaku.app or sankakucomplex.com)."""
-    lower = url.lower()
-    return "sankaku.app" in lower or "sankakucomplex.com" in lower
-
-
-def _is_rule34_url(url: str) -> bool:
-    """True if URL is rule34.xxx."""
-    return "rule34.xxx" in url.lower()
-
-
-def _is_danbooru_url(url: str) -> bool:
-    """True if URL is a Danbooru instance (danbooru.donmai.us, safebooru.org, etc.)."""
-    lower = url.lower()
-    return "danbooru.donmai.us" in lower or "safebooru.org" in lower
-
-
-def _is_gelbooru_url(url: str) -> bool:
-    """True if URL is Gelbooru (rule34.xxx and others have their own injectors)."""
-    return "gelbooru.com" in url.lower()
-
-
-def _is_reddit_url(url: str) -> bool:
-    """True if URL is reddit.com."""
-    return "reddit.com" in url.lower()
-
-
-# Extended/categorized tags: (url_matcher, extractor_name, [(option_key, option_value), ...]).
-# Sankaku: do NOT use tags=extended (scrapes chan.sankakucomplex.com). We force tags=standard so
-# gallery-dl uses API /posts/{id}/tags and fills tags_artist, tags_character, tags_copyright, etc.
-# Explicit option overrides any gallery-dl config file that might set tags=extended.
-def _gallery_dl_extended_tag_options() -> List[Tuple[Callable[[str], bool], str, List[Tuple[str, str]]]]:
-    return [
-        (lambda u: "yande.re" in u, "yandere", [("tags", "true")]),
-        (_is_sankaku_url, "sankaku", [("tags", "standard")]),
-    ]
-
-
-# One entry per site: (url_matcher, extractor_name, [option_keys, ...]).
-# Note: Credentials are now loaded from user_config (database) only, not from ENV.
-# This list is used to determine which sites need credential injection and which keys to look for.
-def _gallery_dl_credential_keys() -> List[Tuple[Callable[[str], bool], str, List[str]]]:
-    return [
-        (_is_sankaku_url, "sankaku", ["username", "password"]),
-        (_is_rule34_url, "rule34", ["api-key", "user-id"]),
-        (_is_misskey_url, "misskey", ["username", "password"]),
-        (_is_danbooru_url, "danbooru", ["api-key", "user-id"]),
-        (_is_gelbooru_url, "gelbooru", ["api-key", "user-id"]),
-        (_is_reddit_url, "reddit", ["client-id", "client-secret", "username"]),
-        # Twitter only needs cookies, not username/password
-    ]
-
 
 def _gallery_dl_options(url: str, user_config: Optional[Dict] = None) -> Tuple[List[str], List[Path]]:
     """
-    Build optional gallery-dl args and any temp files to clean up after the subprocess.
-    Credentials are loaded from user_config (database) only via _gallery_dl_credential_keys.
-    Twitter cookies are handled separately.
-    
-    Args:
-        url: The URL to process
-        user_config: Per-user credentials from database (optional)
-                    Format: {site_name: {credential_key: value}}
+    Build gallery-dl args from handlers only: tag options and credentials via -o flags from DB.
+    Twitter cookies are written to a temp file and passed as path. No config file; all options from code.
     """
     opts: List[str] = []
     cleanup_paths: List[Path] = []
-    if settings.gallery_dl_config_file:
-        opts.extend(["-c", settings.gallery_dl_config_file])
 
-    for matcher, extractor_name, options in _gallery_dl_extended_tag_options():
-        if matcher(url):
-            for opt_key, opt_value in options:
-                opts.extend(["-o", f"extractor.{extractor_name}.{opt_key}={opt_value}"])
-            break
-
-    for matcher, extractor_name, opt_keys in _gallery_dl_credential_keys():
-        if not matcher(url):
-            continue
-        added = 0
-        if user_config:
-            site_creds = user_config.get(extractor_name, {})
-            for opt_key in opt_keys:
-                # Get credentials from user_config (from database) only
-                value = site_creds.get(opt_key)  # Keys match exactly (e.g., "api-key", "user-id")
-                
-                if value:
-                    opts.extend(["-o", f"extractor.{extractor_name}.{opt_key}={value}"])
-                    added += 1
-        if extractor_name == "rule34" and added:
+    handler = get_handler(url, user_config)
+    if handler:
+        opts.extend(handler.gallery_dl_options(url))
+        if handler.name == "rule34" and (user_config or {}).get("rule34"):
             logger.info("Rule34 API credentials injected for request")
-
-    if _is_twitter_url(url):
-        # Get cookies from user_config (from database) only
-        cookies_content = None
-        if user_config:
-            site_creds = user_config.get("twitter", {})
-            cookies_content = site_creds.get("cookies")
-        
-        cookies_content = (cookies_content or "").strip()
-        if cookies_content:
-            try:
-                fd = tempfile.NamedTemporaryFile(
-                    mode="w",
-                    delete=False,
-                    suffix=".txt",
-                    prefix="ccc_twitter_cookies_",
-                    encoding="utf-8",
-                )
-                fd.write(cookies_content)
-                fd.close()
-                path = Path(fd.name)
-                cleanup_paths.append(path)
-                opts.extend(["-o", f"extractor.twitter.cookies={path}"])
-            except Exception as e:
-                logger.warning("Failed to write Twitter cookies temp file: %s", e)
+        if handler.name == "twitter":
+            cookies_content = None
+            if user_config:
+                site_creds = user_config.get("twitter", {})
+                cookies_content = site_creds.get("cookies")
+            cookies_content = (cookies_content or "").strip()
+            if cookies_content:
+                try:
+                    fd = tempfile.NamedTemporaryFile(
+                        mode="w",
+                        delete=False,
+                        suffix=".txt",
+                        prefix="ccc_twitter_cookies_",
+                        encoding="utf-8",
+                    )
+                    fd.write(cookies_content)
+                    fd.close()
+                    path = Path(fd.name)
+                    cleanup_paths.append(path)
+                    opts.extend(["-o", f"extractor.twitter.cookies={path}"])
+                except Exception as e:
+                    logger.warning("Failed to write Twitter cookies temp file: %s", e)
     return (opts, cleanup_paths)
 
 
