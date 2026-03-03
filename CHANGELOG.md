@@ -4,6 +4,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ## [Unreleased]
 
+### CCC - Frontend
+
+### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.3.0] - 2026-03-03
+
 ### New Major Feature: Onboarding Wizard for Frontend Dashboard
 - Guided install wizard that walks you through each step to set up critical settings. More details below.
 
