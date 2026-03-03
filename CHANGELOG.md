@@ -5,46 +5,47 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### New Major Feature: Onboarding Wizard for Frontend Dashboard
-- Guided install wizard that takes you through each step to setup critical settings. More details below.
+- Guided install wizard that walks you through each step to set up critical settings. More details below.
 
 ### Breaking Change: Complete removal of config.json support in backend/downloader
 - All gallery-dl and yt-dlp configuration is now handled in code and/or via per-user credentials stored in the database.
-- Hardcoded config.json is no longer loaded or referenced anywhere; ALL credential and tag option data flows through API and dynamic handler logic instead.
-- **Action required:** Delete any old `config.json` from your CCC backend/data/config directory to avoid confusion! Leaving this file may cause silent misconfiguration, as it will be ignored by all current versions.
-- Updates affect both credential management and site tag settings (especially for sites previously customized via config.json).
+- `config.json` is no longer loaded or referenced anywhere; all credential and tag option data flows through the API and dynamic handler logic instead.
+- **Action required:** Delete any old `config.json` from your CCC `backend/data/config` directory to avoid confusion. Leaving this file may cause silent misconfiguration, as it is ignored by all current versions.
+- Updates affect both credential management and site tag settings (especially for sites previously customized via `config.json`).
 
 ### CCC - Frontend
-- New button in dashboard to add a job directly from the dashboard
-- When szuru_username not configured: show "Configure Szurubooru in Settings" instead of all users' jobs/stats
-- Added onboarding wizard with guided setup for first-time users (admin account, Szurubooru connection, category mapping, site credentials, next steps)
-- New users created by an admin also see a personal config wizard on first login
-- Settings page now fetches supported sites from backend instead of hardcoded list
-- Add Supported Sites tab in Settings with table of integrated sites and auth/notes
+- Add a dashboard button to create a job directly from the dashboard.
+- When `szuru_username` is not configured, show "Configure Szurubooru in Settings" instead of all users' jobs/stats.
+- Add onboarding wizard with guided setup for first-time users (admin account, Szurubooru connection, category mapping, site credentials, next steps).
+- New users created by an admin also see a personal config wizard on first login.
+- Settings page now fetches supported sites from the backend instead of a hardcoded list.
+- Add a "Supported Sites" tab in Settings with a table of integrated sites and auth/notes.
 
 ### CCC - Backend
-- Gelbooru: mark config as required (API requires api-key and user-id)
-- Consolidate sankaku/sankakucomplex: single sankaku handler covers both (login required); remove redundant sankakucomplex no-auth entry
-- Fix e621 tag extraction: use file.url for direct media URL and support tags-as-dict in metadata parser
-- Jobs/stats: return empty + szuru_config_required when user has no szuru_username (no longer show all users' data)
-- Fix MultipleResultsFound when multiple users share same szuru_username (get_job, processor)
-- e621: add optional credentials (username, password/API key) for rate limits
-- Supported Sites endpoint: add config_needed (required/optional/none); consolidate metadata in site_info.py
-- Added onboarding wizard backend: setup status, admin creation, and onboarding status endpoints
-- Added supported sites endpoint for dynamic site credential forms
-- Removed ENV-based admin account bootstrap (ADMIN_USER/ADMIN_PASSWORD no longer needed)
-- Add GET /settings/supported-sites (all integrated sites with URL/auth/notes)
-- Integrate all gallery-dl no-auth sites via dynamic handlers (no credentials required)
-- Downloader uses handler.gallery_dl_options() for tag options and credentials (no hardcoded site lists)
-- Remove gallery-dl config.json; all options (tags, credentials, Misskey root) supplied via handlers and -o flags only
-- No-auth handlers: add tag options for booru-style extractors (konachan, xbooru, etc.) for categorized tag extraction
-- Fix safebooru.org: route to no-auth handler (gelbooru_v02 extractor) instead of DanbooruHandler; add safebooru tag options
-- Bulk tag options: add furry34; remove sizebooru, twibooru, paheal, soybooru (gallery-dl does not support tags config for these)
-- Refactor downloader: delegate URL normalization, resolve-urls, retry, and Twitter cookies to handlers; remove dead _is_* helpers
-- Unified site registry: all sites (auth + no-auth) in site_registry; custom logic in overrides/ (sankaku, twitter, misskey, reddit, booru); remove per-site handler files
-- Fix tag category mapping: apply user category mappings to client-submitted category prefixes (artist:, etc.) and WD14 character tags
-- Rule34: retry gallery-dl once when it returns 0 files (intermittent failures observed with same URL)
-
-### Mobile App
+- Add onboarding support: setup status, admin creation, and onboarding status endpoints.
+- Remove ENV-based admin bootstrap (`ADMIN_USER`/`ADMIN_PASSWORD` no longer needed).
+- Add supported sites endpoints for dynamic site credential forms:
+  - `GET /settings/supported-sites` (all confirmed working sites with URL/auth/notes)
+  - Supported Sites endpoint now includes `config_needed` (required/optional/none); consolidate metadata in `site_info.py`
+- Downloader now uses `handler.gallery_dl_options()` for tag options and credentials (no hardcoded site lists).
+- Remove gallery-dl `config.json`; all options (tags, credentials, Misskey root) are supplied via handlers and `-o` flags only.
+- Integrate all gallery-dl no-auth sites via dynamic handlers (no credentials required).
+- No-auth handlers: add tag options for booru-style extractors (konachan, xbooru, etc.) for categorized tag extraction.
+- Fix `safebooru.org`: route to no-auth handler (`gelbooru_v02` extractor) instead of `DanbooruHandler`; add Safebooru tag options.
+- Bulk tag options: add furry34; remove sizebooru, twibooru, paheal, soybooru (gallery-dl does not support tags config for these).
+- Refactor downloader: delegate URL normalization, resolve-urls, retry, and Twitter cookies to handlers; remove dead `_is_*` helpers.
+- Unified site registry: all sites (auth + no-auth) live in `site_registry`; custom logic in `overrides/` (sankaku, twitter, misskey, reddit, booru); remove per-site handler files.
+- Consolidate Sankaku: a single Sankaku handler covers both `sankaku` and `sankakucomplex` (login required); remove redundant no-auth `sankakucomplex` entry.
+- Gelbooru: mark config as required (API requires `api-key` and `user-id`).
+- e621:
+  - Fix tag extraction: use `file.url` for direct media URL and support tags-as-dict in the metadata parser.
+  - Add optional credentials (username, password/API key) to improve rate limits.
+- Jobs/stats:
+  - Return empty + `szuru_config_required` when the user has no `szuru_username` (no longer show all users' data).
+  - Fix `MultipleResultsFound` when multiple users share the same `szuru_username` (`get_job`, processor).
+- Fix tag category mapping: apply user category mappings to client-submitted category prefixes (artist:, etc.) and WD14 character tags.
+- Rule34: retry gallery-dl once when it returns 0 files (intermittent failures observed with the same URL).
+- Unraid template: align with onboarding wizard.
 
 ### Browser Extension
 - Rule34: when sending from inside a post, submit post URL instead of direct image URL so backend fetches tags
