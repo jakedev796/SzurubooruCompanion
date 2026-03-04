@@ -155,6 +155,9 @@ class User(Base):
     szuru_token_encrypted = Column(Text, nullable=True)  # Fernet encrypted
     szuru_category_mappings = Column(JSONB, nullable=False, default=dict)  # Per-user category mappings
 
+    # Proxy configuration (list of proxy URLs)
+    proxy_urls = Column(JSONB, nullable=False, default=list)
+
     # Account status
     is_active = Column(Integer, nullable=False, default=1)
 

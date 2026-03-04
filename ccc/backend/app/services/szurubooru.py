@@ -39,13 +39,22 @@ _current_szuru_token: contextvars.ContextVar[Optional[str]] = contextvars.Contex
 _current_szuru_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "szuru_url", default=None
 )
+_current_proxy_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "proxy_url", default=None
+)
 
 
-def set_current_user(username: Optional[str], token: Optional[str] = None, szuru_url: Optional[str] = None) -> None:
+def set_current_user(
+    username: Optional[str],
+    token: Optional[str] = None,
+    szuru_url: Optional[str] = None,
+    proxy_url: Optional[str] = None,
+) -> None:
     """Set the Szurubooru user context for the current async task."""
     _current_user.set(username)
     _current_szuru_token.set(token)
     _current_szuru_url.set(szuru_url)
+    _current_proxy_url.set(proxy_url)
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +139,10 @@ async def _request(
             kwargs["data"] = form_data
         if params is not None:
             kwargs["params"] = params
+
+        proxy = _current_proxy_url.get()
+        if proxy:
+            kwargs["proxy"] = proxy
 
         async with _session.request(method, url, **kwargs) as resp:
             if resp.status == 200:
@@ -447,9 +460,11 @@ async def download_post_content(post_id: int, dest_path: Path) -> Optional[Path]
         await init_session()
     try:
         headers = _auth_headers()
-        async with _session.get(
-            url, headers=headers, timeout=aiohttp.ClientTimeout(total=120)
-        ) as resp:
+        proxy = _current_proxy_url.get()
+        req_kwargs = {"headers": headers, "timeout": aiohttp.ClientTimeout(total=120)}
+        if proxy:
+            req_kwargs["proxy"] = proxy
+        async with _session.get(url, **req_kwargs) as resp:
             if resp.status != 200:
                 logger.warning("Post %d content fetch failed: HTTP %s", post_id, resp.status)
                 return None
@@ -537,7 +552,7 @@ async def search_by_checksum(checksum: str) -> List[dict]:
 # ---------------------------------------------------------------------------
 
 
-async def fetch_tag_categories(szuru_url: str, username: str, token: str) -> dict:
+async def fetch_tag_categories(szuru_url: str, username: str, token: str, proxy_url: Optional[str] = None) -> dict:
     """
     Fetch tag categories from a Szurubooru/Oxibooru instance.
 
@@ -556,7 +571,10 @@ async def fetch_tag_categories(szuru_url: str, username: str, token: str) -> dic
 
     try:
         url = f"{szuru_url}/api/tag-categories"
-        async with _session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+        req_kwargs = {"headers": headers, "timeout": aiohttp.ClientTimeout(total=10)}
+        if proxy_url:
+            req_kwargs["proxy"] = proxy_url
+        async with _session.get(url, **req_kwargs) as resp:
             data = await resp.json()
             if resp.status == 200:
                 return data

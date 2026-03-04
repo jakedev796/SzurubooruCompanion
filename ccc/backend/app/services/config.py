@@ -31,6 +31,7 @@ class UserConfig:
     szuru_username: Optional[str]
     szuru_token: Optional[str]
     site_credentials: Dict[str, Dict[str, str]]  # {site_name: {credential_key: value}}
+    proxy_urls: list  # list of proxy URL strings
 
 
 @dataclass
@@ -142,6 +143,7 @@ async def _load_user_config_from_db(db: AsyncSession, user_id: str) -> Optional[
         szuru_username=user.szuru_username,
         szuru_token=szuru_token,
         site_credentials=site_credentials,
+        proxy_urls=user.proxy_urls or [],
     )
 
 

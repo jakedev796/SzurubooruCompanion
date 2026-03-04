@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -208,8 +209,14 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
             else:
                 logger.warning("%s Job %s: User %s not found in database", tag, job.id, job.szuru_user)
 
+    # Select a proxy from user's configured list (random if multiple)
+    proxy_url = None
+    if user_config_obj and user_config_obj.proxy_urls:
+        proxy_url = random.choice(user_config_obj.proxy_urls)
+        logger.info("%s Job %s: Using proxy %s", tag, job.id, proxy_url)
+
     # Set current user context for Szurubooru API calls (with decrypted credentials and URL)
-    set_current_user(job.szuru_user, szuru_token, szuru_url)
+    set_current_user(job.szuru_user, szuru_token, szuru_url, proxy_url=proxy_url)
 
     # Snapshot retry policy from global config (DB-backed)
     max_retries = _global_config.max_retries
@@ -220,7 +227,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
             return
 
         # ---- Phase 1: Extract media URLs ----
-        extracted_media = await _extract_media(job, job_dir, user_config_dict)
+        extracted_media = await _extract_media(job, job_dir, user_config_dict, proxy_url=proxy_url)
         if extracted_media is None:
             return  # already failed
 
@@ -239,7 +246,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
                 if await _abort_if_paused_or_stopped(job):
                     return
 
-                post_info = await _process_single_media(job, media, media_dir, user_config_dict, user_category_mappings)
+                post_info = await _process_single_media(job, media, media_dir, user_config_dict, user_category_mappings, proxy_url=proxy_url)
                 if post_info:
                     created_posts.append(post_info)
                     all_sources.append(media.source_url)
@@ -296,7 +303,7 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
 
 
 async def _extract_media(
-    job: Job, job_dir: str, user_config: Optional[Dict] = None
+    job: Job, job_dir: str, user_config: Optional[Dict] = None, proxy_url: Optional[str] = None
 ) -> Optional[List[downloader.ExtractedMedia]]:
     """
     Phase 1: Determine the list of media items to process.
@@ -310,7 +317,7 @@ async def _extract_media(
     if job.job_type == JobType.URL:
         logger.info("Job %s: Phase 1 - Extracting media URLs from %s", job.id, job.url)
         gallery_dl_timeout = _global_config.gallery_dl_timeout if _global_config else 120
-        extracted = await downloader.extract_media_urls(job.url, user_config, gallery_dl_timeout)
+        extracted = await downloader.extract_media_urls(job.url, user_config, gallery_dl_timeout, proxy_url=proxy_url)
         logger.info("Job %s: Found %d media file(s)", job.id, len(extracted))
         return extracted
 
@@ -363,6 +370,7 @@ async def _process_single_media(
     media_dir: str,
     user_config: Optional[Dict] = None,
     user_category_mappings: Optional[Dict] = None,
+    proxy_url: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Download, tag, and upload a single media item.
@@ -371,7 +379,7 @@ async def _process_single_media(
     on success, or None on failure.
     """
     # ---- Download ----
-    files, metadata = await _download_media(job, media, media_dir, user_config)
+    files, metadata = await _download_media(job, media, media_dir, user_config, proxy_url=proxy_url)
     if not files:
         logger.warning("Job %s: No files downloaded for %s", job.id, media.filename)
         return None
@@ -398,6 +406,7 @@ async def _download_media(
     media: downloader.ExtractedMedia,
     media_dir: str,
     user_config: Optional[Dict] = None,
+    proxy_url: Optional[str] = None,
 ) -> tuple:
     """Download a single media item. Returns ``(files, metadata)``."""
     if job.job_type != JobType.URL:
@@ -411,19 +420,20 @@ async def _download_media(
     if media.source_url and media.source_url != media.url:
         logger.info("Job %s: Downloading from direct media URL: %s", job.id, media.source_url)
         dl = await downloader.download_direct_media_url(
-            media.source_url, media_dir, filename=media.filename
+            media.source_url, media_dir, filename=media.filename, proxy_url=proxy_url
         )
-        # Fall back to gallery-dl if direct download failed (e.g. hotlink protection)
         if dl.error:
             logger.info("Job %s: Direct download failed (%s), falling back to gallery-dl", job.id, dl.error)
             dl = await downloader.download_url(
                 media.url, media_dir, source_url=media.source_url, user_config=user_config,
                 gallery_dl_timeout=gallery_dl_timeout, ytdlp_timeout=ytdlp_timeout,
+                proxy_url=proxy_url,
             )
     else:
         dl = await downloader.download_url(
             media.url, media_dir, source_url=media.source_url, user_config=user_config,
             gallery_dl_timeout=gallery_dl_timeout, ytdlp_timeout=ytdlp_timeout,
+            proxy_url=proxy_url,
         )
 
     merged_meta = {**(media.metadata or {}), **dl.metadata}

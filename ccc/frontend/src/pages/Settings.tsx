@@ -95,6 +95,7 @@ function ProfileTab() {
   const { showToast } = useToast();
   const [config, setConfig] = useState<UserConfig | null>(null);
   const [form, setForm] = useState({ szuru_url: "", szuru_public_url: "", szuru_username: "", szuru_token: "" });
+  const [proxyInput, setProxyInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<Array<{ name: string; color: string; order: number }> | null>(null);
@@ -115,6 +116,7 @@ function ProfileTab() {
           szuru_username: c.szuru_username || "",
           szuru_token: "",
         });
+        setProxyInput((c.proxy_urls || []).join("\n"));
         setCategoryMappings(mappings.mappings || {});
       })
       .catch((err) => showToast("Failed to load config: " + err.message, "error"))
@@ -124,15 +126,20 @@ function ProfileTab() {
   async function handleSave() {
     setSaving(true);
     try {
+      const proxyUrls = proxyInput
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
       await updateMyConfig({
         szuru_url: form.szuru_url || undefined,
         szuru_public_url: form.szuru_public_url || undefined,
         szuru_username: form.szuru_username || undefined,
         szuru_token: form.szuru_token || undefined,
+        proxy_urls: proxyUrls,
       });
-      // Reload config to get the saved token
       const updatedConfig = await fetchMyConfig();
       setConfig(updatedConfig);
+      setProxyInput((updatedConfig.proxy_urls || []).join("\n"));
       showToast("Profile updated!", "success");
       setForm({ ...form, szuru_token: "" });
     } catch (err: any) {
@@ -271,6 +278,32 @@ function ProfileTab() {
           <button type="button" onClick={handleFetchCategories} disabled={fetchingCategories}>
             {fetchingCategories ? "Fetching..." : "Fetch Tag Categories"}
           </button>
+        </div>
+
+        {/* Proxy Configuration */}
+        <div className="card" style={{ marginTop: "1rem", background: "var(--bg)" }}>
+          <h4 style={{ fontSize: "0.9rem", marginBottom: "0.75rem", color: "var(--text-muted)" }}>
+            Proxy Configuration
+          </h4>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+            Configure proxy servers for all backend operations (gallery-dl, yt-dlp, Szurubooru API calls).
+            Enter one proxy URL per line. When multiple proxies are configured, one is selected at random per job.
+          </p>
+          <div className="settings-form">
+            <div className="form-group">
+              <label>Proxy URLs</label>
+              <textarea
+                value={proxyInput}
+                onChange={(e) => setProxyInput(e.target.value)}
+                placeholder={"socks5://127.0.0.1:1080\nhttp://user:pass@proxy.example.com:8080"}
+                rows={3}
+                style={{ fontFamily: "Monaco, Courier New, monospace", fontSize: "0.8rem" }}
+              />
+              <small style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                Supported formats: http://, https://, socks4://, socks5://. Leave empty to connect directly.
+              </small>
+            </div>
+          </div>
         </div>
 
         {categories && categories.length > 0 && (

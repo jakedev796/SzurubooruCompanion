@@ -663,6 +663,7 @@ export interface UserConfig {
   szuru_username?: string;
   szuru_token?: string;
   site_credentials?: Record<string, Record<string, string>>;
+  proxy_urls?: string[];
 }
 
 export async function fetchMyConfig(): Promise<UserConfig> {

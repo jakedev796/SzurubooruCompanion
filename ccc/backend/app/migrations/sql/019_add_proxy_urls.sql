@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS proxy_urls JSONB NOT NULL DEFAULT '[]'::jsonb;

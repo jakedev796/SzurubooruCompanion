@@ -66,7 +66,7 @@ class ExtractedMedia:
 
 
 async def _resolve_direct_media_urls(
-    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120, proxy_url: Optional[str] = None
 ) -> List[str]:
     """
     Use gallery-dl --resolve-urls to get direct media URLs.
@@ -85,7 +85,7 @@ async def _resolve_direct_media_urls(
         gallery_dl_timeout: Subprocess timeout in seconds
     """
     try:
-        opts, cleanup_paths = _gallery_dl_options(url, user_config)
+        opts, cleanup_paths = _gallery_dl_options(url, user_config, proxy_url=proxy_url)
         cmd = [
             "gallery-dl",
             "--resolve-urls",
@@ -150,6 +150,7 @@ async def download_url(
     user_config: Optional[Dict] = None,
     gallery_dl_timeout: int = 120,
     ytdlp_timeout: int = 300,
+    proxy_url: Optional[str] = None,
 ) -> DownloadResult:
     """
     Download media from *url* into *dest_dir*.
@@ -171,7 +172,7 @@ async def download_url(
     url = handler.normalize_url(url) if handler else url
     os.makedirs(dest_dir, exist_ok=True)
 
-    result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout)
+    result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout, proxy_url=proxy_url)
     if result.files:
         if source_url:
             result.source_url = source_url
@@ -180,20 +181,20 @@ async def download_url(
     if handler and handler.retry_on_empty:
         logger.info("gallery-dl produced no files for %s URL, retrying once: %s", handler.name, url)
         await asyncio.sleep(2)
-        result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout)
+        result = await _try_gallery_dl(url, dest_dir, user_config, gallery_dl_timeout, proxy_url=proxy_url)
         if result.files:
             if source_url:
                 result.source_url = source_url
             return result
 
     logger.info("gallery-dl produced no files for %s – falling back to yt-dlp", url)
-    result = await _try_ytdlp(url, dest_dir, ytdlp_timeout)
+    result = await _try_ytdlp(url, dest_dir, ytdlp_timeout, proxy_url=proxy_url)
     if source_url:
         result.source_url = source_url
     return result
 
 
-async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[str] = None) -> DownloadResult:
+async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[str] = None, proxy_url: Optional[str] = None) -> DownloadResult:
     """
     Download a direct media URL (e.g., pbs.twimg.com/media/xxx.jpg) directly.
 
@@ -217,9 +218,10 @@ async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)
-            ) as resp:
+            req_kwargs = {"headers": headers, "timeout": aiohttp.ClientTimeout(total=60)}
+            if proxy_url:
+                req_kwargs["proxy"] = proxy_url
+            async with session.get(url, **req_kwargs) as resp:
                 if resp.status != 200:
                     result.error = f"HTTP {resp.status}: {await resp.text()}"
                     logger.warning("Direct download failed for %s: %s", url, result.error)
@@ -310,7 +312,7 @@ def _extension_from_content_type(content_type: str) -> str:
 
 
 async def extract_media_urls(
-    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120, proxy_url: Optional[str] = None
 ) -> List[ExtractedMedia]:
     """
     Phase 1: Extract direct media URLs without downloading.
@@ -336,12 +338,12 @@ async def extract_media_urls(
     handler = get_handler(url, user_config)
     url = handler.normalize_url(url) if handler else url
     if handler and handler.uses_resolve_urls:
-        return await _extract_twitter_misskey_media(url, user_config, gallery_dl_timeout)
-    return await _extract_generic_media(url, user_config, gallery_dl_timeout)
+        return await _extract_twitter_misskey_media(url, user_config, gallery_dl_timeout, proxy_url=proxy_url)
+    return await _extract_generic_media(url, user_config, gallery_dl_timeout, proxy_url=proxy_url)
 
 
 async def _extract_twitter_misskey_media(
-    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120, proxy_url: Optional[str] = None
 ) -> List[ExtractedMedia]:
     """
     Extract media info for Twitter/Misskey URLs using --resolve-urls.
@@ -359,7 +361,7 @@ async def _extract_twitter_misskey_media(
     results: List[ExtractedMedia] = []
 
     # Get direct media URLs using --resolve-urls
-    direct_urls = await _resolve_direct_media_urls(url, user_config, gallery_dl_timeout)
+    direct_urls = await _resolve_direct_media_urls(url, user_config, gallery_dl_timeout, proxy_url=proxy_url)
     
     if not direct_urls:
         # Fallback - return the original URL
@@ -397,7 +399,7 @@ async def _extract_twitter_misskey_media(
 
 
 async def _extract_generic_media(
-    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+    url: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120, proxy_url: Optional[str] = None
 ) -> List[ExtractedMedia]:
     """
     Extract media info for generic URLs using --dump-json.
@@ -412,11 +414,11 @@ async def _extract_generic_media(
     results: List[ExtractedMedia] = []
 
     try:
-        opts, cleanup_paths = _gallery_dl_options(url, user_config)
+        opts, cleanup_paths = _gallery_dl_options(url, user_config, proxy_url=proxy_url)
         cmd = [
             "gallery-dl",
             "--dump-json",
-            "--no-download",    # Prevents file downloads during metadata extraction
+            "--no-download",
             *opts,
             url,
         ]
@@ -595,13 +597,16 @@ def _extension_from_media_url(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _gallery_dl_options(url: str, user_config: Optional[Dict] = None) -> Tuple[List[str], List[Path]]:
+def _gallery_dl_options(url: str, user_config: Optional[Dict] = None, proxy_url: Optional[str] = None) -> Tuple[List[str], List[Path]]:
     """
     Build gallery-dl args from handlers only: tag options and credentials via -o flags from DB.
     Twitter cookies are written to a temp file and passed as path. No config file; all options from code.
     """
     opts: List[str] = []
     cleanup_paths: List[Path] = []
+
+    if proxy_url:
+        opts.extend(["--proxy", proxy_url])
 
     handler = get_handler(url, user_config)
     if handler:
@@ -634,11 +639,11 @@ def _gallery_dl_options(url: str, user_config: Optional[Dict] = None) -> Tuple[L
 
 
 async def _try_gallery_dl(
-    url: str, dest_dir: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120
+    url: str, dest_dir: str, user_config: Optional[Dict] = None, gallery_dl_timeout: int = 120, proxy_url: Optional[str] = None
 ) -> DownloadResult:
     result = DownloadResult(source_url=url, used_tool="gallery-dl")
     try:
-        opts, cleanup_paths = _gallery_dl_options(url, user_config)
+        opts, cleanup_paths = _gallery_dl_options(url, user_config, proxy_url=proxy_url)
         cmd = [
             "gallery-dl",
             "--dest", dest_dir,
@@ -716,7 +721,7 @@ async def _try_gallery_dl(
 # yt-dlp
 # ---------------------------------------------------------------------------
 
-async def _try_ytdlp(url: str, dest_dir: str, ytdlp_timeout: int = 300) -> DownloadResult:
+async def _try_ytdlp(url: str, dest_dir: str, ytdlp_timeout: int = 300, proxy_url: Optional[str] = None) -> DownloadResult:
     result = DownloadResult(source_url=url, used_tool="yt-dlp")
     try:
         output_template = os.path.join(dest_dir, "%(title)s.%(ext)s")
@@ -725,8 +730,10 @@ async def _try_ytdlp(url: str, dest_dir: str, ytdlp_timeout: int = 300) -> Downl
             "--no-playlist",
             "-o", output_template,
             "--write-info-json",
-            url,
         ]
+        if proxy_url:
+            cmd.extend(["--proxy", proxy_url])
+        cmd.append(url)
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,

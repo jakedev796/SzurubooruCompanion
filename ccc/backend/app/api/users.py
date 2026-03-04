@@ -54,6 +54,7 @@ class UserConfigRequest(BaseModel):
     szuru_token: Optional[str] = None
     szuru_category_mappings: Optional[dict] = None
     site_credentials: Optional[dict] = None  # {site_name: {key: value}}
+    proxy_urls: Optional[list] = None  # list of proxy URL strings
 
 
 # ============================================================================
@@ -360,6 +361,7 @@ async def get_my_config(
         "szuru_token": szuru_token_decrypted,
         "szuru_category_mappings": current_user.szuru_category_mappings or {},
         "site_credentials": site_credentials,
+        "proxy_urls": current_user.proxy_urls or [],
     }
 
 
@@ -402,6 +404,8 @@ async def update_my_config(
         current_user.szuru_token_encrypted = encrypt(body.szuru_token) if body.szuru_token else None
     if body.szuru_category_mappings is not None:
         current_user.szuru_category_mappings = body.szuru_category_mappings
+    if body.proxy_urls is not None:
+        current_user.proxy_urls = [u.strip() for u in body.proxy_urls if u and u.strip()]
 
     await db.commit()
 
