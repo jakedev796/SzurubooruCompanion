@@ -12,6 +12,9 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ### Browser Extension
 
+## [1.3.1] - 2026-03-18
+
+
 ## [1.3.0] - 2026-03-03
 
 ### New Major Feature: Onboarding Wizard for Frontend Dashboard
