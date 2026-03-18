@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         postgresql-client \
         redis-server \
         ffmpeg \
+        git \
         xz-utils \
     && rm -rf /var/lib/apt/lists/* \
     && ln -s /usr/lib/postgresql/*/bin/* /usr/local/bin/
@@ -43,7 +44,7 @@ COPY ccc/backend/requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt \
-    && pip install gallery-dl yt-dlp
+    && pip install git+https://github.com/mikf/gallery-dl.git@master yt-dlp
 
 # Application code
 COPY ccc/backend/app/ ./app/

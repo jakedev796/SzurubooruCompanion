@@ -7,6 +7,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- Install gallery-dl from git master to pick up unreleased upstream fix (will revert to PyPI release once the fix is published)
 
 ### Mobile App
 
