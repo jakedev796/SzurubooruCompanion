@@ -8,6 +8,7 @@ WORKDIR /app
 # System deps (gallery-dl, yt-dlp are pip-installable).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps: cache pip downloads across builds.
@@ -15,7 +16,7 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt \
-    && pip install gallery-dl yt-dlp
+    && pip install git+https://github.com/mikf/gallery-dl.git@master yt-dlp
 
 # Application code
 COPY app/ ./app/
