@@ -9,6 +9,15 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+- Fixed floating bubble disappearing after period of inactivity (service restart defaulted bubble to off)
+- Added network connectivity listener for instant SSE reconnection when network is restored
+- Fixed stale JWT token in native SSE loop causing unnecessary auth failures
+- Added offline queue for failed uploads (clipboard shares and folder uploads retry automatically when connected)
+- Files from folder sync are now deleted only after backend confirms job completion (not on upload acceptance)
+- Fixed folder scan timestamp being updated even when all uploads failed
+- Added "Retry All Failed" button to job queue
+- Added long-press selection mode with bulk retry and delete actions
+- Upgraded workmanager dependency from local patch to published 0.7.0
 
 ### Browser Extension
 
