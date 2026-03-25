@@ -153,29 +153,47 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
     if (!_pendingDeletesProcessed) {
       _pendingDeletesProcessed = true;
-      _processPendingDeletes();
+      _processStaleUploadEntries();
       OfflineQueue.prune();
     }
   }
 
-  Future<void> _processPendingDeletes() async {
+  /// Clean up stale pending-upload entries whose jobs no longer exist on the
+  /// backend (e.g. the job was deleted or the mapping is orphaned). Also
+  /// processes any legacy pending-delete URIs.
+  Future<void> _processStaleUploadEntries() async {
     try {
       final settings = context.read<SettingsModel>();
+      final appState = context.read<AppState>();
+
+      // Legacy: process old pending-delete URIs
       final filePaths = await settings.getPendingDeleteUris();
       for (final filePath in filePaths) {
         try {
           final file = File(filePath);
           if (await file.exists()) {
             await file.delete();
-            debugPrint('[Main] Deleted pending file: $filePath');
+            debugPrint('[Main] Deleted legacy pending file: $filePath');
           }
         } catch (e) {
-          debugPrint('[Main] Error deleting file $filePath: $e');
+          debugPrint('[Main] Error deleting legacy file $filePath: $e');
         }
         await settings.removePendingDeleteUri(filePath);
       }
+
+      // Prune stale pending-upload entries for jobs that no longer exist
+      if (!settings.isConfigured || !settings.canMakeApiCalls) return;
+      final pending = await settings.getPendingUploadFiles();
+      for (final jobId in pending.keys.toList()) {
+        final job = await appState.fetchJob(jobId);
+        if (job == null) {
+          // Job no longer exists on backend — remove the mapping
+          await settings.removePendingUploadFile(jobId);
+          debugPrint('[Main] Removed stale pending upload entry for missing job $jobId');
+        }
+      }
     } catch (e) {
-      debugPrint('[Main] _processPendingDeletes error: $e');
+      debugPrint('[Main] _processStaleUploadEntries error: $e');
     }
   }
 

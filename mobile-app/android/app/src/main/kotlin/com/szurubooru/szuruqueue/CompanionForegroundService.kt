@@ -18,6 +18,7 @@ import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -498,8 +499,15 @@ class CompanionForegroundService : Service() {
             val status = json.optString("status", "").lowercase(Locale.ROOT)
             val jobId = json.optString("job_id", "")
             val retriesExhausted = json.optBoolean("retries_exhausted", false)
-            
-            // Only process failed jobs where retries are exhausted
+
+            // Deferred file deletion: delete local file when job completes or is merged
+            if (jobId.isNotBlank() && (status == "completed" || status == "merged")) {
+                deleteFileForCompletedJob(jobId)
+            } else if (jobId.isNotBlank() && status == "failed" && retriesExhausted) {
+                removePendingUploadMapping(jobId)
+            }
+
+            // Only process failed jobs where retries are exhausted for notifications
             if (status != "failed" || jobId.isBlank() || !retriesExhausted) return
 
             synchronized(notifiedFailedJobs) {
@@ -571,6 +579,67 @@ class CompanionForegroundService : Service() {
         }
     }
 
+    /**
+     * Delete the local file tracked for a completed/merged job, then remove the mapping.
+     */
+    private fun deleteFileForCompletedJob(jobId: String) {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val jsonString = prefs.getString("flutter.$PENDING_UPLOAD_FILES_KEY", null) ?: return
+        val map = try {
+            val obj = JSONObject(jsonString)
+            val m = mutableMapOf<String, String>()
+            for (key in obj.keys()) { m[key] = obj.getString(key) }
+            m
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse pending upload files", e)
+            return
+        }
+        val filePath = map[jobId] ?: return
+        try {
+            val file = File(filePath)
+            if (file.exists()) {
+                file.delete()
+                Log.d(TAG, "Deleted local file for completed job $jobId: $filePath")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to delete file for job $jobId: $filePath", e)
+        }
+        map.remove(jobId)
+        if (map.isEmpty()) {
+            prefs.edit().remove("flutter.$PENDING_UPLOAD_FILES_KEY").apply()
+        } else {
+            val newObj = JSONObject()
+            for ((k, v) in map) { newObj.put(k, v) }
+            prefs.edit().putString("flutter.$PENDING_UPLOAD_FILES_KEY", newObj.toString()).apply()
+        }
+    }
+
+    /**
+     * Remove the pending upload mapping without deleting the file (e.g. on permanent failure).
+     */
+    private fun removePendingUploadMapping(jobId: String) {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val jsonString = prefs.getString("flutter.$PENDING_UPLOAD_FILES_KEY", null) ?: return
+        val map = try {
+            val obj = JSONObject(jsonString)
+            val m = mutableMapOf<String, String>()
+            for (key in obj.keys()) { m[key] = obj.getString(key) }
+            m
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse pending upload files", e)
+            return
+        }
+        if (!map.containsKey(jobId)) return
+        map.remove(jobId)
+        if (map.isEmpty()) {
+            prefs.edit().remove("flutter.$PENDING_UPLOAD_FILES_KEY").apply()
+        } else {
+            val newObj = JSONObject()
+            for ((k, v) in map) { newObj.put(k, v) }
+            prefs.edit().putString("flutter.$PENDING_UPLOAD_FILES_KEY", newObj.toString()).apply()
+        }
+    }
+
     private fun showJobFailureNotification(
         jobId: String,
         websiteName: String,
@@ -626,5 +695,6 @@ class CompanionForegroundService : Service() {
         const val EXTRA_BODY = "body"
         const val EXTRA_UPDATE_BODY_ONLY = "updateBodyOnly"
         const val EXTRA_TOGGLE_BUBBLE = "toggleBubble"
+        private const val PENDING_UPLOAD_FILES_KEY = "pending_upload_files"
     }
 }

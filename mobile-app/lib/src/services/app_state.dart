@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -213,6 +214,15 @@ class AppState extends ChangeNotifier {
       }
 
       jobs[index] = updatedJob;
+
+      // Deferred file deletion: delete local file when job succeeds
+      final statusLwr = updatedJob.status.toLowerCase();
+      if (statusLwr == 'completed' || statusLwr == 'merged') {
+        _deleteFileForCompletedJob(update.jobId);
+      } else if (statusLwr == 'failed' && (update.retriesExhausted == true)) {
+        settings.removePendingUploadFile(update.jobId);
+      }
+
       if (!wasFailed && updatedJob.status.toLowerCase() == 'failed') {
         String websiteName;
         String fullDomain;
@@ -549,6 +559,23 @@ class AppState extends ChangeNotifier {
     } catch (error) {
       return userFriendlyErrorMessage(error);
     }
+  }
+
+  Future<void> _deleteFileForCompletedJob(String jobId) async {
+    final pending = await settings.getPendingUploadFiles();
+    final filePath = pending[jobId];
+    if (filePath == null) return;
+
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await file.delete();
+        debugPrint('[AppState] Deleted local file for completed job $jobId: $filePath');
+      }
+    } catch (e) {
+      debugPrint('[AppState] Failed to delete file for job $jobId: $e');
+    }
+    await settings.removePendingUploadFile(jobId);
   }
 
   /// Fetch a single job by ID (for detail view).

@@ -138,23 +138,10 @@ class FolderScanner {
       if (jobId != null) {
         debugPrint('[FolderScanner] Upload successful: jobId=$jobId');
 
-        // Handle file deletion after successful upload
-        if (deleteAfterUpload) {
-          try {
-            await file.delete();
-            debugPrint('[FolderScanner] Deleted source file after upload: $filePath');
-          } catch (e) {
-            debugPrint('[FolderScanner] Failed to delete file: $e');
-          }
-        } else if (enqueueDeleteForLater) {
-          try {
-            await file.delete();
-            debugPrint('[FolderScanner] Deleted source file after upload (background): $filePath');
-          } catch (e) {
-            debugPrint('[FolderScanner] Failed to delete file, queuing for later: $e');
-            await _settings.addPendingDeleteUri(filePath);
-            debugPrint('[FolderScanner] Queued file for deletion when app opens: $filePath');
-          }
+        // Track file for deferred deletion after job completes
+        if (deleteAfterUpload || enqueueDeleteForLater) {
+          await _settings.addPendingUploadFile(jobId, filePath);
+          debugPrint('[FolderScanner] Tracked file for deferred deletion: jobId=$jobId, path=$filePath');
         }
       } else {
         debugPrint('[FolderScanner] Upload returned null jobId');

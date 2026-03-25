@@ -347,6 +347,7 @@ class SettingsModel extends ChangeNotifier {
 
   static const String _scheduledFoldersKey = 'scheduled_folders';
   static const String _pendingDeleteUrisKey = 'pending_delete_uris';
+  static const String _pendingUploadFilesKey = 'pending_upload_files';
   static const String _lastFolderSyncTimestampKey = 'last_folder_sync_timestamp';
   static const String _lastFolderSyncCountKey = 'last_folder_sync_count';
 
@@ -430,6 +431,44 @@ class SettingsModel extends ChangeNotifier {
     final list = (jsonDecode(jsonString) as List<dynamic>).cast<String>();
     list.remove(uri);
     await prefs.setString(_pendingDeleteUrisKey, jsonEncode(list));
+  }
+
+  /// Map a jobId to the local file path that should be deleted after the job completes.
+  Future<void> addPendingUploadFile(String jobId, String filePath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingUploadFilesKey);
+    final map = jsonString != null
+        ? Map<String, String>.from(jsonDecode(jsonString) as Map)
+        : <String, String>{};
+    map[jobId] = filePath;
+    await prefs.setString(_pendingUploadFilesKey, jsonEncode(map));
+  }
+
+  /// Get all pending upload file mappings.
+  Future<Map<String, String>> getPendingUploadFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingUploadFilesKey);
+    if (jsonString == null) return {};
+    try {
+      return Map<String, String>.from(jsonDecode(jsonString) as Map);
+    } catch (e) {
+      debugPrint('[SettingsModel] Error reading pending upload files: $e');
+      return {};
+    }
+  }
+
+  /// Remove a pending upload file mapping.
+  Future<void> removePendingUploadFile(String jobId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString(_pendingUploadFilesKey);
+    if (jsonString == null) return;
+    final map = Map<String, String>.from(jsonDecode(jsonString) as Map);
+    map.remove(jobId);
+    if (map.isEmpty) {
+      await prefs.remove(_pendingUploadFilesKey);
+    } else {
+      await prefs.setString(_pendingUploadFilesKey, jsonEncode(map));
+    }
   }
 
   /// Record last folder sync result (called from background task).
