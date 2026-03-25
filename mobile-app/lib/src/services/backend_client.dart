@@ -421,6 +421,14 @@ class BackendClient {
     if (!_sseStateController.isClosed) _sseStateController.add(_sseState);
   }
 
+  /// Force immediate SSE reconnection (resets backoff).
+  /// Called when network connectivity is restored.
+  void forceReconnectSse() {
+    _sseReconnectDelaySeconds = 3;
+    _sseReconnectScheduled = false;
+    disconnectSse();
+  }
+
   /// Dispose of resources
   void dispose() {
     disconnectSse();

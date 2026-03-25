@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/job.dart';
 import 'backend_client.dart';
@@ -71,6 +72,16 @@ class AppState extends ChangeNotifier {
       return;
     }
     Future<void>.microtask(() => _connectSse());
+
+    // Listen for network restored events from native side
+    const MethodChannel('com.szurubooru.szuruqueue/network')
+        .setMethodCallHandler((call) async {
+      if (call.method == 'onNetworkRestored') {
+        debugPrint('[AppState] Network restored, forcing SSE reconnect');
+        backendClient.forceReconnectSse();
+        await _connectSse();
+      }
+    });
   }
 
   /// Connect to SSE endpoint. Validates/refreshes token before connecting.

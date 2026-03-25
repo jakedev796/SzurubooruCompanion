@@ -45,6 +45,7 @@ class CompanionForegroundService : Service() {
         Collections.synchronizedSet(mutableSetOf<String>())
     private var healthCheckThread: Thread? = null
     private val healthCheckLock = Any()
+    private var networkMonitor: NetworkMonitor? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -100,6 +101,7 @@ class CompanionForegroundService : Service() {
         // Ensure native SSE listener is running so job failure notifications
         // work even when the main Flutter UI has been swiped away.
         startSseListenerIfNeeded()
+        startNetworkMonitorIfNeeded()
         return START_STICKY
     }
 
@@ -137,7 +139,10 @@ class CompanionForegroundService : Service() {
             healthCheckThread?.interrupt()
             healthCheckThread = null
         }
-        
+
+        networkMonitor?.stop()
+        networkMonitor = null
+
         super.onDestroy()
     }
 
@@ -250,6 +255,21 @@ class CompanionForegroundService : Service() {
             isDaemon = true
             start()
         }
+    }
+
+    private fun startNetworkMonitorIfNeeded() {
+        if (networkMonitor != null) return
+        networkMonitor = NetworkMonitor(this) {
+            Log.d(TAG, "Network restored, restarting SSE loop")
+            stopSse.set(true)
+            sseThread?.interrupt()
+            sseThread = null
+            stopSse.set(false)
+            startSseListenerIfNeeded()
+            // Notify Dart side
+            sendBroadcast(Intent("com.szurubooru.szuruqueue.NETWORK_RESTORED"))
+        }
+        networkMonitor?.start()
     }
 
     private fun sseLoop() {

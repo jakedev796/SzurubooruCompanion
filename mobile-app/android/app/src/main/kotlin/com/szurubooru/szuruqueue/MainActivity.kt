@@ -192,6 +192,22 @@ class MainActivity : FlutterFragmentActivity() {
             }
         }
 
+        // Network events channel
+        val networkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.szurubooru.szuruqueue/network")
+
+        // Relay network restore broadcast from foreground service to Dart
+        val networkFilter = android.content.IntentFilter("com.szurubooru.szuruqueue.NETWORK_RESTORED")
+        val networkReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                networkChannel.invokeMethod("onNetworkRestored", null)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(networkReceiver, networkFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(networkReceiver, networkFilter)
+        }
+
         // Updater channel: install downloaded APK via FileProvider
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.szurubooru.szuruqueue/updater").setMethodCallHandler { call, result ->
             when (call.method) {
