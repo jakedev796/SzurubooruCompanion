@@ -9,6 +9,12 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+
+### Browser Extension
+
+## [1.3.3] - 2026-03-25
+
+### Mobile App
 - Fixed floating bubble disappearing after period of inactivity (service restart defaulted bubble to off)
 - Added network connectivity listener for instant SSE reconnection when network is restored
 - Fixed stale JWT token in native SSE loop causing unnecessary auth failures
@@ -19,7 +25,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Added long-press selection mode with bulk retry and delete actions
 - Upgraded workmanager dependency from local patch to published 0.7.0
 
-### Browser Extension
 
 ## [1.3.2] - 2026-03-18
 
