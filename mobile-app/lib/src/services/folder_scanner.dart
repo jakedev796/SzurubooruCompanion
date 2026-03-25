@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import '../models/scheduled_folder.dart';
 import 'backend_client.dart';
-import 'notification_service.dart';
+import 'offline_queue.dart';
 import 'settings_model.dart';
 
 /// Supported media file extensions
@@ -124,9 +124,12 @@ class FolderScanner {
       debugPrint('[FolderScanner] backendClient returned jobId: ${result.jobId}, error: ${result.error}');
 
       if (result.error != null) {
-        debugPrint('[FolderScanner] Upload failed: ${result.error}');
-        await NotificationService.instance.showUploadError(
-          '$fileName: ${result.error}',
+        debugPrint('[FolderScanner] Upload failed, queuing for offline retry: ${result.error}');
+        await OfflineQueue.enqueueFile(
+          filePath: filePath,
+          tags: folder.defaultTags ?? const [],
+          safety: folder.defaultSafety ?? 'safe',
+          skipTagging: folder.skipTagging,
         );
         return null;
       }

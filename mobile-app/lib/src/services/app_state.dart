@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models/job.dart';
 import 'backend_client.dart';
 import 'notification_service.dart';
+import 'offline_queue.dart';
 import 'settings_model.dart';
 
 /// Application state management class.
@@ -119,6 +120,13 @@ class AppState extends ChangeNotifier {
         if (event.type == SseEventType.connected) {
           // Initial connection - refresh data
           refreshAll();
+          // Flush offline queue on reconnection
+          OfflineQueue.flush(backendClient).then((count) {
+            if (count > 0) {
+              debugPrint('[AppState] Flushed $count offline queue entries');
+              refreshJobs();
+            }
+          });
         }
       },
       onError: (error) {

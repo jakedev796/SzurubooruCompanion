@@ -13,6 +13,7 @@ import '../services/background_task.dart';
 import '../services/companion_foreground_service.dart';
 import '../services/floating_bubble_service.dart';
 import '../services/notification_service.dart';
+import '../services/offline_queue.dart';
 import '../services/share_intent_service.dart';
 import '../services/settings_model.dart';
 import '../theme/app_theme.dart';
@@ -153,6 +154,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (!_pendingDeletesProcessed) {
       _pendingDeletesProcessed = true;
       _processPendingDeletes();
+      OfflineQueue.prune();
     }
   }
 
@@ -276,7 +278,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         if (error == null) {
           _showSnackBar('Upload queued successfully');
         } else {
-          _showSnackBar('Upload failed: $error');
+          await OfflineQueue.enqueueUrl(
+            url: url,
+            tags: tags,
+            safety: settings.defaultSafety,
+            skipTagging: settings.skipTagging,
+          );
+          _showSnackBar('Upload failed, queued for retry when connected');
         }
       }
     } finally {
