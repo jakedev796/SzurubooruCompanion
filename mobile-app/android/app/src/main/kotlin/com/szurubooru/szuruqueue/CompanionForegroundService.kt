@@ -73,7 +73,13 @@ class CompanionForegroundService : Service() {
             return START_STICKY
         }
 
-        val showBubble = intent?.getBooleanExtra(EXTRA_SHOW_BUBBLE, false) ?: false
+        val showBubble = if (intent?.hasExtra(EXTRA_SHOW_BUBBLE) == true) {
+            intent.getBooleanExtra(EXTRA_SHOW_BUBBLE, false)
+        } else {
+            // Service restarted by system (null/empty intent) — read persisted preference
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            prefs.getBoolean("flutter.showFloatingBubble", false)
+        }
         lastShowBubble = showBubble
         lastBodyBase = body.replace(Regex(" \u2022 Bubble on$"), "").trim()
 
