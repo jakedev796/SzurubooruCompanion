@@ -46,10 +46,28 @@ class CompanionForegroundService : Service() {
     private var healthCheckThread: Thread? = null
     private val healthCheckLock = Any()
     private var networkMonitor: NetworkMonitor? = null
+    private var tokenRefreshReceiver: android.content.BroadcastReceiver? = null
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
+
+        tokenRefreshReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                Log.d(TAG, "Token refreshed, restarting SSE loop")
+                stopSse.set(true)
+                sseThread?.interrupt()
+                sseThread = null
+                stopSse.set(false)
+                startSseListenerIfNeeded()
+            }
+        }
+        val tokenFilter = android.content.IntentFilter("com.szurubooru.szuruqueue.TOKEN_REFRESHED")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(tokenRefreshReceiver, tokenFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(tokenRefreshReceiver, tokenFilter)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -142,6 +160,11 @@ class CompanionForegroundService : Service() {
 
         networkMonitor?.stop()
         networkMonitor = null
+
+        tokenRefreshReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        tokenRefreshReceiver = null
 
         super.onDestroy()
     }

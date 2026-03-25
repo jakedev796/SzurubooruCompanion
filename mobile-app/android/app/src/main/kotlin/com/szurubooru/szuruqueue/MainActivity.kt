@@ -195,6 +195,16 @@ class MainActivity : FlutterFragmentActivity() {
         // Network events channel
         val networkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.szurubooru.szuruqueue/network")
 
+        networkChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "onTokenRefreshed" -> {
+                    sendBroadcast(Intent("com.szurubooru.szuruqueue.TOKEN_REFRESHED"))
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         // Relay network restore broadcast from foreground service to Dart
         val networkFilter = android.content.IntentFilter("com.szurubooru.szuruqueue.NETWORK_RESTORED")
         val networkReceiver = object : android.content.BroadcastReceiver() {
