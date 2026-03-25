@@ -30,8 +30,7 @@ dependencies:
   provider: ^6.1.2
 
   # Background processing (used for one-time isolate execution, not scheduling)
-  workmanager:
-    path: workmanager_patch
+  workmanager: ^0.5.2
 
   # Path utilities
   path_provider: ^2.1.5

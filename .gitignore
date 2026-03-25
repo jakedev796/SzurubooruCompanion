@@ -74,14 +74,6 @@ mobile-app/android/.externalNativeBuild/
 # Android signing key configuration
 mobile-app/android/key.properties
 
-# Workmanager patch (local dependency)
-mobile-app/workmanager_patch/.dart_tool/
-mobile-app/workmanager_patch/android/.gradle/
-mobile-app/workmanager_patch/android/build/
-mobile-app/workmanager_patch/example/
-mobile-app/workmanager_patch/.flutter-plugins-dependencies
-mobile-app/workmanager_patch/pubspec.lock
-
 # IntelliJ/Android Studio
 *.iml
 mobile-app/.idea/
