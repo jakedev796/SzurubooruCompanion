@@ -53,6 +53,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   bool _firstLaunchPermissionsChecked = false;
   DateTime? _lastNotificationUpdate;
   Timer? _statusNotificationReshowTimer;
+  bool _selectionMode = false;
+  final Set<String> _selectedJobIds = {};
 
   @override
   void initState() {
@@ -394,60 +396,71 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           const SettingsScreen(),
         ];
 
-        return Scaffold(
-          appBar: AppBar(
-            leading: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Image.asset(
-                'assets/icons/192.png',
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
+        return PopScope(
+          canPop: !_selectionMode,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && _selectionMode) {
+              setState(() {
+                _selectionMode = false;
+                _selectedJobIds.clear();
+              });
+            }
+          },
+          child: Scaffold(
+            appBar: AppBar(
+              leading: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Image.asset(
+                  'assets/icons/192.png',
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                ),
               ),
+              title: const Text('SzuruCompanion'),
+              actions: [
+                _buildConnectionStatusIndicator(appState),
+                IconButton(
+                  icon: const Icon(Icons.settings),
+                  onPressed: () => setState(() => _selectedIndex = 3),
+                ),
+              ],
+              bottom: _isProcessingShare
+                  ? const PreferredSize(
+                      preferredSize: Size.fromHeight(4),
+                      child: LinearProgressIndicator(minHeight: 4),
+                    )
+                  : null,
             ),
-            title: const Text('SzuruCompanion'),
-            actions: [
-              _buildConnectionStatusIndicator(appState),
-              IconButton(
-                icon: const Icon(Icons.settings),
-                onPressed: () => setState(() => _selectedIndex = 3),
-              ),
-            ],
-            bottom: _isProcessingShare
-                ? const PreferredSize(
-                    preferredSize: Size.fromHeight(4),
-                    child: LinearProgressIndicator(minHeight: 4),
-                  )
-                : null,
-          ),
-          body: screens[_selectedIndex],
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _selectedIndex,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard),
-                label: 'Overview',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.list_outlined),
-                selectedIcon: Icon(Icons.list),
-                label: 'Queue',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.explore_outlined),
-                selectedIcon: Icon(Icons.explore),
-                label: 'Discover',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: 'Settings',
-              ),
-            ],
-            onDestinationSelected: (index) => setState(() {
-              _selectedIndex = index;
-            }),
+            body: screens[_selectedIndex],
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: _selectedIndex,
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard),
+                  label: 'Overview',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.list_outlined),
+                  selectedIcon: Icon(Icons.list),
+                  label: 'Queue',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.explore_outlined),
+                  selectedIcon: Icon(Icons.explore),
+                  label: 'Discover',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.settings_outlined),
+                  selectedIcon: Icon(Icons.settings),
+                  label: 'Settings',
+                ),
+              ],
+              onDestinationSelected: (index) => setState(() {
+                _selectedIndex = index;
+              }),
+            ),
           ),
         );
       },
@@ -633,31 +646,194 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildQueueTab(AppState appState) {
-    return RefreshIndicator(
-      onRefresh: appState.refreshJobs,
-      child: appState.isLoadingJobs
-          ? const Center(child: CircularProgressIndicator())
-          : appState.jobs.isEmpty
-              ? const Center(child: Text('No jobs yet.'))
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  itemCount: appState.jobs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) => JobCard(
-                    job: appState.jobs[index],
-                    booruUrl: appState.booruUrl,
-                    onTap: () => _showJobDetail(
-                      context,
-                      appState.jobs[index],
-                      appState,
-                      appState.booruUrl,
-                    ),
-                    onShowFullTagList: _showFullTagList,
-                  ),
-                ),
+    return Column(
+      children: [
+        if (_selectionMode)
+          _buildSelectionActionBar(appState)
+        else
+          _buildQueueActionBar(appState),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: appState.refreshJobs,
+            child: appState.isLoadingJobs
+                ? const Center(child: CircularProgressIndicator())
+                : appState.jobs.isEmpty
+                    ? const Center(child: Text('No jobs yet.'))
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        itemCount: appState.jobs.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final job = appState.jobs[index];
+                          final isSelected = _selectedJobIds.contains(job.id);
+                          return GestureDetector(
+                            onLongPress: () {
+                              setState(() {
+                                _selectionMode = true;
+                                _selectedJobIds.add(job.id);
+                              });
+                            },
+                            child: Stack(
+                              children: [
+                                JobCard(
+                                  job: job,
+                                  booruUrl: appState.booruUrl,
+                                  onTap: _selectionMode
+                                      ? () => setState(() {
+                                            if (isSelected) {
+                                              _selectedJobIds.remove(job.id);
+                                              if (_selectedJobIds.isEmpty) {
+                                                _selectionMode = false;
+                                              }
+                                            } else {
+                                              _selectedJobIds.add(job.id);
+                                            }
+                                          })
+                                      : () => _showJobDetail(context, job, appState, appState.booruUrl),
+                                  onShowFullTagList: _showFullTagList,
+                                ),
+                                if (_selectionMode)
+                                  Positioned(
+                                    top: 8,
+                                    left: 8,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: isSelected
+                                            ? Theme.of(context).colorScheme.primary
+                                            : Theme.of(context).colorScheme.surface,
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? Theme.of(context).colorScheme.primary
+                                              : Theme.of(context).colorScheme.outline,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      padding: const EdgeInsets.all(2),
+                                      child: Icon(
+                                        Icons.check,
+                                        size: 16,
+                                        color: isSelected
+                                            ? Theme.of(context).colorScheme.onPrimary
+                                            : Colors.transparent,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQueueActionBar(AppState appState) {
+    final failedJobs = appState.jobs.where((j) => j.status.toLowerCase() == 'failed');
+    if (failedJobs.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () async {
+                final ids = failedJobs.map((j) => j.id).toList();
+                final error = await appState.bulkRetryJobs(ids);
+                if (error != null) {
+                  _showSnackBar('Retry failed: $error');
+                } else {
+                  _showSnackBar('Retrying ${ids.length} failed jobs');
+                }
+              },
+              icon: const Icon(Icons.refresh, size: 18),
+              label: Text('Retry All Failed (${failedJobs.length})'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionActionBar(AppState appState) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => setState(() {
+              _selectionMode = false;
+              _selectedJobIds.clear();
+            }),
+          ),
+          Text(
+            '${_selectedJobIds.length} selected',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          TextButton.icon(
+            onPressed: _selectedJobIds.isEmpty
+                ? null
+                : () async {
+                    final ids = _selectedJobIds.toList();
+                    final error = await appState.bulkRetryJobs(ids);
+                    if (error != null) {
+                      _showSnackBar('Retry failed: $error');
+                    } else {
+                      _showSnackBar('Retrying ${ids.length} jobs');
+                      setState(() {
+                        _selectionMode = false;
+                        _selectedJobIds.clear();
+                      });
+                    }
+                  },
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Retry'),
+          ),
+          TextButton.icon(
+            onPressed: _selectedJobIds.isEmpty
+                ? null
+                : () async {
+                    final ids = _selectedJobIds.toList();
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Delete Jobs'),
+                        content: Text('Delete ${ids.length} selected jobs?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+                    final error = await appState.bulkDeleteJobs(ids);
+                    if (error != null) {
+                      _showSnackBar('Delete failed: $error');
+                    } else {
+                      _showSnackBar('Deleted ${ids.length} jobs');
+                      setState(() {
+                        _selectionMode = false;
+                        _selectedJobIds.clear();
+                      });
+                    }
+                  },
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 

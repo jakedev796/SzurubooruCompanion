@@ -561,6 +561,34 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Bulk retry failed jobs.
+  Future<String?> bulkRetryJobs(List<String> jobIds) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+    try {
+      await backendClient.bulkRetryJobs(jobIds);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return userFriendlyErrorMessage(error);
+    }
+  }
+
+  /// Bulk delete jobs.
+  Future<String?> bulkDeleteJobs(List<String> jobIds) async {
+    if (!settings.isConfigured || !settings.canMakeApiCalls) {
+      return 'Backend configuration is missing';
+    }
+    try {
+      await backendClient.bulkDeleteJobs(jobIds);
+      await refreshAll();
+      return null;
+    } catch (error) {
+      return userFriendlyErrorMessage(error);
+    }
+  }
+
   Future<void> _deleteFileForCompletedJob(String jobId) async {
     final pending = await settings.getPendingUploadFiles();
     final filePath = pending[jobId];

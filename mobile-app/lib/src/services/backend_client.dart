@@ -835,6 +835,34 @@ class BackendClient {
     }
   }
 
+  /// Bulk retry failed jobs.
+  ///
+  /// Backend endpoint: POST /api/jobs/bulk/retry
+  Future<void> bulkRetryJobs(List<String> jobIds) async {
+    try {
+      await _dio.post('/api/jobs/bulk/retry', data: {'job_ids': jobIds});
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
+  /// Bulk delete jobs.
+  ///
+  /// Backend endpoint: POST /api/jobs/bulk/delete
+  Future<void> bulkDeleteJobs(List<String> jobIds) async {
+    try {
+      await _dio.post('/api/jobs/bulk/delete', data: {'job_ids': jobIds});
+    } on DioException catch (e) {
+      throw BackendException(
+        _friendlyLabelForStatusCode(e.response?.statusCode),
+        statusCode: e.response?.statusCode,
+      );
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Discover API
   // -----------------------------------------------------------------------
