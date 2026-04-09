@@ -14,6 +14,9 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ## [1.3.4] - 2026-04-09
 
+
+## [1.3.4] - 2026-04-09
+
 ### CCC - Backend
 - Fix FILE job retries deleting the only uploaded source file; preserve uploaded payloads so retries do not collapse into a misleading "No files found in job directory" error
 - Use signature-based MIME detection for uploads and reverse-search instead of trusting file extensions
