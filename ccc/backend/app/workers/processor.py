@@ -284,7 +284,9 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
             await _fail_job(job, str(exc), max_retries=max_retries, retry_delay=retry_delay)
     finally:
         try:
-            if os.path.isdir(job_dir):
+            # Preserve uploaded FILE job payloads so retries can re-use the original media.
+            # URL/TAG_EXISTING jobs can be reconstructed, but FILE jobs cannot.
+            if job.job_type != JobType.FILE and os.path.isdir(job_dir):
                 shutil.rmtree(job_dir, ignore_errors=True)
         except Exception:
             pass
@@ -343,15 +345,22 @@ async def _extract_media(
         )]
 
     # FILE job – file was already saved during upload
+    candidates = []
     for fn in os.listdir(job_dir):
         fp = Path(job_dir) / fn
-        if fp.is_file() and not fn.endswith(".json"):
-            return [downloader.ExtractedMedia(
-                url=f"file://{fn}",
-                source_url=f"file://{fn}",
-                filename=fn,
-                metadata=None,
-            )]
+        if fp.is_file():
+            candidates.append(fn)
+
+    if candidates:
+        # Prefer non-sidecar names when present, but still process the only file even if
+        # the client happened to give it a ".json"-suffixed name.
+        selected = next((fn for fn in candidates if not fn.endswith(".json")), candidates[0])
+        return [downloader.ExtractedMedia(
+            url=f"file://{selected}",
+            source_url=f"file://{selected}",
+            filename=selected,
+            metadata=None,
+        )]
 
     await _fail_job(job, "No files found in job directory.")
     return None

@@ -55,6 +55,17 @@ def _parse_json_tags(raw: Optional[str]) -> Optional[List[str]]:
         return None
 
 
+def _safe_upload_filename(filename: Optional[str]) -> str:
+    """Collapse client-supplied multipart names down to a local basename."""
+    if not filename:
+        return "upload"
+
+    # Some clients send full paths or mixed separators in multipart filenames.
+    collapsed = filename.replace("\\", "/").rstrip("/")
+    basename = os.path.basename(collapsed).strip()
+    return basename or "upload"
+
+
 class SzuruPostMirror(BaseModel):
     """Mirrors the post as stored on Szurubooru (what we offload to them)."""
 
@@ -279,7 +290,8 @@ async def create_job_file(
     job_dir = os.path.join(settings.job_data_dir, str(job_id))
     os.makedirs(job_dir, exist_ok=True)
 
-    dest = os.path.join(job_dir, file.filename or "upload")
+    safe_filename = _safe_upload_filename(file.filename)
+    dest = os.path.join(job_dir, safe_filename)
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -292,7 +304,7 @@ async def create_job_file(
     job = Job(
         id=job_id,
         job_type=JobType.FILE,
-        original_filename=file.filename,
+        original_filename=safe_filename,
         source_override=source,
         initial_tags=json.dumps(parsed_tags) if parsed_tags else None,
         safety=safety,
