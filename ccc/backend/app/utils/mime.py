@@ -4,6 +4,7 @@ Ensures consistent type detection across the application, even in minimal Docker
 """
 
 import mimetypes
+from pathlib import Path
 
 # Initialize and patch the mimetypes database once at import time.
 mimetypes.init()
@@ -49,6 +50,66 @@ def guess_mime_type(filename: str) -> str:
     """Guess MIME type from filename. Returns 'application/octet-stream' as fallback."""
     mime, _ = mimetypes.guess_type(filename)
     return mime or "application/octet-stream"
+
+
+def sniff_mime_type(data: bytes) -> str:
+    """Detect common image/video formats from file signatures."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data.startswith(b"BM"):
+        return "image/bmp"
+    if data.startswith((b"II*\x00", b"MM\x00*")):
+        return "image/tiff"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        brand = data[8:12]
+        if brand in {b"avif", b"avis"}:
+            return "image/avif"
+        if brand in {b"mp4 ", b"isom", b"iso2", b"avc1", b"mp41", b"mp42", b"mif1", b"msf1"}:
+            return "video/mp4"
+    if data.startswith(b"\x1aE\xdf\xa3"):
+        return "video/webm"
+    return "application/octet-stream"
+
+
+def detect_mime_type(path: str | Path) -> str:
+    """Prefer magic-byte sniffing, then fall back to extension-based guessing."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(32)
+        sniffed = sniff_mime_type(head)
+        if sniffed != "application/octet-stream":
+            return sniffed
+    except OSError:
+        pass
+    return guess_mime_type(str(path))
+
+
+def normalized_filename(path: str | Path) -> str:
+    """
+    Return a filename whose extension matches detected content when possible.
+
+    This keeps multipart filenames aligned with the actual bytes even when the
+    source app supplied a misleading or missing extension.
+    """
+    p = Path(path)
+    mime = detect_mime_type(p)
+    ext = extension_from_content_type(mime)
+    if not ext:
+        return p.name
+
+    expected_suffix = f".{ext}"
+    current_suffix = p.suffix.lower()
+    if current_suffix == expected_suffix:
+        return p.name
+
+    stem = p.stem if current_suffix else p.name
+    return f"{stem}{expected_suffix}"
 
 
 def extension_from_content_type(content_type: str) -> str:

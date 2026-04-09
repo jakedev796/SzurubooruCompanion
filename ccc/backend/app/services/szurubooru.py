@@ -21,7 +21,7 @@ from urllib.parse import quote
 import aiohttp
 
 from app.config import get_settings
-from app.utils.mime import guess_mime_type
+from app.utils.mime import detect_mime_type, normalized_filename
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -249,8 +249,8 @@ async def upload_post(
     with open(file_path, "rb") as f:
         file_bytes = f.read()
 
-    mime_type = guess_mime_type(str(file_path))
-    data.add_field("content", file_bytes, filename=file_path.name, content_type=mime_type)
+    mime_type = detect_mime_type(file_path)
+    data.add_field("content", file_bytes, filename=normalized_filename(file_path), content_type=mime_type)
 
     return await _request("POST", "/api/posts/", form_data=data, timeout=60)
 
@@ -506,8 +506,8 @@ async def reverse_search(file_path: Path) -> dict:
     with open(file_path, "rb") as f:
         file_bytes = f.read()
 
-    mime_type = guess_mime_type(str(file_path))
-    data.add_field("content", file_bytes, filename=file_path.name, content_type=mime_type)
+    mime_type = detect_mime_type(file_path)
+    data.add_field("content", file_bytes, filename=normalized_filename(file_path), content_type=mime_type)
 
     return await _request("POST", "/api/posts/reverse-search", form_data=data, timeout=60)
 

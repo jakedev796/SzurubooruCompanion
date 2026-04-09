@@ -22,7 +22,7 @@ from app.services import sources as source_utils
 from app.services import tag_utils
 from app.services.config import load_user_config, load_global_config
 from app.services.encryption import decrypt
-from app.utils.mime import extension_from_content_type
+from app.utils.mime import detect_mime_type, extension_from_content_type
 from app.sites.registry import normalize_url as _normalize_site_url
 from app.api.events import publish_job_update
 
@@ -463,6 +463,11 @@ async def _tag_file(job: Job, fp: Path, metadata: Dict, user_category_mappings: 
     wd14_character_tags: set = set()
     safety = job.safety or "unsafe"
     ext = fp.suffix.lower()
+    if not ext or ext not in IMAGE_EXTENSIONS.union(VIDEO_EXTENSIONS):
+        detected_mime = detect_mime_type(fp)
+        detected_ext = extension_from_content_type(detected_mime)
+        if detected_ext:
+            ext = f".{detected_ext}"
 
     wd14_enabled = _global_config.wd14_enabled if _global_config else True
     wd14_confidence = _global_config.wd14_confidence_threshold if _global_config else 0.35
