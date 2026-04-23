@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g. v1.1.0)'
+        description: 'Tag to release (e.g. v1.1.0 — leading "v" is added if omitted)'
         required: true
 
 jobs:
@@ -27,7 +27,28 @@ jobs:
     steps:
       - name: Resolve tag
         id: resolve-tag
-        run: echo "tag=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+        run: |
+          RAW="${{ inputs.tag || github.ref_name }}"
+          # Normalize: add leading "v" if missing so "1.3.5" and "v1.3.5" both work on manual dispatch
+          case "$RAW" in v*) TAG="$RAW" ;; *) TAG="v$RAW" ;; esac
+          echo "Resolved tag: $TAG (input was: $RAW)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag exists on origin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve-tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/git/refs/tags/$TAG" || echo "000")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Tag '$TAG' was not found on origin (HTTP $STATUS). Run the Prepare Release workflow first, or push the tag manually."
+            exit 1
+          fi
+          echo "Tag '$TAG' verified"
 
       - name: Checkout
         uses: actions/checkout@v4
