@@ -151,6 +151,10 @@ enum SseConnectionState {
 /// - SSE streaming for real-time updates
 /// - JWT Bearer token authentication
 class BackendClient {
+  // Files larger than this use the chunked upload flow to stay below edge-proxy
+  // per-request body limits (Cloudflare free tier caps at 100 MB).
+  static const int _chunkedUploadThresholdBytes = 50 * 1024 * 1024;
+
   final Dio _dio;
   final String baseUrl;
   String? _accessToken;
@@ -602,9 +606,11 @@ class BackendClient {
   }
 
   /// Upload a file to the backend for processing.
-  /// 
-  /// Backend endpoint: POST /api/jobs/upload
-  /// Uses multipart form data to upload the file.
+  ///
+  /// Backend endpoint: POST /api/jobs/upload (single-POST)
+  /// or /api/jobs/upload/{init,chunk,complete} (chunked, for large files).
+  /// Files above [_chunkedUploadThresholdBytes] are uploaded in chunks to
+  /// bypass edge-proxy per-request body limits.
   /// Returns (jobId, null) on success, (null, errorMessage) on failure.
   Future<({String? jobId, String? error})> enqueueFromFile({
     required File file,
@@ -613,6 +619,22 @@ class BackendClient {
     String? safety,
     bool? skipTagging,
   }) async {
+    int fileSize;
+    try {
+      fileSize = await file.length();
+    } catch (e) {
+      return (jobId: null, error: 'Could not read file: $e');
+    }
+    if (fileSize > _chunkedUploadThresholdBytes) {
+      return _enqueueFromFileChunked(
+        file: file,
+        fileSize: fileSize,
+        source: source,
+        tags: tags,
+        safety: safety,
+        skipTagging: skipTagging,
+      );
+    }
     final uri = Uri.parse('$baseUrl/api/jobs/upload');
     final request = http.MultipartRequest('POST', uri);
     if (_accessToken != null && _accessToken!.isNotEmpty) {
@@ -717,6 +739,121 @@ class BackendClient {
       debugPrint('[BackendClient] Exception during upload: $e');
       debugPrint('[BackendClient] Stack trace: $stackTrace');
       return (jobId: null, error: e.toString());
+    }
+  }
+
+  /// Upload a large file via the chunked upload API.
+  ///
+  /// Flow: init (reserve session) -> N chunk POSTs -> complete (reassemble +
+  /// create job). Each chunk is retried up to 3 times with exponential backoff.
+  /// On unrecoverable error, best-effort aborts the server session to release
+  /// disk space early (the server also TTL-cleans after 24h).
+  Future<({String? jobId, String? error})> _enqueueFromFileChunked({
+    required File file,
+    required int fileSize,
+    String? source,
+    List<String>? tags,
+    String? safety,
+    bool? skipTagging,
+  }) async {
+    String? sessionId;
+    try {
+      final initPayload = <String, dynamic>{
+        'filename': _basenameFromPath(file.path),
+        'total_size': fileSize,
+      };
+      if (safety != null && safety.isNotEmpty) initPayload['safety'] = safety;
+      if (skipTagging != null) initPayload['skip_tagging'] = skipTagging;
+      if (tags != null && tags.isNotEmpty) initPayload['tags'] = tags.join(',');
+      if (source != null && source.isNotEmpty) initPayload['source'] = source;
+
+      debugPrint('[BackendClient] Chunked upload: init for ${initPayload['filename']} ($fileSize bytes)');
+      final initResp = await _dio.post('/api/jobs/upload/init', data: initPayload);
+      final initData = initResp.data as Map<String, dynamic>;
+      sessionId = initData['session_id'] as String;
+      final chunkSize = initData['chunk_size'] as int;
+      final totalChunks = initData['total_chunks'] as int;
+      debugPrint('[BackendClient] Chunked upload: session=$sessionId chunkSize=$chunkSize totalChunks=$totalChunks');
+
+      final raf = await file.open();
+      try {
+        for (int i = 0; i < totalChunks; i++) {
+          final offset = i * chunkSize;
+          final length = (offset + chunkSize <= fileSize)
+              ? chunkSize
+              : (fileSize - offset);
+          await raf.setPosition(offset);
+          final bytes = await raf.read(length);
+
+          Object? lastError;
+          bool sent = false;
+          for (int attempt = 0; attempt < 3 && !sent; attempt++) {
+            try {
+              final form = FormData.fromMap({
+                'chunk': MultipartFile.fromBytes(bytes, filename: 'chunk_$i'),
+              });
+              await _dio.post(
+                '/api/jobs/upload/chunk/$sessionId/$i',
+                data: form,
+                options: Options(
+                  sendTimeout: const Duration(minutes: 2),
+                  receiveTimeout: const Duration(minutes: 2),
+                ),
+              );
+              sent = true;
+            } catch (e) {
+              lastError = e;
+              if (attempt < 2) {
+                await Future.delayed(Duration(seconds: 1 << attempt));
+              }
+            }
+          }
+          if (!sent) {
+            debugPrint('[BackendClient] Chunk $i failed after 3 attempts: $lastError');
+            await _abortChunkedUpload(sessionId);
+            sessionId = null;
+            return (
+              jobId: null,
+              error: 'Upload failed on chunk ${i + 1} of $totalChunks: $lastError',
+            );
+          }
+        }
+      } finally {
+        await raf.close();
+      }
+
+      final completeResp = await _dio.post(
+        '/api/jobs/upload/complete/$sessionId',
+        options: Options(receiveTimeout: const Duration(minutes: 5)),
+      );
+      final jobId = (completeResp.data as Map<String, dynamic>)['id']?.toString();
+      debugPrint('[BackendClient] Chunked upload complete, jobId: $jobId');
+      sessionId = null;
+      return (jobId: jobId, error: null);
+    } on DioException catch (e) {
+      if (sessionId != null) {
+        await _abortChunkedUpload(sessionId);
+      }
+      final code = e.response?.statusCode;
+      final message = code == 401
+          ? 'Session expired. Please log in again.'
+          : (_messageFromDioException(e) ?? _friendlyLabelForStatusCode(code));
+      return (jobId: null, error: message);
+    } catch (e, stackTrace) {
+      debugPrint('[BackendClient] Chunked upload exception: $e');
+      debugPrint('[BackendClient] Stack trace: $stackTrace');
+      if (sessionId != null) {
+        await _abortChunkedUpload(sessionId);
+      }
+      return (jobId: null, error: e.toString());
+    }
+  }
+
+  Future<void> _abortChunkedUpload(String sessionId) async {
+    try {
+      await _dio.delete('/api/jobs/upload/$sessionId');
+    } catch (_) {
+      // Server will clean up on TTL; best-effort only.
     }
   }
 
@@ -1051,6 +1188,13 @@ class BackendException implements Exception {
 
   @override
   String toString() => 'BackendException: $message${statusCode != null ? ' (status: $statusCode)' : ''}';
+}
+
+/// Strip any directory component from a file path (handles both / and \).
+String _basenameFromPath(String path) {
+  final normalized = path.replaceAll('\\', '/');
+  final idx = normalized.lastIndexOf('/');
+  return idx >= 0 ? normalized.substring(idx + 1) : normalized;
 }
 
 /// Extracts backend error message from DioException response body (e.g. FastAPI detail).

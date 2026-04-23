@@ -7,8 +7,10 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- Add chunked upload endpoints (`POST /api/jobs/upload/init`, `/chunk/{id}/{n}`, `/complete/{id}`, `DELETE /upload/{id}`) so clients can split large files into 10 MB parts and bypass edge-proxy per-request size limits (e.g. Cloudflare's 100 MB cap)
 
 ### Mobile App
+- Files larger than 50 MB now upload in chunks to avoid silent failures behind Cloudflare's 100 MB request limit; each chunk is retried up to 3 times on network error
 
 ### Browser Extension
 
