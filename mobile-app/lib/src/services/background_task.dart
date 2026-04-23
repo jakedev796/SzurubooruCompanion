@@ -9,6 +9,7 @@ import 'folder_scanner.dart';
 import '../models/auth.dart';
 import '../models/scheduled_folder.dart';
 import 'companion_foreground_service.dart';
+import 'folder_scan_lock.dart';
 import 'network_gate.dart';
 import 'notification_service.dart';
 import 'settings_model.dart';
@@ -208,6 +209,11 @@ typedef FolderScanOutcome = ({bool success, int uploaded});
 /// Runs only at clock-aligned boundaries for the effective interval (e.g. :00, :30 for 30 min).
 /// Allows ±2 minute slack to account for WorkManager timing variability.
 Future<FolderScanOutcome> processScheduledFolders() async {
+  final lockOwner = 'scheduled:${DateTime.now().millisecondsSinceEpoch}';
+  if (!await FolderScanLock.acquire(lockOwner)) {
+    debugPrint('[FolderSync] Another sync is in progress; scheduled run skipped');
+    return (success: true, uploaded: 0);
+  }
   try {
     debugPrint('[FolderSync] processScheduledFolders() started');
     final settings = SettingsModel();
@@ -345,6 +351,8 @@ Future<FolderScanOutcome> processScheduledFolders() async {
     debugPrint('[FolderSync] Critical error in background folder scan: $e');
     debugPrint('[FolderSync] Stack trace: $stackTrace');
     return (success: false, uploaded: 0);
+  } finally {
+    await FolderScanLock.release(lockOwner);
   }
 }
 
@@ -522,6 +530,11 @@ Future<List<ScanResult>> _runFolderScan({
   required bool onlyDue,
   bool allowDelete = false,
 }) async {
+  final lockOwner = 'manual:${DateTime.now().millisecondsSinceEpoch}';
+  if (!await FolderScanLock.acquire(lockOwner)) {
+    debugPrint('[FolderSync] Another sync is in progress; manual run skipped');
+    return [];
+  }
   try {
     final settings = SettingsModel();
     await settings.loadSettings();
@@ -595,5 +608,7 @@ Future<List<ScanResult>> _runFolderScan({
   } catch (e) {
     debugPrint('Error in manual folder scan: $e');
     return [];
+  } finally {
+    await FolderScanLock.release(lockOwner);
   }
 }

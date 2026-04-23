@@ -756,10 +756,14 @@ class BackendClient {
     String? safety,
     bool? skipTagging,
   }) async {
+    // Trace tag ties all logs from a single chunked upload together so
+    // duplicate-upload repros can be untangled from interleaved output.
+    final trace = 'CU${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    final filename = _basenameFromPath(file.path);
     String? sessionId;
     try {
       final initPayload = <String, dynamic>{
-        'filename': _basenameFromPath(file.path),
+        'filename': filename,
         'total_size': fileSize,
       };
       if (safety != null && safety.isNotEmpty) initPayload['safety'] = safety;
@@ -767,13 +771,13 @@ class BackendClient {
       if (tags != null && tags.isNotEmpty) initPayload['tags'] = tags.join(',');
       if (source != null && source.isNotEmpty) initPayload['source'] = source;
 
-      debugPrint('[BackendClient] Chunked upload: init for ${initPayload['filename']} ($fileSize bytes)');
+      debugPrint('[$trace] init filename=$filename size=$fileSize');
       final initResp = await _dio.post('/api/jobs/upload/init', data: initPayload);
       final initData = initResp.data as Map<String, dynamic>;
       sessionId = initData['session_id'] as String;
       final chunkSize = initData['chunk_size'] as int;
       final totalChunks = initData['total_chunks'] as int;
-      debugPrint('[BackendClient] Chunked upload: session=$sessionId chunkSize=$chunkSize totalChunks=$totalChunks');
+      debugPrint('[$trace] init-response session=$sessionId chunkSize=$chunkSize totalChunks=$totalChunks');
 
       final raf = await file.open();
       try {
@@ -803,13 +807,14 @@ class BackendClient {
               sent = true;
             } catch (e) {
               lastError = e;
+              debugPrint('[$trace] chunk=$i attempt=${attempt + 1}/3 failed: $e');
               if (attempt < 2) {
                 await Future.delayed(Duration(seconds: 1 << attempt));
               }
             }
           }
           if (!sent) {
-            debugPrint('[BackendClient] Chunk $i failed after 3 attempts: $lastError');
+            debugPrint('[$trace] chunk=$i giving up after 3 attempts; aborting session=$sessionId');
             final sid = sessionId;
             if (sid != null) {
               await _abortChunkedUpload(sid);
@@ -825,27 +830,29 @@ class BackendClient {
         await raf.close();
       }
 
+      debugPrint('[$trace] all-chunks-sent session=$sessionId; calling /complete');
       final completeResp = await _dio.post(
         '/api/jobs/upload/complete/$sessionId',
         options: Options(receiveTimeout: const Duration(minutes: 5)),
       );
       final jobId = (completeResp.data as Map<String, dynamic>)['id']?.toString();
-      debugPrint('[BackendClient] Chunked upload complete, jobId: $jobId');
+      debugPrint('[$trace] complete session=$sessionId jobId=$jobId');
       sessionId = null;
       return (jobId: jobId, error: null);
     } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      debugPrint('[$trace] dio-error session=$sessionId code=$code path=${e.requestOptions.path}');
       final sid = sessionId;
       if (sid != null) {
         await _abortChunkedUpload(sid);
       }
-      final code = e.response?.statusCode;
       final message = code == 401
           ? 'Session expired. Please log in again.'
           : (_messageFromDioException(e) ?? _friendlyLabelForStatusCode(code));
       return (jobId: null, error: message);
     } catch (e, stackTrace) {
-      debugPrint('[BackendClient] Chunked upload exception: $e');
-      debugPrint('[BackendClient] Stack trace: $stackTrace');
+      debugPrint('[$trace] exception session=$sessionId: $e');
+      debugPrint('[$trace] stack: $stackTrace');
       final sid = sessionId;
       if (sid != null) {
         await _abortChunkedUpload(sid);

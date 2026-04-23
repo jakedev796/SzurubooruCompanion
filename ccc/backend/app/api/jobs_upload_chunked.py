@@ -22,6 +22,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -112,7 +113,20 @@ async def upload_chunk(
     if chunk_number < 0 or chunk_number >= session.total_chunks:
         raise HTTPException(status_code=400, detail="Chunk number out of range.")
 
-    received = await upload_sessions.store_chunk(session, chunk_number, chunk.file)
+    received, written_bytes = await upload_sessions.store_chunk(session, chunk_number, chunk.file)
+
+    # Reject zero-byte chunks. This guards against clients (e.g. dio's 401
+    # interceptor replaying a consumed FormData) that accidentally send an
+    # empty body — silently accepting it corrupts the reassembled file and
+    # leads to cryptic downstream failures.
+    if written_bytes == 0:
+        # Don't count this chunk as received so the client can retry with real bytes.
+        await upload_sessions.forget_chunk(session_id, chunk_number)
+        raise HTTPException(
+            status_code=400,
+            detail="Empty chunk body rejected; retry with actual bytes.",
+        )
+
     return UploadChunkResponse(received_chunks=received, total_chunks=session.total_chunks)
 
 
@@ -122,7 +136,31 @@ async def complete_upload(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reassemble chunks, create a Job, and clean up the session."""
+    """Reassemble chunks, create a Job, and clean up the session.
+
+    Idempotent by design: the session_id is used as the Job's id, so a client
+    retry of /complete after the first call already succeeded (e.g. network
+    drop between commit and response) returns the existing job instead of
+    creating a duplicate.
+    """
+    # Parse session_id as UUID up-front; we use it as the job id.
+    try:
+        job_id = uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Upload session not found.")
+
+    # Idempotency: if a job with this id already exists, we already processed
+    # this session on a prior /complete call. Return it unchanged.
+    existing_result = await db.execute(select(Job).where(Job.id == job_id))
+    existing_job = existing_result.scalar_one_or_none()
+    if existing_job is not None:
+        if existing_job.szuru_user != current_user.szuru_username:
+            raise HTTPException(status_code=404, detail="Upload session not found.")
+        logger.info("Idempotent /complete hit for session %s; returning existing job", session_id)
+        # Best-effort cleanup if a session somehow lingers.
+        await upload_sessions.delete_session(session_id)
+        return _job_to_out(existing_job)
+
     session = await _load_owned_session(session_id, current_user)
 
     received = await upload_sessions.received_chunks(session_id)
@@ -134,7 +172,6 @@ async def complete_upload(
             detail=f"Upload incomplete: missing {len(missing)} chunk(s) (first missing: {first_missing}).",
         )
 
-    job_id = uuid.uuid4()
     job_dir = os.path.join(settings.job_data_dir, str(job_id))
     dest = os.path.join(job_dir, session.filename)
 

@@ -7,8 +7,12 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- Chunked upload: make `/complete` idempotent by reusing the session id as the job id, so network blips during reassembly no longer create duplicate jobs on retry
+- Chunked upload: reject zero-byte chunk bodies at `/chunk/...` (client-side FormData replays on 401 retry were silently storing empty chunks)
 
 ### Mobile App
+- Prevent duplicate uploads caused by manual "Sync Now" running while a scheduled scan was still in flight; folder sync now acquires a cross-isolate SharedPreferences mutex (30 min TTL) so only one scan runs at a time
+- Added traced logging (`[CU…]` prefix) to chunked upload so init/chunk/complete call flow can be followed end-to-end
 
 ### Browser Extension
 

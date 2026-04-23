@@ -140,21 +140,42 @@ async def get_session(session_id: str) -> Optional[UploadSession]:
         return None
 
 
-async def store_chunk(session: UploadSession, chunk_number: int, stream) -> int:
-    """Write a chunk atomically to disk and record receipt; returns received count."""
+async def store_chunk(session: UploadSession, chunk_number: int, stream) -> tuple[int, int]:
+    """Write a chunk atomically to disk and record receipt.
+
+    Returns (received_count, bytes_written). Callers can reject zero-byte
+    writes before the chunk is counted as received — see upload_chunk.
+    """
     os.makedirs(_session_dir(session.id), exist_ok=True)
     path = _chunk_path(session.id, chunk_number)
     tmp_path = path + ".tmp"
     with open(tmp_path, "wb") as f:
         shutil.copyfileobj(stream, f)
     os.replace(tmp_path, path)
+    written_bytes = os.path.getsize(path)
 
     redis = _redis()
     try:
         await redis.sadd(_received_key(session.id), chunk_number)
         await redis.expire(_received_key(session.id), SESSION_TTL_SECONDS)
         await redis.expire(_session_key(session.id), SESSION_TTL_SECONDS)
-        return await redis.scard(_received_key(session.id))
+        received = await redis.scard(_received_key(session.id))
+    finally:
+        await redis.close()
+    return received, written_bytes
+
+
+async def forget_chunk(session_id: str, chunk_number: int) -> None:
+    """Remove a chunk's disk file and its receipt mark (used to undo a bad write)."""
+    path = _chunk_path(session_id, chunk_number)
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+    except OSError:
+        pass
+    redis = _redis()
+    try:
+        await redis.srem(_received_key(session_id), chunk_number)
     finally:
         await redis.close()
 
