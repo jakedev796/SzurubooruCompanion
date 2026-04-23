@@ -810,7 +810,10 @@ class BackendClient {
           }
           if (!sent) {
             debugPrint('[BackendClient] Chunk $i failed after 3 attempts: $lastError');
-            await _abortChunkedUpload(sessionId);
+            final sid = sessionId;
+            if (sid != null) {
+              await _abortChunkedUpload(sid);
+            }
             sessionId = null;
             return (
               jobId: null,
@@ -831,8 +834,9 @@ class BackendClient {
       sessionId = null;
       return (jobId: jobId, error: null);
     } on DioException catch (e) {
-      if (sessionId != null) {
-        await _abortChunkedUpload(sessionId);
+      final sid = sessionId;
+      if (sid != null) {
+        await _abortChunkedUpload(sid);
       }
       final code = e.response?.statusCode;
       final message = code == 401
@@ -842,8 +846,9 @@ class BackendClient {
     } catch (e, stackTrace) {
       debugPrint('[BackendClient] Chunked upload exception: $e');
       debugPrint('[BackendClient] Stack trace: $stackTrace');
-      if (sessionId != null) {
-        await _abortChunkedUpload(sessionId);
+      final sid = sessionId;
+      if (sid != null) {
+        await _abortChunkedUpload(sid);
       }
       return (jobId: null, error: e.toString());
     }
