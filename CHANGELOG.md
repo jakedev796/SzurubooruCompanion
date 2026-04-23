@@ -7,6 +7,14 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.3.5] - 2026-04-23
+
+### CCC - Backend
 - Add chunked upload endpoints (`POST /api/jobs/upload/init`, `/chunk/{id}/{n}`, `/complete/{id}`, `DELETE /upload/{id}`) so clients can split large files into 10 MB parts and bypass edge-proxy per-request size limits (e.g. Cloudflare's 100 MB cap)
 
 ### Mobile App
@@ -19,7 +27,6 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 - Installed global error handlers (FlutterError.onError, PlatformDispatcher.onError, runZonedGuarded) so uncaught exceptions are logged instead of silently crashing the app
 - Fixed a stream subscription leak that accumulated dead listeners on each SSE reconnect
 
-### Browser Extension
 
 ## [1.3.4] - 2026-04-09
 
