@@ -31,6 +31,7 @@ class AppState extends ChangeNotifier {
   BackendClient? _backendClient;
   StreamSubscription<SseConnectionState>? _sseStateSubscription;
   StreamSubscription<JobUpdate>? _jobUpdateSubscription;
+  StreamSubscription<SseEvent>? _sseRawSubscription;
   
   // Track previous URL to avoid unnecessary SSE reconnections
   String _previousBackendUrl = '';
@@ -114,8 +115,9 @@ class AppState extends ChangeNotifier {
       _handleJobUpdate(update);
     });
     
-    // Also listen to the raw stream for errors
-    sseStream.listen(
+    // Also listen to the raw stream for connection/error signals.
+    // Track the subscription so reconnects don't leak listeners onto dead controllers.
+    _sseRawSubscription = sseStream.listen(
       (event) {
         // Events are handled via jobUpdateStream
         if (event.type == SseEventType.connected) {
@@ -143,6 +145,8 @@ class AppState extends ChangeNotifier {
     _sseStateSubscription = null;
     _jobUpdateSubscription?.cancel();
     _jobUpdateSubscription = null;
+    _sseRawSubscription?.cancel();
+    _sseRawSubscription = null;
     _backendClient?.disconnectSse();
     sseConnectionState = SseConnectionState.disconnected;
   }

@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
 import 'package:provider/provider.dart';
@@ -18,22 +22,42 @@ import 'src/utils/markdown_plain_text.dart';
 import 'src/widgets/app_lock_gate.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await NotificationService.instance.init(
-    onNotificationResponse: (response) {
-      final payload = response.payload;
-      if (payload == 'update_available' || payload == 'ready_to_install') {
-        UpdateService.getInstance().then((s) => s.handleNotificationTap(payload));
-      }
-    },
-  );
-  await initializeBackgroundTasks();
+  // Install global error handlers BEFORE anything else so startup failures and
+  // uncaught async errors are captured rather than dying silently.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('[UncaughtFlutterError] ${details.exceptionAsString()}');
+    if (details.stack != null) {
+      debugPrint('[UncaughtFlutterError] ${details.stack}');
+    }
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('[UncaughtPlatformError] $error');
+    debugPrint('[UncaughtPlatformError] $stack');
+    return true;
+  };
 
-  runApp(
-    Phoenix(
-      child: const _AppRoot(),
-    ),
-  );
+  await runZonedGuarded<Future<void>>(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await NotificationService.instance.init(
+      onNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload == 'update_available' || payload == 'ready_to_install') {
+          UpdateService.getInstance().then((s) => s.handleNotificationTap(payload));
+        }
+      },
+    );
+    await initializeBackgroundTasks();
+
+    runApp(
+      Phoenix(
+        child: const _AppRoot(),
+      ),
+    );
+  }, (error, stack) {
+    debugPrint('[UncaughtZoneError] $error');
+    debugPrint('[UncaughtZoneError] $stack');
+  });
 }
 
 /// Loads settings and builds the provider tree. Rebuilt on Phoenix.rebirth() so

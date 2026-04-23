@@ -10,12 +10,12 @@ class FolderSettingsCard extends StatelessWidget {
     required this.isSyncingFolders,
     required this.notifyOnFolderSync,
     required this.deleteMediaAfterSync,
-    required this.showPersistentNotification,
+    required this.uploadOnlyOnWifi,
     required this.folderSyncIntervalSeconds,
     required this.onSyncNow,
     required this.onNotifyOnFolderSyncChanged,
     required this.onDeleteMediaAfterSyncChanged,
-    required this.onShowPersistentNotificationChanged,
+    required this.onUploadOnlyOnWifiChanged,
     required this.onFolderSyncIntervalChanged,
     required this.onAutoSave,
   });
@@ -23,12 +23,12 @@ class FolderSettingsCard extends StatelessWidget {
   final bool isSyncingFolders;
   final bool notifyOnFolderSync;
   final bool deleteMediaAfterSync;
-  final bool showPersistentNotification;
+  final bool uploadOnlyOnWifi;
   final int folderSyncIntervalSeconds;
   final VoidCallback onSyncNow;
   final ValueChanged<bool> onNotifyOnFolderSyncChanged;
   final ValueChanged<bool> onDeleteMediaAfterSyncChanged;
-  final ValueChanged<bool> onShowPersistentNotificationChanged;
+  final ValueChanged<bool> onUploadOnlyOnWifiChanged;
   final ValueChanged<int> onFolderSyncIntervalChanged;
   final VoidCallback onAutoSave;
 
@@ -102,13 +102,13 @@ class FolderSettingsCard extends StatelessWidget {
           ),
         const SizedBox(height: 12),
         SwitchListTile(
-          title: const Text('Show persistent status notification'),
+          title: const Text('Upload only on WiFi'),
           subtitle: const Text(
-            'Keep a notification in the status bar when folder sync is on (connectivity status).',
+            'Pause scheduled folder sync and offline retries while on cellular data.',
           ),
-          value: showPersistentNotification,
+          value: uploadOnlyOnWifi,
           onChanged: (value) {
-            onShowPersistentNotificationChanged(value);
+            onUploadOnlyOnWifiChanged(value);
             onAutoSave();
           },
         ),

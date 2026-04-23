@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.database import init_db
 from app.migrations import run_migrations
 from app.api.jobs import router as jobs_router
+from app.api.jobs_upload_chunked import router as jobs_upload_chunked_router
 from app.api.stats import router as stats_router
 from app.api.health import router as health_router
 from app.api.events import router as events_router
@@ -34,6 +35,7 @@ from app.services.szurubooru import (
     close_session as close_szuru_session,
     load_tag_cache,
 )
+from app.services.upload_sessions import cleanup_loop as upload_sessions_cleanup_loop
 from app.workers.processor import start_worker, stop_worker
 
 settings = get_settings()
@@ -75,13 +77,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting %d background worker(s) (WORKER_CONCURRENCY)...", num_workers)
     worker_tasks = [asyncio.create_task(start_worker(i)) for i in range(num_workers)]
 
+    upload_cleanup_task = asyncio.create_task(upload_sessions_cleanup_loop())
+
     yield
 
     logger.info("Shutting down workers...")
     await stop_worker()
+    upload_cleanup_task.cancel()
     for task in worker_tasks:
         task.cancel()
-    await asyncio.gather(*worker_tasks, return_exceptions=True)
+    await asyncio.gather(*worker_tasks, upload_cleanup_task, return_exceptions=True)
 
     logger.info("Closing Szurubooru session...")
     await close_szuru_session()
@@ -164,6 +169,7 @@ app.include_router(users_router, prefix="/api", tags=["users"])
 app.include_router(settings_router, prefix="/api", tags=["settings"])
 app.include_router(preferences_router, prefix="/api", tags=["preferences"])
 app.include_router(jobs_router, prefix="/api", tags=["jobs"])
+app.include_router(jobs_upload_chunked_router, prefix="/api", tags=["jobs"])
 app.include_router(stats_router, prefix="/api", tags=["stats"])
 app.include_router(events_router, prefix="/api", tags=["events"])
 app.include_router(config_router, prefix="/api", tags=["config"])

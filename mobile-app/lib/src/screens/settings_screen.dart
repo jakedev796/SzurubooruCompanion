@@ -25,6 +25,7 @@ import '../widgets/settings/app_lock_card.dart';
 import '../widgets/settings/backup_restore_card.dart';
 import '../widgets/settings/backend_settings_card.dart';
 import '../widgets/settings/folder_settings_card.dart';
+import '../widgets/settings/quick_actions_card.dart';
 import '../widgets/settings/share_settings_card.dart';
 
 /// Settings screen for the Szuru Companion app
@@ -49,6 +50,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _deleteMediaAfterSync = false;
   bool _showPersistentNotification = true;
   bool _showFloatingBubble = false;
+  bool _uploadOnlyOnWifi = false;
   int _folderSyncIntervalSeconds = 900;
   bool _isSyncingFolders = false;
   bool _isRestoreInProgress = false;
@@ -106,6 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _deleteMediaAfterSync = settings.deleteMediaAfterSync;
       _showPersistentNotification = settings.showPersistentNotification;
       _showFloatingBubble = settings.showFloatingBubble;
+      _uploadOnlyOnWifi = settings.uploadOnlyOnWifi;
       _folderSyncIntervalSeconds = settings.folderSyncIntervalSeconds;
     });
   }
@@ -207,8 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (granted) {
                 setState(() { _showFloatingBubble = true; });
                 _showSnackBar('Overlay permission granted - floating bubble enabled');
-                final folderSyncEnabledNow = hasFoldersEnabled && _showPersistentNotification;
-                if (folderSyncEnabledNow) {
+                if (hasFoldersEnabled) {
                   await startCompanionForegroundService(
                     folderSyncEnabled: true,
                     bubbleEnabled: true,
@@ -246,6 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         deleteMediaAfterSync: _deleteMediaAfterSync,
         showPersistentNotification: _showPersistentNotification,
         showFloatingBubble: _showFloatingBubble,
+        uploadOnlyOnWifi: _uploadOnlyOnWifi,
         folderSyncIntervalSeconds: _folderSyncIntervalSeconds,
       );
       if (!mounted) return;
@@ -268,14 +271,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
 
-      final folderSyncEnabled = hasFoldersEnabled && _showPersistentNotification;
-      if (folderSyncEnabled) {
+      // Folder sync no longer depends on _showPersistentNotification — Android
+      // requires a notification for foreground services anyway, and without
+      // the foreground service the process gets killed and folder sync dies.
+      if (hasFoldersEnabled) {
         await startCompanionForegroundService(
           folderSyncEnabled: true,
-          bubbleEnabled: _showFloatingBubble && folderSyncEnabled,
+          bubbleEnabled: _showFloatingBubble,
           statusBody: buildCompanionNotificationBody(
             folderSyncOn: true,
-            bubbleOn: _showFloatingBubble && folderSyncEnabled,
+            bubbleOn: _showFloatingBubble,
           ),
         );
         if (!mounted) return;
@@ -352,8 +357,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final folders = await settings.getScheduledFolders();
     if (!mounted) return;
     final hasFoldersEnabled = folders.any((f) => f.enabled == true);
-    final folderSyncEnabled = hasFoldersEnabled && _showPersistentNotification;
-    if (folderSyncEnabled) {
+    if (hasFoldersEnabled) {
       await startCompanionForegroundService(
         folderSyncEnabled: true,
         bubbleEnabled: true,
@@ -561,6 +565,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            QuickActionsCard(
+              isSyncingFolders: _isSyncingFolders,
+              onSyncNow: _runFolderSync,
+            ),
             BackendSettingsCard(
               backendUrlController: _backendUrlController,
               backendUrlFocusNode: _backendUrlFocusNode,
@@ -580,12 +588,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               isSyncingFolders: _isSyncingFolders,
               notifyOnFolderSync: _notifyOnFolderSync,
               deleteMediaAfterSync: _deleteMediaAfterSync,
-              showPersistentNotification: _showPersistentNotification,
+              uploadOnlyOnWifi: _uploadOnlyOnWifi,
               folderSyncIntervalSeconds: _folderSyncIntervalSeconds,
               onSyncNow: _runFolderSync,
               onNotifyOnFolderSyncChanged: (value) => setState(() => _notifyOnFolderSync = value),
               onDeleteMediaAfterSyncChanged: (value) => setState(() => _deleteMediaAfterSync = value),
-              onShowPersistentNotificationChanged: (value) => setState(() => _showPersistentNotification = value),
+              onUploadOnlyOnWifiChanged: (value) => setState(() => _uploadOnlyOnWifi = value),
               onFolderSyncIntervalChanged: (value) => setState(() => _folderSyncIntervalSeconds = value),
               onAutoSave: () => _autoSaveSettings(validate: false),
             ),
