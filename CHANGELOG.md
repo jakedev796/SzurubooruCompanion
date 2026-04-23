@@ -11,6 +11,13 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 
 ### Mobile App
 - Files larger than 50 MB now upload in chunks to avoid silent failures behind Cloudflare's 100 MB request limit; each chunk is retried up to 3 times on network error
+- Added "Upload only on WiFi" setting that pauses scheduled folder sync and offline-queue flushes while on cellular
+- Added a Quick Actions card at the top of Settings with one-tap Reconnect and Sync Now (previously buried under Folder Settings)
+- Fixed folder sync silently dying when the "Show persistent notification" toggle was turned off; the toggle has been removed since the foreground service always needs a notification
+- Added BOOT_COMPLETED receiver so scheduled folder sync alarms survive device reboots and app upgrades without needing to reopen the app
+- Folder sync alarm receiver now holds a short partial wake lock while enqueueing the WorkManager task, reducing the chance of the process being killed mid-handoff
+- Installed global error handlers (FlutterError.onError, PlatformDispatcher.onError, runZonedGuarded) so uncaught exceptions are logged instead of silently crashing the app
+- Fixed a stream subscription leak that accumulated dead listeners on each SSE reconnect
 
 ### Browser Extension
 

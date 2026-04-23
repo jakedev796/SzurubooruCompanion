@@ -23,6 +23,7 @@ class SettingsModel extends ChangeNotifier {
   bool _deleteMediaAfterSync = false;
   bool _showPersistentNotification = true;
   bool _showFloatingBubble = false;
+  bool _uploadOnlyOnWifi = false;
   int _folderSyncIntervalSeconds = 900;
   bool _isAuthenticated = false;
   String? _username;
@@ -38,6 +39,7 @@ class SettingsModel extends ChangeNotifier {
   bool get deleteMediaAfterSync => _deleteMediaAfterSync;
   bool get showPersistentNotification => _showPersistentNotification;
   bool get showFloatingBubble => _showFloatingBubble;
+  bool get uploadOnlyOnWifi => _uploadOnlyOnWifi;
   int get folderSyncIntervalSeconds => _folderSyncIntervalSeconds;
   bool get isAuthenticated => _isAuthenticated;
   String? get username => _username;
@@ -55,6 +57,7 @@ class SettingsModel extends ChangeNotifier {
     _deleteMediaAfterSync = prefs.getBool('deleteMediaAfterSync') ?? false;
     _showPersistentNotification = prefs.getBool('showPersistentNotification') ?? true;
     _showFloatingBubble = prefs.getBool('showFloatingBubble') ?? false;
+    _uploadOnlyOnWifi = prefs.getBool('uploadOnlyOnWifi') ?? false;
     _folderSyncIntervalSeconds = prefs.getInt('folderSyncIntervalSeconds') ?? 900;
     _isAuthenticated = prefs.containsKey('auth_tokens');
     _username = prefs.getString('username');
@@ -92,6 +95,7 @@ class SettingsModel extends ChangeNotifier {
     bool? deleteMediaAfterSync,
     bool? showPersistentNotification,
     bool? showFloatingBubble,
+    bool? uploadOnlyOnWifi,
     int? folderSyncIntervalSeconds,
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -140,6 +144,10 @@ class SettingsModel extends ChangeNotifier {
       _showFloatingBubble = showFloatingBubble;
       await prefs.setBool('showFloatingBubble', _showFloatingBubble);
     }
+    if (uploadOnlyOnWifi != null) {
+      _uploadOnlyOnWifi = uploadOnlyOnWifi;
+      await prefs.setBool('uploadOnlyOnWifi', _uploadOnlyOnWifi);
+    }
     if (folderSyncIntervalSeconds != null) {
       _folderSyncIntervalSeconds = folderSyncIntervalSeconds.clamp(900, 604800);
       await prefs.setInt('folderSyncIntervalSeconds', _folderSyncIntervalSeconds);
@@ -162,6 +170,7 @@ class SettingsModel extends ChangeNotifier {
     _deleteMediaAfterSync = false;
     _showPersistentNotification = true;
     _showFloatingBubble = false;
+    _uploadOnlyOnWifi = false;
     _folderSyncIntervalSeconds = 900;
     _isAuthenticated = false;
     _username = null;
@@ -194,6 +203,7 @@ class SettingsModel extends ChangeNotifier {
       'deleteMediaAfterSync': _deleteMediaAfterSync,
       'showPersistentNotification': _showPersistentNotification,
       'showFloatingBubble': _showFloatingBubble,
+      'uploadOnlyOnWifi': _uploadOnlyOnWifi,
       'folderSyncIntervalSeconds': _folderSyncIntervalSeconds,
       'scheduledFolders': folders.map((f) => f.toJson()).toList(),
     };
@@ -241,6 +251,10 @@ class SettingsModel extends ChangeNotifier {
       _showFloatingBubble = prefs['showFloatingBubble'] as bool? ?? _showFloatingBubble;
       await prefsStorage.setBool('showFloatingBubble', _showFloatingBubble);
     }
+    if (prefs.containsKey('uploadOnlyOnWifi')) {
+      _uploadOnlyOnWifi = prefs['uploadOnlyOnWifi'] as bool? ?? _uploadOnlyOnWifi;
+      await prefsStorage.setBool('uploadOnlyOnWifi', _uploadOnlyOnWifi);
+    }
     if (prefs.containsKey('folderSyncIntervalSeconds')) {
       final v = prefs['folderSyncIntervalSeconds'];
       if (v is int) {
@@ -276,6 +290,7 @@ class SettingsModel extends ChangeNotifier {
         'deleteMediaAfterSync': _deleteMediaAfterSync,
         'showPersistentNotification': _showPersistentNotification,
         'showFloatingBubble': _showFloatingBubble,
+        'uploadOnlyOnWifi': _uploadOnlyOnWifi,
         'folderSyncIntervalSeconds': _folderSyncIntervalSeconds,
         'scheduledFolders': folders.map((f) => f.toJson()).toList(),
       };
@@ -323,6 +338,7 @@ class SettingsModel extends ChangeNotifier {
       if (map.containsKey('deleteMediaAfterSync')) await prefs.setBool('deleteMediaAfterSync', map['deleteMediaAfterSync'] as bool? ?? false);
       if (map.containsKey('showPersistentNotification')) await prefs.setBool('showPersistentNotification', map['showPersistentNotification'] as bool? ?? true);
       if (map.containsKey('showFloatingBubble')) await prefs.setBool('showFloatingBubble', map['showFloatingBubble'] as bool? ?? false);
+      if (map.containsKey('uploadOnlyOnWifi')) await prefs.setBool('uploadOnlyOnWifi', map['uploadOnlyOnWifi'] as bool? ?? false);
       if (map.containsKey('folderSyncIntervalSeconds')) {
         final v = map['folderSyncIntervalSeconds'] as int? ?? 900;
         await prefs.setInt('folderSyncIntervalSeconds', v.clamp(900, 604800));

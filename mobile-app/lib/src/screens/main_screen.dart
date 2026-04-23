@@ -103,15 +103,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final folders = await settings.getScheduledFolders();
       if (!mounted) return;
       final hasFoldersEnabled = folders.any((f) => f.enabled == true);
-      final folderSyncEnabled =
-          hasFoldersEnabled && settings.showPersistentNotification;
-      if (folderSyncEnabled) {
+      if (hasFoldersEnabled) {
         await startCompanionForegroundService(
           folderSyncEnabled: true,
-          bubbleEnabled: settings.showFloatingBubble && folderSyncEnabled,
+          bubbleEnabled: settings.showFloatingBubble,
           statusBody: buildCompanionNotificationBody(
             folderSyncOn: true,
-            bubbleOn: settings.showFloatingBubble && folderSyncEnabled,
+            bubbleOn: settings.showFloatingBubble,
           ),
         );
         if (!mounted) return;
@@ -208,8 +206,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (!settings.isConfigured || !settings.isAuthenticated) return;
       
       final folders = await settings.getScheduledFolders();
-      final folderSyncOn = folders.where((f) => f.enabled).isNotEmpty &&
-          settings.showPersistentNotification;
+      final folderSyncOn = folders.where((f) => f.enabled).isNotEmpty;
       if (!folderSyncOn && !settings.showFloatingBubble) return;
       if (!mounted) return;
       final connectionText = appState.isConnected
@@ -357,11 +354,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             _lastNotificationUpdate = DateTime.now();
             await _updateStatusNotificationIfNeeded(settings, appState);
             if (!mounted) return;
-            if (!settings.showPersistentNotification) {
-              _statusNotificationReshowTimer?.cancel();
-              _statusNotificationReshowTimer = null;
-              return;
-            }
             final folders = await settings.getScheduledFolders();
             if (!mounted) return;
             if (folders.any((f) => f.enabled == true)) {

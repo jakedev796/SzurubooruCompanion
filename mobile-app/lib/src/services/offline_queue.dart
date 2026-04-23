@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'backend_client.dart';
+import 'network_gate.dart';
 import 'notification_service.dart';
+import 'settings_model.dart';
 
 class OfflineQueueEntry {
   final String type; // 'url' or 'file'
@@ -92,6 +94,13 @@ class OfflineQueue {
   static Future<int> flush(BackendClient client) async {
     final entries = await _getEntries();
     if (entries.isEmpty) return 0;
+
+    final settings = SettingsModel();
+    await settings.loadSettings();
+    if (!await NetworkGate.canAutoUpload(wifiOnly: settings.uploadOnlyOnWifi)) {
+      debugPrint('[OfflineQueue] Paused: WiFi-only enabled and not on WiFi');
+      return 0;
+    }
 
     debugPrint('[OfflineQueue] Flushing ${entries.length} queued entries');
     int processed = 0;

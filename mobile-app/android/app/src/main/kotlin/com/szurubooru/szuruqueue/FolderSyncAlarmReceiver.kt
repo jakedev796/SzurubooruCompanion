@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -41,6 +42,14 @@ class FolderSyncAlarmReceiver : BroadcastReceiver() {
         Log.d(TAG, "Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}")
         Log.d(TAG, "======================================")
 
+        // Hold a short partial wake lock so the WorkManager enqueue completes
+        // before the device can re-enter Doze. Released after the WM task is
+        // scheduled; the enqueued task runs under WorkManager's own wake lock.
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SzuruCompanion:FolderSyncAlarm")
+        wakeLock.setReferenceCounted(false)
+        wakeLock.acquire(30_000L)
+
         // IMPORTANT: Reschedule the next alarm BEFORE running the task
         // This ensures periodic execution continues even if the task fails
         rescheduleNextAlarm(context)
@@ -75,6 +84,12 @@ class FolderSyncAlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "Task: folder_scan_task, will call callbackDispatcher() in Dart")
         } catch (e: Exception) {
             Log.e(TAG, "Error enqueueing work: ${e.message}", e)
+        } finally {
+            try {
+                if (wakeLock.isHeld) wakeLock.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error releasing wake lock", e)
+            }
         }
     }
 

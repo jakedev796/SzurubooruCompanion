@@ -9,6 +9,7 @@ import 'folder_scanner.dart';
 import '../models/auth.dart';
 import '../models/scheduled_folder.dart';
 import 'companion_foreground_service.dart';
+import 'network_gate.dart';
 import 'notification_service.dart';
 import 'settings_model.dart';
 import 'update_service.dart';
@@ -168,21 +169,20 @@ void callbackDispatcher() {
         '[BackgroundIsolate] Folder scan complete: uploaded=${outcome.uploaded}, success=${outcome.success}',
       );
 
-      // Update notification with results
+      // Update notification with results (foreground service always runs
+      // while folder sync is enabled, so the notification is always present).
       final settings = SettingsModel();
       await settings.loadSettings();
-      if (settings.showPersistentNotification) {
-        final next = getNextFolderSyncRunTime(
-          settings.folderSyncIntervalSeconds,
-        );
-        await updateCompanionNotification(
-          statusBody: buildCompanionNotificationBody(
-            connectionText: 'Next sync: ${formatNextFolderSync(next)}',
-            folderSyncOn: true,
-            bubbleOn: settings.showFloatingBubble,
-          ),
-        );
-      }
+      final next = getNextFolderSyncRunTime(
+        settings.folderSyncIntervalSeconds,
+      );
+      await updateCompanionNotification(
+        statusBody: buildCompanionNotificationBody(
+          connectionText: 'Next sync: ${formatNextFolderSync(next)}',
+          folderSyncOn: true,
+          bubbleOn: settings.showFloatingBubble,
+        ),
+      );
 
       // Note: Next alarm is automatically rescheduled by FolderSyncAlarmReceiver
       // before this task runs, so we don't need to reschedule here
@@ -219,6 +219,11 @@ Future<FolderScanOutcome> processScheduledFolders() async {
       debugPrint(
         '[FolderSync] Server URL not configured, skipping folder scan',
       );
+      return (success: true, uploaded: 0);
+    }
+
+    if (!await NetworkGate.canAutoUpload(wifiOnly: settings.uploadOnlyOnWifi)) {
+      debugPrint('[FolderSync] Paused: WiFi-only enabled and not on WiFi');
       return (success: true, uploaded: 0);
     }
 
@@ -425,23 +430,25 @@ Future<void> scheduleFolderScanTask() async {
       return;
     }
 
-    if (settings.showPersistentNotification) {
-      final granted = await NotificationService.instance
-          .requestNotificationPermission();
-      if (granted != false) {
-        debugPrint('[BackgroundTask] Starting foreground service...');
-        await startCompanionForegroundService(
-          folderSyncEnabled: true,
-          bubbleEnabled: settings.showFloatingBubble,
-          statusBody: buildCompanionNotificationBody(
-            folderSyncOn: true,
-            bubbleOn: settings.showFloatingBubble,
-          ),
-        );
-        debugPrint('[BackgroundTask] Foreground service started');
-      } else {
-        debugPrint('[BackgroundTask] WARNING: Notification permission not granted!');
-      }
+    // Foreground service is required whenever folder sync is enabled: Android
+    // requires a notification for dataSync services, and without it OEMs kill
+    // the process aggressively. The persistent-notification preference no
+    // longer gates this — it was silently disabling folder sync.
+    final granted = await NotificationService.instance
+        .requestNotificationPermission();
+    if (granted != false) {
+      debugPrint('[BackgroundTask] Starting foreground service...');
+      await startCompanionForegroundService(
+        folderSyncEnabled: true,
+        bubbleEnabled: settings.showFloatingBubble,
+        statusBody: buildCompanionNotificationBody(
+          folderSyncOn: true,
+          bubbleOn: settings.showFloatingBubble,
+        ),
+      );
+      debugPrint('[BackgroundTask] Foreground service started');
+    } else {
+      debugPrint('[BackgroundTask] WARNING: Notification permission not granted!');
     }
 
     final nextSync = getNextFolderSyncRunTime(intervalSeconds);

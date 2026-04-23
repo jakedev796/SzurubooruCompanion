@@ -45,6 +45,9 @@ dependencies:
   # Battery optimization (folder sync reliability)
   battery_optimization_helper: ^0.2.0
 
+  # Network connectivity detection (for "Upload on WiFi only" gating)
+  connectivity_plus: ^6.0.5
+
   # App restart (e.g. after settings restore)
   flutter_phoenix: ^1.1.0
 
