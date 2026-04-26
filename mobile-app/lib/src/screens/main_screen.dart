@@ -181,15 +181,33 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         await settings.removePendingDeleteUri(filePath);
       }
 
-      // Prune stale pending-upload entries for jobs that no longer exist
+      // Reconcile pending-upload entries: delete files for jobs that already
+      // completed (e.g. while the app was killed and SSE never fired), and
+      // drop mappings for jobs that no longer exist on the backend.
       if (!settings.isConfigured || !settings.canMakeApiCalls) return;
       final pending = await settings.getPendingUploadFiles();
       for (final jobId in pending.keys.toList()) {
         final job = await appState.fetchJob(jobId);
         if (job == null) {
-          // Job no longer exists on backend — remove the mapping
           await settings.removePendingUploadFile(jobId);
           debugPrint('[Main] Removed stale pending upload entry for missing job $jobId');
+          continue;
+        }
+        final status = job.status.toLowerCase();
+        if (status == 'completed' || status == 'merged') {
+          final filePath = pending[jobId];
+          if (filePath != null) {
+            try {
+              final file = File(filePath);
+              if (await file.exists()) {
+                await file.delete();
+                debugPrint('[Main] Deleted file for already-completed job $jobId: $filePath');
+              }
+            } catch (e) {
+              debugPrint('[Main] Error deleting file for $jobId: $e');
+            }
+          }
+          await settings.removePendingUploadFile(jobId);
         }
       }
     } catch (e) {

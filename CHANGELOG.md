@@ -9,6 +9,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+- Folder sync: when Android killed the app mid-sync, completed uploads were never followed by a local file delete (because the SSE listener that ran the delete only lives in the foreground isolate), causing the next sync to re-upload the same files. The background folder-sync isolate now reconciles pending-delete entries against the backend right after upload, and the app-startup sweep also deletes files for jobs that already finished while the app was away.
 
 ### Browser Extension
 

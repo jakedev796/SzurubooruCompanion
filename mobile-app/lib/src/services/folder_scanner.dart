@@ -248,6 +248,45 @@ class FolderScanner {
     );
   }
 
+  /// Reconcile pending-upload entries by polling backend for each tracked job.
+  /// For jobs that have reached a terminal state we delete the local file and
+  /// drop the mapping; for jobs that have disappeared we drop the mapping.
+  /// Jobs still in flight are left for SSE / a later sweep.
+  ///
+  /// Runs in whichever isolate calls it, so the background folder-sync isolate
+  /// can finish the delete step itself when Android has killed the foreground
+  /// app and SSE is unavailable.
+  Future<void> reconcilePendingUploads() async {
+    final pending = await _settings.getPendingUploadFiles();
+    if (pending.isEmpty) return;
+    debugPrint('[FolderScanner] Reconciling ${pending.length} pending upload(s)');
+
+    int deleted = 0;
+    int dropped = 0;
+    for (final entry in pending.entries) {
+      final jobId = entry.key;
+      final filePath = entry.value;
+      try {
+        final job = await _backendClient.fetchJob(jobId);
+        if (job == null) {
+          await _settings.removePendingUploadFile(jobId);
+          dropped++;
+          debugPrint('[FolderScanner] Reconcile: dropped missing job $jobId');
+          continue;
+        }
+        final status = job.status.toLowerCase();
+        if (status == 'completed' || status == 'merged') {
+          await deleteFile(filePath);
+          await _settings.removePendingUploadFile(jobId);
+          deleted++;
+        }
+      } catch (e) {
+        debugPrint('[FolderScanner] Reconcile error for $jobId: $e');
+      }
+    }
+    debugPrint('[FolderScanner] Reconcile complete: deleted=$deleted, dropped=$dropped');
+  }
+
   /// Process all due folders
   Future<List<ScanResult>> processDueFolders() async {
     final folders = await _settings.getScheduledFolders();

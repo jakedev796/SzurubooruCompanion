@@ -342,6 +342,17 @@ Future<FolderScanOutcome> processScheduledFolders() async {
       '[FolderSync] Sync complete: $totalUploaded files uploaded, $totalErrors errors',
     );
 
+    // Same-isolate delete reconciliation. The foreground SSE handler usually
+    // deletes source files when jobs complete, but Android may have killed the
+    // app, so handle terminal jobs here too.
+    if (settings.deleteMediaAfterSync) {
+      try {
+        await scanner.reconcilePendingUploads();
+      } catch (e) {
+        debugPrint('[FolderSync] Pending upload reconcile failed: $e');
+      }
+    }
+
     if (settings.notifyOnFolderSync && totalUploaded > 0) {
       await NotificationService.instance.showFolderSyncComplete(totalUploaded);
     }
@@ -601,6 +612,14 @@ Future<List<ScanResult>> _runFolderScan({
         );
       } catch (e) {
         debugPrint('Error processing folder ${folder.name}: $e');
+      }
+    }
+
+    if (settings.deleteMediaAfterSync) {
+      try {
+        await scanner.reconcilePendingUploads();
+      } catch (e) {
+        debugPrint('Pending upload reconcile failed: $e');
       }
     }
 
