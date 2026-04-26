@@ -433,7 +433,16 @@ export default function Dashboard() {
           <h3 style={{ marginBottom: "0.75rem" }}>Uploads - last 30 days</h3>
           <div className="chart-container" style={{ minHeight: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={daily_uploads}>
+              <AreaChart
+                data={daily_uploads}
+                style={{ cursor: "pointer" }}
+                onClick={(state: { activeLabel?: string | number }) => {
+                  const label = state?.activeLabel;
+                  if (typeof label === "string" && /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+                    navigate(`/jobs?date=${label}`);
+                  }
+                }}
+              >
                 <defs>
                   <linearGradient id="completedGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor={CHART_COMPLETED} stopOpacity={0.3} />

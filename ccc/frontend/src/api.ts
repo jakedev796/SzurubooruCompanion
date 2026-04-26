@@ -203,15 +203,19 @@ export async function fetchJobs({
   was_merge,
   szuru_user,
   job_type,
+  date,
+  q,
   offset = 0,
   limit = 50,
   sort = "created_at_desc",
-}: { status?: string; was_merge?: boolean; szuru_user?: string; job_type?: string; offset?: number; limit?: number; sort?: string } = {}): Promise<JobsResponse> {
+}: { status?: string; was_merge?: boolean; szuru_user?: string; job_type?: string; date?: string; q?: string; offset?: number; limit?: number; sort?: string } = {}): Promise<JobsResponse> {
   const params = new URLSearchParams({ offset: String(offset), limit: String(limit), sort });
   if (status) params.set("status", status);
   if (was_merge !== undefined) params.set("was_merge", String(was_merge));
   if (szuru_user) params.set("szuru_user", szuru_user);
   if (job_type) params.set("job_type", job_type);
+  if (date) params.set("date", date);
+  if (q && q.trim()) params.set("q", q.trim());
   const res = await apiFetch(`${BASE}/jobs?${params}`, { headers: headers() });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parseJson<JobsResponse>(res);

@@ -330,6 +330,8 @@ async def list_jobs(
     status: Optional[str] = Query(None),
     was_merge: Optional[bool] = Query(None),
     job_type: Optional[str] = Query(None, description="Filter by job type: url, file, tag_existing"),
+    date: Optional[str] = Query(None, description="Filter by created_at UTC date (YYYY-MM-DD)"),
+    q: Optional[str] = Query(None, description="Search filename / URL / source override (case-insensitive substring)"),
     sort: Optional[str] = Query("created_at_desc", description="Sort: created_at_desc|asc, completed_at_desc|asc, duration_desc|asc"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -351,6 +353,18 @@ async def list_jobs(
                 status_code=400,
                 detail=f"Invalid job_type: {job_type!r}. Must be one of: {sorted(VALID_JOB_TYPES)}.",
             )
+    parsed_date = None
+    if date:
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid date: {date!r}. Must be YYYY-MM-DD.",
+            )
+    search_term = q.strip() if q else None
+    if search_term == "":
+        search_term = None
     sort_key = (sort or "created_at_desc").strip().lower()
     if sort_key not in VALID_SORT:
         raise HTTPException(
@@ -404,6 +418,19 @@ async def list_jobs(
         else:
             query = query.where(Job.job_type != JobType.TAG_EXISTING)
             count_query = count_query.where(Job.job_type != JobType.TAG_EXISTING)
+        if parsed_date is not None:
+            day_filter = text("(jobs.created_at AT TIME ZONE 'UTC')::date = :day").bindparams(day=parsed_date)
+            query = query.where(day_filter)
+            count_query = count_query.where(day_filter)
+        if search_term is not None:
+            like = f"%{search_term}%"
+            search_filter = (
+                func.lower(func.coalesce(Job.url, "")).like(func.lower(like))
+                | func.lower(func.coalesce(Job.original_filename, "")).like(func.lower(like))
+                | func.lower(func.coalesce(Job.source_override, "")).like(func.lower(like))
+            )
+            query = query.where(search_filter)
+            count_query = count_query.where(search_filter)
 
         # Auto-filter by current user's szuru_username (JWT auth)
         if current_user.szuru_username:

@@ -15,6 +15,8 @@ import {
   XCircle,
   Ban,
   Info,
+  Search,
+  X,
 } from "lucide-react";
 import {
   fetchJobs,
@@ -90,11 +92,15 @@ const SORT_OPTIONS = [
 
 import { formatRelativeDate, formatDurationSeconds } from "../utils/format";
 
+const SEARCH_DEBOUNCE_MS = 300;
+
 export default function JobList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get("status") || "";
   const sort = searchParams.get("sort") || "created_at_desc";
   const page = parseInt(searchParams.get("page") || "0", 10);
+  const dateFilter = searchParams.get("date") || "";
+  const searchQuery = searchParams.get("q") || "";
 
   const [data, setData] = useState<JobsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +109,7 @@ export default function JobList() {
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState<string | null>(null);
   const [bulkMessage, setBulkMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [searchInput, setSearchInput] = useState(searchQuery);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -111,11 +118,34 @@ export default function JobList() {
       .catch(() => {});
   }, []);
 
+  // Sync the local search input with the URL param when it changes externally
+  // (e.g. clicking a graph day, browser back/forward).
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
+
+  // Debounce the local search input to update the URL `q` param.
+  useEffect(() => {
+    if (searchInput === searchQuery) return;
+    const handle = setTimeout(() => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (searchInput.trim()) next.set("q", searchInput.trim());
+        else next.delete("q");
+        next.set("page", "0");
+        return next;
+      });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [searchInput, searchQuery, setSearchParams]);
+
   useEffect(() => {
     setError(null);
     setSelectedJobIds(new Set());
     fetchJobs({
       status: statusFilter || undefined,
+      date: dateFilter || undefined,
+      q: searchQuery || undefined,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,
       sort,
@@ -125,12 +155,14 @@ export default function JobList() {
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
-  }, [statusFilter, sort, page]);
+  }, [statusFilter, dateFilter, searchQuery, sort, page]);
 
   useEffect(() => {
     const refetch = () => {
       fetchJobs({
         status: statusFilter || undefined,
+        date: dateFilter || undefined,
+        q: searchQuery || undefined,
         offset: page * PAGE_SIZE,
         limit: PAGE_SIZE,
         sort,
@@ -140,7 +172,7 @@ export default function JobList() {
     };
     window.addEventListener(JOB_CREATED_EVENT, refetch);
     return () => window.removeEventListener(JOB_CREATED_EVENT, refetch);
-  }, [statusFilter, sort, page]);
+  }, [statusFilter, dateFilter, searchQuery, sort, page]);
 
   useJobUpdates((payload: Record<string, unknown>) => {
     const id = String(payload.id ?? payload.job_id ?? "");
@@ -275,6 +307,14 @@ export default function JobList() {
     setSearchParams(p);
   }
 
+  function setDateFilter(d: string) {
+    const p = new URLSearchParams(searchParams);
+    if (d) p.set("date", d);
+    else p.delete("date");
+    p.set("page", "0");
+    setSearchParams(p);
+  }
+
   function setPage(n: number) {
     const p = new URLSearchParams(searchParams);
     p.set("page", String(n));
@@ -404,6 +444,8 @@ export default function JobList() {
       if (action !== "delete" && ids.length > 0) {
         fetchJobs({
           status: statusFilter || undefined,
+          date: dateFilter || undefined,
+          q: searchQuery || undefined,
           offset: page * PAGE_SIZE,
           limit: PAGE_SIZE,
         })
@@ -555,6 +597,96 @@ export default function JobList() {
           {data ? " Showing last loaded results." : ""}
         </div>
       )}
+      <div
+        className="filters"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "0.5rem",
+          alignItems: "center",
+          marginBottom: "0.75rem",
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            flex: "1 1 240px",
+            minWidth: 200,
+            display: "flex",
+            alignItems: "center",
+          }}
+        >
+          <Search
+            size={14}
+            style={{
+              position: "absolute",
+              left: 10,
+              color: "var(--text-muted)",
+              pointerEvents: "none",
+            }}
+          />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search filename or URL..."
+            style={{
+              width: "100%",
+              paddingLeft: "2rem",
+              paddingRight: searchInput ? "2rem" : undefined,
+            }}
+            aria-label="Search jobs by filename or URL"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => setSearchInput("")}
+              title="Clear search"
+              style={{
+                position: "absolute",
+                right: 6,
+                background: "transparent",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                padding: 4,
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <input
+          type="date"
+          value={dateFilter}
+          onChange={(e) => setDateFilter(e.target.value)}
+          title="Filter by created date (UTC)"
+          aria-label="Filter by created date"
+        />
+        {dateFilter && (
+          <button
+            type="button"
+            onClick={() => setDateFilter("")}
+            title="Clear date filter"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "0.35rem 0.6rem",
+              background: "var(--bg)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: "0.85rem",
+            }}
+          >
+            <X size={12} /> Clear date
+          </button>
+        )}
+      </div>
       <div className="filters filter-pills">
         {STATUS_FILTER_ORDER.map(({ value, label, icon }) => {
           const isActive = statusFilter === value;

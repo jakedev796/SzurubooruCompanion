@@ -5,8 +5,12 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ## [Unreleased]
 
 ### CCC - Frontend
+- Dashboard: clicking a day on the "Uploads - last 30 days" chart now jumps to the job queue filtered to that date
+- Jobs: added a date filter (UTC) that pairs with the new dashboard click-through and works on its own
+- Jobs: added a search bar above the status filters for matching by filename, URL, or source override
 
 ### CCC - Backend
+- `GET /api/jobs` accepts new `date=YYYY-MM-DD` (filter by created_at UTC date) and `q=` (case-insensitive substring match against url / original_filename / source_override) query parameters
 
 ### Mobile App
 - Folder sync: when Android killed the app mid-sync, completed uploads were never followed by a local file delete (because the SSE listener that ran the delete only lives in the foreground isolate), causing the next sync to re-upload the same files. The background folder-sync isolate now reconciles pending-delete entries against the backend right after upload, and the app-startup sweep also deletes files for jobs that already finished while the app was away.
