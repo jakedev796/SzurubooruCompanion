@@ -7,8 +7,10 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- HEIC/HEIF files are now converted to JPEG before upload to Szurubooru (default Szurubooru config rejects HEIC); conversion happens before WD14 tagging too. Adds `pillow-heif` dependency.
 
 ### Mobile App
+- Folder sync: `.heic` and `.heif` files are now picked up by the scanner (previously skipped, so iOS-style photos in synced folders never uploaded).
 
 ### Browser Extension
 

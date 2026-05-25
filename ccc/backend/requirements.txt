@@ -18,6 +18,7 @@ torch>=2.0.0
 torchvision>=0.15.0
 wdtagger>=0.3.0
 Pillow>=9.0.0
+pillow-heif>=0.16.0
 numpy>=1.21.0
 timm>=0.9.12
 transformers>=4.20.0

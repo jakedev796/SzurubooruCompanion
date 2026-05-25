@@ -23,6 +23,7 @@ from app.services import tag_utils
 from app.services.config import load_user_config, load_global_config
 from app.services.encryption import decrypt
 from app.utils.mime import detect_mime_type, extension_from_content_type
+from app.utils.image import is_heif_path, convert_heif_to_jpeg
 from app.sites.registry import normalize_url as _normalize_site_url
 from app.api.events import publish_job_update
 
@@ -386,6 +387,16 @@ async def _process_single_media(
         return None
 
     fp = files[0]
+
+    # Convert HEIC/HEIF to JPEG up front: Szurubooru's default config rejects
+    # them, and the WD14 tagger doesn't read HEIF either.
+    if is_heif_path(fp):
+        try:
+            fp = convert_heif_to_jpeg(Path(fp))
+            files[0] = fp
+        except Exception as e:
+            logger.error("Job %s: HEIC/HEIF conversion failed for %s: %s", job.id, fp, e)
+            return None
 
     if await _abort_if_paused_or_stopped(job):
         return None  # caller checks too

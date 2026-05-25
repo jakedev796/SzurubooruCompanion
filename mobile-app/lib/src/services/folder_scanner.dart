@@ -10,6 +10,7 @@ import 'settings_model.dart';
 const Set<String> kSupportedExtensions = {
   // Images
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.svg',
+  '.heic', '.heif',
   // Videos
   '.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.m4v',
 };
