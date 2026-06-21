@@ -7,11 +7,16 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
-- Fixed a disk leak where uploaded file-job media was never cleaned up. FILE-job working directories under `JOB_DATA_DIR` were retained so failed jobs could be retried, but were never removed once the job succeeded, so completed uploads accumulated on disk indefinitely. They are now deleted once the job reaches a terminal success state, and a startup sweep reclaims directories left behind by previously completed jobs (and any orphaned directories with no matching job).
 
 ### Mobile App
 
 ### Browser Extension
+
+## [1.3.9] - 2026-06-21
+
+### CCC - Backend
+- Fixed a disk leak where uploaded file-job media was never cleaned up. FILE-job working directories under `JOB_DATA_DIR` were retained so failed jobs could be retried, but were never removed once the job succeeded, so completed uploads accumulated on disk indefinitely. They are now deleted once the job reaches a terminal success state, and a startup sweep reclaims directories left behind by previously completed jobs (and any orphaned directories with no matching job).
+
 
 ## [1.3.8] - 2026-05-25
 
