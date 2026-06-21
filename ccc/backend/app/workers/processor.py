@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -284,13 +285,98 @@ async def _process_job(job: Job, tag: str = "[W0]") -> None:
         if not await _abort_if_paused_or_stopped(job):
             await _fail_job(job, str(exc), max_retries=max_retries, retry_delay=retry_delay)
     finally:
-        try:
-            # Preserve uploaded FILE job payloads so retries can re-use the original media.
-            # URL/TAG_EXISTING jobs can be reconstructed, but FILE jobs cannot.
-            if job.job_type != JobType.FILE and os.path.isdir(job_dir):
-                shutil.rmtree(job_dir, ignore_errors=True)
-        except Exception:
-            pass
+        await _cleanup_job_dir(job, job_dir)
+
+
+# ---------------------------------------------------------------------------
+# Disk cleanup
+# ---------------------------------------------------------------------------
+
+
+async def _cleanup_job_dir(job: Job, job_dir: str) -> None:
+    """
+    Remove a job's working directory once its files are no longer needed.
+
+    URL/TAG_EXISTING jobs can always be reconstructed from the URL or post id, so
+    their directories are removed as soon as processing finishes. FILE jobs are
+    different: the uploaded payload cannot be re-fetched, so we keep it around while
+    a retry might still need it (only FAILED jobs are retryable). Once a FILE job
+    reaches a terminal success state (COMPLETED/MERGED) the media is safely in
+    Szurubooru and the local copy is just dead weight, so we remove it then too.
+    Without this last step, completed file uploads accumulate on disk indefinitely.
+    """
+    try:
+        if not os.path.isdir(job_dir):
+            return
+        if job.job_type != JobType.FILE:
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return
+        # FILE job: only safe to delete once it has succeeded.
+        status = await _check_job_status(job)
+        if status in (JobStatus.COMPLETED, JobStatus.MERGED):
+            shutil.rmtree(job_dir, ignore_errors=True)
+    except Exception:
+        logger.debug("Failed to clean up job dir %s", job_dir, exc_info=True)
+
+
+async def _cleanup_orphaned_job_dirs() -> None:
+    """
+    Reclaim disk space from job directories that are no longer needed, run once at
+    startup.
+
+    Historically, completed FILE-job payloads were never removed, so uploaded media
+    piled up under JOB_DATA_DIR forever. This sweep removes a directory unless it is
+    still needed, i.e. it deletes:
+      * directories whose job no longer exists in the database (orphans),
+      * directories for non-FILE jobs (always reconstructable), and
+      * directories for FILE jobs that have reached a terminal success state.
+    Directories for FILE jobs that are pending, in-flight, paused, stopped, or failed
+    are preserved so their media stays available for processing or retry.
+    """
+    base = settings.job_data_dir
+    if not os.path.isdir(base):
+        return
+    try:
+        entries = os.listdir(base)
+    except Exception:
+        logger.debug("Could not list job data dir %s", base, exc_info=True)
+        return
+
+    keep_statuses = (
+        JobStatus.PENDING,
+        JobStatus.DOWNLOADING,
+        JobStatus.TAGGING,
+        JobStatus.UPLOADING,
+        JobStatus.PAUSED,
+        JobStatus.STOPPED,
+        JobStatus.FAILED,
+    )
+
+    removed = 0
+    async with async_session() as db:
+        for name in entries:
+            path = os.path.join(base, name)
+            if not os.path.isdir(path):
+                continue
+            try:
+                job_id = uuid.UUID(name)
+            except ValueError:
+                # Not a job directory — leave it alone.
+                continue
+
+            result = await db.execute(select(Job).where(Job.id == job_id))
+            job = result.scalar_one_or_none()
+
+            # Keep only FILE jobs that still have a use for their payload.
+            if job is not None and job.job_type == JobType.FILE and job.status in keep_statuses:
+                continue
+
+            shutil.rmtree(path, ignore_errors=True)
+            removed += 1
+
+    if removed:
+        logger.info("Startup cleanup removed %d stale job director%s from %s",
+                    removed, "y" if removed == 1 else "ies", base)
 
 
 # ---------------------------------------------------------------------------

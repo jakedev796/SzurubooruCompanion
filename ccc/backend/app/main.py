@@ -36,7 +36,7 @@ from app.services.szurubooru import (
     load_tag_cache,
 )
 from app.services.upload_sessions import cleanup_loop as upload_sessions_cleanup_loop
-from app.workers.processor import start_worker, stop_worker
+from app.workers.processor import start_worker, stop_worker, _cleanup_orphaned_job_dirs
 
 settings = get_settings()
 
@@ -72,6 +72,9 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Szurubooru session and tag cache...")
     await init_szuru_session()
     await load_tag_cache()
+
+    logger.info("Cleaning up stale job directories...")
+    await _cleanup_orphaned_job_dirs()
 
     num_workers = settings.worker_concurrency
     logger.info("Starting %d background worker(s) (WORKER_CONCURRENCY)...", num_workers)
