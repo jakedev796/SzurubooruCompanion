@@ -16,6 +16,9 @@ COMMON_MIME_TYPES = {
     ".png": "image/png",
     ".gif": "image/gif",
     ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
     ".bmp": "image/bmp",
     ".tiff": "image/tiff",
     ".tif": "image/tiff",
@@ -70,7 +73,12 @@ def sniff_mime_type(data: bytes) -> str:
         brand = data[8:12]
         if brand in {b"avif", b"avis"}:
             return "image/avif"
-        if brand in {b"mp4 ", b"isom", b"iso2", b"avc1", b"mp41", b"mp42", b"mif1", b"msf1"}:
+        # "mif1"/"msf1" are HEIF image brands, not MP4 ones.
+        if brand in {b"mif1", b"msf1"}:
+            return "image/heif"
+        if brand in {b"heic", b"heix", b"hevc", b"hevx"}:
+            return "image/heic"
+        if brand in {b"mp4 ", b"isom", b"iso2", b"avc1", b"mp41", b"mp42"}:
             return "video/mp4"
     if data.startswith(b"\x1aE\xdf\xa3"):
         return "video/webm"

@@ -7,10 +7,14 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- AVIF files are now supported end to end. `.avif` is recognised for MIME detection, download extension handling, and WD14 tagging, and uploads keep the original AVIF (Szurubooru accepts `image/avif` natively, so there is no lossy re-encode). If an older Szurubooru rejects the format, the upload is retried as JPEG instead of failing the job. Requires `Pillow>=11.3.0`, the first release whose wheels decode AVIF.
+- Fixed HEIF files being sniffed as `video/mp4`: the `mif1`/`msf1` brands are HEIF image brands and were wrongly listed among the MP4 ones, so `normalized_filename()` could rename a HEIF file to `.mp4`.
 
 ### Mobile App
+- Folder sync: `.avif` and `.avifs` files are now picked up by the scanner (previously skipped, so AVIF images in synced folders never uploaded).
 
 ### Browser Extension
+- AVIF media URLs are now recognised as valid media links.
 
 ## [1.3.9] - 2026-06-21
 

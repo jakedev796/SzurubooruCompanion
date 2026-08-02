@@ -24,7 +24,7 @@ from app.services import tag_utils
 from app.services.config import load_user_config, load_global_config
 from app.services.encryption import decrypt
 from app.utils.mime import detect_mime_type, extension_from_content_type
-from app.utils.image import is_heif_path, convert_heif_to_jpeg
+from app.utils.image import avif_supported, convert_to_jpeg, is_avif_path, is_heif_path
 from app.sites.registry import normalize_url as _normalize_site_url
 from app.api.events import publish_job_update
 
@@ -35,7 +35,7 @@ settings = get_settings()
 _global_config = None
 
 # Mime-extension mapping for images (used to decide if WD14 tagging applies).
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".avif", ".avifs"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
 
 _running = True
@@ -48,6 +48,12 @@ _running = True
 
 def _looks_like_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
+
+
+def _is_unhandled_file_type(error_text: str) -> bool:
+    """Whether a Szurubooru upload error means it doesn't recognise the format."""
+    lowered = (error_text or "").lower()
+    return "unhandled file type" in lowered or "invalidpostcontenterror" in lowered
 
 
 def _extract_metadata_sources(metadata: Dict) -> List[str]:
@@ -478,11 +484,19 @@ async def _process_single_media(
     # them, and the WD14 tagger doesn't read HEIF either.
     if is_heif_path(fp):
         try:
-            fp = convert_heif_to_jpeg(Path(fp))
+            fp = convert_to_jpeg(Path(fp))
             files[0] = fp
         except Exception as e:
             logger.error("Job %s: HEIC/HEIF conversion failed for %s: %s", job.id, fp, e)
             return None
+
+    # AVIF is uploaded as-is (Szurubooru handles image/avif), but the WD14
+    # tagger reads it through Pillow, which only ships AVIF from 11.3 onwards.
+    if is_avif_path(fp) and not avif_supported():
+        logger.warning(
+            "Job %s: Pillow has no AVIF decoder (needs Pillow >= 11.3); "
+            "%s will be uploaded without WD14 tags.", job.id, Path(fp).name
+        )
 
     if await _abort_if_paused_or_stopped(job):
         return None  # caller checks too
@@ -743,6 +757,19 @@ async def _upload_file(
         result = await szurubooru.upload_post(
             file_path=fp, tags=all_tags, safety=safety, source=final_source,
         )
+        if "error" in result and is_avif_path(fp) and _is_unhandled_file_type(result["error"]):
+            # Szurubooru only learned image/avif fairly recently; fall back to
+            # JPEG rather than failing the job on an older instance.
+            logger.info("Job %s: Szurubooru rejected AVIF for %s, retrying as JPEG",
+                        job.id, media.filename)
+            try:
+                fp = convert_to_jpeg(Path(fp))
+            except Exception as e:
+                logger.error("Job %s: AVIF -> JPEG conversion failed for %s: %s", job.id, fp, e)
+            else:
+                result = await szurubooru.upload_post(
+                    file_path=fp, tags=all_tags, safety=safety, source=final_source,
+                )
         if "error" in result:
             error_text = result["error"]
             if any(kw in error_text.lower() for kw in ("already uploaded", "duplicate", "content checksum")):

@@ -97,7 +97,7 @@ export function isValidMediaUrl(url: string): boolean {
     }
     // Check for common media extensions or known CDN patterns
     const mediaPatterns = [
-      /\.(jpg|jpeg|png|gif|webp|mp4|webm|gifv|mov)$/i,
+      /\.(jpg|jpeg|png|gif|webp|avif|mp4|webm|gifv|mov)$/i,
       /\/media\//i,
       /\/img\//i,
       /\/image\//i,

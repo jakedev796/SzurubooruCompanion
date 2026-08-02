@@ -298,6 +298,7 @@ def _extension_from_content_type(content_type: str) -> str:
         "image/png": "png",
         "image/gif": "gif",
         "image/webp": "webp",
+        "image/avif": "avif",
         "image/bmp": "bmp",
         "image/tiff": "tiff",
         "video/mp4": "mp4",
@@ -583,7 +584,7 @@ def _extension_from_media_url(url: str) -> str:
         name = path.split("/")[-1]
         if "." in name:
             ext = name.rsplit(".", 1)[-1].lower()
-            if ext in ("jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "mp4", "webm", "mkv", "mov", "avi", "gifv"):
+            if ext in ("jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "tiff", "mp4", "webm", "mkv", "mov", "avi", "gifv"):
                 return "jpg" if ext == "jpeg" else ext
     except Exception:
         pass
