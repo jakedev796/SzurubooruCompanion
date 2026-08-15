@@ -28,9 +28,12 @@ export type MediaFetchPlan =
 /** blob:/filesystem: URLs are scoped to the document that minted them. */
 const PAGE_SCOPED_SCHEMES = ['blob:', 'filesystem:'];
 
-/** Strip the brackets the URL parser keeps on IPv6 literals ("[::1]" -> "::1"). */
+/**
+ * Normalise a hostname for comparison: the URL parser keeps brackets on IPv6
+ * literals ("[::1]"), and a fully-qualified name may carry a trailing dot.
+ */
 function bareHost(host: string): string {
-  return host.toLowerCase().replace(/^\[/, '').replace(/\]$/, '');
+  return host.toLowerCase().replace(/^\[/, '').replace(/\]$/, '').replace(/\.$/, '');
 }
 
 /**
@@ -43,7 +46,10 @@ export function isLoopbackHost(host: string): boolean {
   if (h === 'localhost' || h.endsWith('.localhost')) return true;
   if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
   if (h === '::1' || h === '0:0:0:0:0:0:0:1') return true;
+  // IPv4-mapped loopback, both as written and as the URL parser rewrites it
+  // ("::ffff:127.0.0.1" becomes "::ffff:7f00:1").
   if (h.startsWith('::ffff:127.')) return true;
+  if (/^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/.test(h)) return true;
   // "unspecified" addresses resolve to the local host in a browser address bar.
   if (h === '0.0.0.0' || h === '::') return true;
   return false;

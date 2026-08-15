@@ -216,7 +216,8 @@ async function handleSubmitJob(
   try {
     // Checked here as well as inside submitMedia so the content script can
     // render this one itself without a duplicate toast from the error path.
-    if (isRejectedJobUrl(mediaInfo.url)) {
+    // Byte uploads are exempt: the check rejects every non-http(s) URL.
+    if (planMediaFetch(mediaInfo.url).strategy === "backend" && isRejectedJobUrl(mediaInfo.url)) {
       return {
         success: false,
         error: "Use a direct link to a post or media, not a feed or homepage",

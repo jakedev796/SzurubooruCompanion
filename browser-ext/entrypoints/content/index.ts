@@ -8,6 +8,7 @@
 import type { SiteExtractor, MediaInfo, ContentScriptMessage } from '../../utils/types';
 import { getMediaUrl, isThumbnailOrSampleMediaUrl } from '../../utils/extractors/common';
 import { isRejectedJobUrl } from '../../utils/job_url_validation';
+import { planMediaFetch } from '../../utils/url_reachability';
 import { initFloatingButton, isGrabbableMedia, showToast } from './floating-button';
 
 // Import all extractors
@@ -120,11 +121,16 @@ async function handleMediaGrab(mediaElement: HTMLElement): Promise<void> {
 
     console.log('[CCC] Extracted media info:', mediaInfo);
 
-    if (!validateUrl(mediaInfo.url)) {
+    // Media the background script uploads byte-for-byte skips these checks:
+    // both reject anything that is not an http(s) URL, which is exactly what
+    // blob:/data: media is.
+    const uploadsBytes = planMediaFetch(mediaInfo.url).strategy !== 'backend';
+
+    if (!uploadsBytes && !validateUrl(mediaInfo.url)) {
       showToast('Invalid URL format', 'error');
       return;
     }
-    if (isRejectedJobUrl(mediaInfo.url)) {
+    if (!uploadsBytes && isRejectedJobUrl(mediaInfo.url)) {
       showToast('Use a direct link to a post or media, not a feed or homepage', 'error');
       return;
     }

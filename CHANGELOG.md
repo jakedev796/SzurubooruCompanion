@@ -11,6 +11,8 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### Mobile App
 
 ### Browser Extension
+- Media the backend cannot download is now uploaded from the browser instead of failing the job: images served from `localhost`/`127.0.0.1`/`[::1]` and `blob:`/`data:` media are read client-side and sent through the chunked upload API, with the page URL kept as the post source. Media reachable from the backend is still submitted as a URL, unchanged.
+- `blob:`/`data:` media reached via the floating button is no longer rejected as an invalid URL.
 
 ## [1.3.10] - 2026-08-02
 

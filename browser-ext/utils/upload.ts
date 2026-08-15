@@ -200,11 +200,14 @@ export async function uploadBlobAsJob(
     throw new Error(`Could not start upload (${await responseError(initRes)})`);
   }
 
-  const init = (await initRes.json()) as {
-    session_id: string;
-    chunk_size: number;
-    total_chunks: number;
-  };
+  let init: { session_id: string; chunk_size: number; total_chunks: number };
+  try {
+    init = await initRes.json();
+  } catch (err) {
+    // The session exists server-side even though we cannot address it; it will
+    // be reclaimed by the 24h TTL sweep.
+    throw new Error(`Upload session response could not be read: ${errorMessage(err)}`);
+  }
 
   console.log(
     `[CCC] Uploading ${filename} (${blob.size} bytes) in ${init.total_chunks} chunk(s)`
