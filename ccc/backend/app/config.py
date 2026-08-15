@@ -39,6 +39,11 @@ class Settings:
     # disable when worker_concurrency > 1 so all workers share the thread pool concurrently)
     wd14_use_process_pool: bool = os.getenv("WD14_USE_PROCESS_POOL", "false").lower() == "true"
 
+    # --- Outbound URL guarding ---
+    # Permit job URLs that resolve into RFC1918/ULA space (self-hosted boorus on the LAN).
+    # Loopback, link-local and cloud metadata addresses stay blocked either way.
+    allow_private_network_urls: bool = os.getenv("CCC_ALLOW_PRIVATE_NETWORK_URLS", "false").lower() == "true"
+
     # --- Worker & Paths ---
     # worker_concurrency requires a restart (workers are spawned at startup), so it lives in ENV.
     worker_concurrency: int = int(os.getenv("WORKER_CONCURRENCY", "1"))

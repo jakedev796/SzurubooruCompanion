@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import cast, func, select, String, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +27,7 @@ from app.api.deps import get_current_user
 from app.services.config import load_global_config
 from app.sites import normalize_url
 
-from app.api.job_url_validation import is_rejected_job_url
+from app.api.job_url_validation import JobUrlRejection, check_job_url, check_job_url_shape
 
 router = APIRouter()
 settings = get_settings()
@@ -239,6 +240,14 @@ def _job_to_out(job: Job, dashboard_username: Optional[str] = None) -> JobOut:
     )
 
 
+def _rejection_response(rejection: JobUrlRejection) -> JSONResponse:
+    """400 body keeps "detail" a plain string for old clients and adds "error_code" for new ones."""
+    return JSONResponse(
+        status_code=400,
+        content={"detail": rejection.message, "error_code": rejection.error_code},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -252,12 +261,14 @@ async def create_job_url(
 ):
     """Create a job from a URL."""
     raw_url = (body.url or "").strip()
-    if is_rejected_job_url(raw_url):
-        raise HTTPException(
-            status_code=400,
-            detail="URL is not allowed: use a direct link to a post or media, not a feed or site homepage.",
-        )
-    url = normalize_url(raw_url)
+    rejection = check_job_url_shape(raw_url)
+    # Handlers may rewrite the netloc, so the address check runs on the URL we persist.
+    url = raw_url if rejection else normalize_url(raw_url)
+    if rejection is None:
+        rejection = await check_job_url(url)
+    if rejection is not None:
+        return _rejection_response(rejection)
+
     job = Job(
         job_type=JobType.URL,
         url=url,
