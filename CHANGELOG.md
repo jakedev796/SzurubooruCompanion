@@ -7,12 +7,18 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+
+### Mobile App
+
+### Browser Extension
+
+## [1.3.11] - 2026-08-15
+
+### CCC - Backend
 - `POST /api/jobs` now rejects URLs that resolve to loopback, link-local, cloud-metadata or private addresses, so a job that could never have been downloaded fails immediately with a clear message instead of queueing and failing minutes later. Hosts are resolved and the resulting addresses classified, so alternate encodings and public DNS names pointing at internal addresses are caught too.
 - Added `CCC_ALLOW_PRIVATE_NETWORK_URLS` (default `false`, requires restart) for setups where the backend genuinely can reach a LAN host. It permits RFC1918/ULA only; loopback, link-local and cloud metadata addresses stay blocked either way. This does not cover gallery-dl/yt-dlp subprocess downloads, which need container-level egress rules.
 - Direct media downloads now validate every resolved address at connect time, covering redirect hops and URLs produced by gallery-dl that the API never sees.
 - Job URL rejections now carry a machine-readable `error_code` (`unsupported_scheme`, `unsupported_url`, `blocked_address`, `dns_resolution_failed`) alongside the existing `detail` string, so clients can tell "cannot reach that" apart from "that is a feed URL".
-
-### Mobile App
 
 ### Browser Extension
 - Media the backend cannot download is now uploaded from the browser instead of failing the job: images served from `localhost`/`127.0.0.1`/`[::1]` and `blob:`/`data:` media are read client-side and sent through the chunked upload API, with the page URL kept as the post source. Media reachable from the backend is still submitted as a URL, unchanged.
