@@ -101,6 +101,22 @@ If the onboarding wizard doesn't appear or you need to reconfigure after skippin
 - **Production:** [ccc/backend/.env.example](../ccc/backend/.env.example)
 - **Development:** [ccc/backend/.env.dev.example](../ccc/backend/.env.dev.example)
 
+## Outbound URL restrictions
+
+Job URLs submitted to `POST /api/jobs` are resolved before they are accepted, and the resolved addresses are checked against a deny list. Anything that lands on loopback, link-local (including `169.254.169.254`), unspecified, multicast, reserved, carrier-grade NAT (including `100.100.100.200`) or cloud metadata addresses is refused, and so is anything in private space by default. The check runs on the resolved address, not on the hostname text, so alternate encodings and public DNS names that point inward are covered. The same check is enforced again inside the connector used for direct media downloads, so every redirect hop is re-resolved and re-checked.
+
+Rejections return HTTP 400 with a human-readable `detail` string plus an `error_code` field: `unsupported_scheme`, `unsupported_url` (feed or homepage URL), `blocked_address`, or `dns_resolution_failed`.
+
+If you host a booru on your own LAN and want to submit URLs pointing at it, set:
+
+```env
+CCC_ALLOW_PRIVATE_NETWORK_URLS=true
+```
+
+This permits only RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and IPv6 unique local addresses (`fc00::/7`). Loopback, link-local and cloud metadata addresses remain blocked even when it is enabled. The variable requires a restart to take effect.
+
+> **Scope:** this guard covers URLs the backend fetches itself. It does **not** cover downloads performed by the gallery-dl and yt-dlp subprocesses, which use their own HTTP stack, DNS and redirect handling and cannot be guarded in-process. If restricting where those subprocesses can connect matters to you, enforce it at the container or network level (egress firewall rules, a dedicated Docker network).
+
 ## Gallery-dl and tag extraction
 
 Gallery-dl is configured entirely from code; no config file is used. Per-user site credentials (Twitter, Sankaku, Rule34, etc.) are stored encrypted in the database and passed to gallery-dl via `-o` options at run time. Handlers (explicit and no-auth) supply tag options (e.g. `tags=true`, `tags=extended`) so gallery-dl returns categorized tags for Szurubooru. No-auth sites that support tags are listed in `site_registry.NO_AUTH_TAG_OPTIONS`.

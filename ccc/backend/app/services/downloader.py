@@ -8,15 +8,20 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse, parse_qs
+
+import aiohttp
+from aiohttp.abc import AbstractResolver
 
 from app.config import get_settings
 from app.sites.registry import get_handler
+from app.utils.network import BlockedHostError, filter_allowed_hosts
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -193,6 +198,62 @@ async def download_url(
     return result
 
 
+def _drop_blocked_results(host: str, infos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep only the resolution results that point at a permitted address."""
+    allowed_hosts, reasons = filter_allowed_hosts([info["host"] for info in infos])
+    surviving = set(allowed_hosts)
+    allowed = [info for info in infos if info["host"] in surviving]
+    if not allowed:
+        raise BlockedHostError(
+            f"host '{host}' resolves only to blocked addresses ({'; '.join(reasons)})"
+        )
+    return allowed
+
+
+class _GuardedResolver(AbstractResolver):
+    """
+    DNS resolver that drops denied addresses before aiohttp can connect to them.
+
+    Deliberately scoped to the direct-download session only: it must not sit in front
+    of Szurubooru traffic, which is expected to reach docker-internal addresses.
+    """
+
+    def __init__(self) -> None:
+        self._delegate = aiohttp.DefaultResolver()
+
+    async def resolve(self, host: str, port: int = 0, family: int = socket.AF_INET) -> List[Dict[str, Any]]:
+        return _drop_blocked_results(host, await self._delegate.resolve(host, port, family))
+
+    async def close(self) -> None:
+        await self._delegate.close()
+
+
+# _GuardedConnector overrides a private aiohttp method. A changed signature raises and
+# fails closed, but a rename would leave the override silently uncalled, so refuse to
+# start rather than run with a guard that quietly stopped filtering.
+if not hasattr(aiohttp.TCPConnector, "_resolve_host"):
+    raise RuntimeError(
+        "aiohttp.TCPConnector._resolve_host is missing; the download address guard "
+        "would no longer filter. Pin aiohttp or update _GuardedConnector."
+    )
+
+
+class _GuardedConnector(aiohttp.TCPConnector):
+    """
+    Connector that re-checks every resolved address, literal hosts included.
+
+    aiohttp answers IP-literal hosts (and DNS cache hits) without consulting the
+    resolver, so the resolver alone would let http://127.0.0.1/ through. Filtering at
+    the connector covers those paths, re-runs for every redirect hop, and guarantees
+    the address that was validated is the address connected to.
+    """
+
+    async def _resolve_host(
+        self, host: str, port: int, traces: Optional[Sequence[Any]] = None
+    ) -> List[Dict[str, Any]]:
+        return _drop_blocked_results(host, await super()._resolve_host(host, port, traces))
+
+
 async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[str] = None) -> DownloadResult:
     """
     Download a direct media URL (e.g., pbs.twimg.com/media/xxx.jpg) directly.
@@ -208,15 +269,14 @@ async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[
     Returns:
         DownloadResult with the downloaded file path.
     """
-    import aiohttp
-
     os.makedirs(dest_dir, exist_ok=True)
     result = DownloadResult(source_url=url, used_tool="direct")
 
     headers = {"User-Agent": DEFAULT_DOWNLOAD_USER_AGENT}
 
     try:
-        async with aiohttp.ClientSession() as session:
+        connector = _GuardedConnector(resolver=_GuardedResolver())
+        async with aiohttp.ClientSession(connector=connector) as session:
             async with session.get(
                 url, headers=headers, timeout=aiohttp.ClientTimeout(total=60)
             ) as resp:
@@ -281,6 +341,15 @@ async def download_direct_media_url(url: str, dest_dir: str, filename: Optional[
     except asyncio.TimeoutError:
         result.error = "Direct download timed out"
         logger.error("Direct download timed out for %s", url)
+    except aiohttp.ClientConnectorError as exc:
+        # aiohttp wraps resolver errors, so unwrap ours for a message that explains itself.
+        blocked = getattr(exc, "os_error", None)
+        if isinstance(blocked, BlockedHostError):
+            result.error = f"Refused to download from a blocked address: {blocked.message}"
+            logger.warning("Direct download blocked for %s: %s", url, blocked.message)
+        else:
+            result.error = str(exc)
+            logger.exception("Direct download failed for %s", url)
     except Exception as exc:
         result.error = str(exc)
         logger.exception("Direct download failed for %s", url)
