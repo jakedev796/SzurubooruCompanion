@@ -114,12 +114,22 @@ export async function isAuthenticated(): Promise<boolean> {
   return !!result[STORAGE_KEY_AUTH];
 }
 
-/** Get auth headers (JWT or API key fallback). */
-async function getAuthHeaders(): Promise<Record<string, string>> {
+/**
+ * Get auth headers (JWT or API key fallback).
+ *
+ * Pass `null` for contentType when the body is FormData – the browser has to
+ * set the multipart boundary itself, and an explicit Content-Type breaks it.
+ */
+export async function getAuthHeaders(
+  contentType: string | null = "application/json"
+): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     Accept: "application/json",
   };
+
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+  }
 
   const result = await browser.storage.local.get(STORAGE_KEY_AUTH);
   const tokens = result[STORAGE_KEY_AUTH];
@@ -129,6 +139,40 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   }
 
   return headers;
+}
+
+/**
+ * Call a CCC endpoint with auth, retrying once after a token refresh on 401.
+ *
+ * `buildInit` is a factory rather than a plain RequestInit because a request
+ * body can only be sent once: replaying a consumed FormData sends an empty
+ * body, which is exactly the corruption the backend's zero-byte chunk guard
+ * exists to catch. Building a fresh init per attempt makes that impossible.
+ */
+export async function authFetch(
+  path: string,
+  buildInit: (headers: Record<string, string>) => RequestInit,
+  contentType: string | null = "application/json"
+): Promise<Response> {
+  const cfg = await loadConfig();
+  if (!cfg.baseUrl) {
+    throw new Error("CCC server address is not configured. Open the extension options first.");
+  }
+
+  const url = `${cfg.baseUrl}${path}`;
+  let headers = await getAuthHeaders(contentType);
+  let res = await fetch(url, buildInit(headers));
+
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (!refreshed) {
+      throw new Error("Authentication expired. Please log in again.");
+    }
+    headers = await getAuthHeaders(contentType);
+    res = await fetch(url, buildInit(headers));
+  }
+
+  return res;
 }
 
 /** Fetch client preferences from backend. */
@@ -183,6 +227,44 @@ export async function savePreferences(prefs: any): Promise<void> {
   if (!res.ok) throw new Error(`Failed to save preferences: ${res.status}`);
 }
 
+/**
+ * A non-OK response from the CCC backend.
+ *
+ * `errorCode` is the backend's machine-readable `error_code`; it is absent on
+ * older backends, which return only a `detail` string.
+ */
+export class CccRequestError extends Error {
+  readonly status: number;
+  readonly errorCode?: string;
+
+  constructor(message: string, status: number, errorCode?: string) {
+    super(message);
+    this.name = "CccRequestError";
+    this.status = status;
+    this.errorCode = errorCode;
+  }
+}
+
+/** Turn an error response into a CccRequestError, tolerating non-JSON bodies. */
+async function toRequestError(res: Response): Promise<CccRequestError> {
+  const text = await res.text();
+  let detail = "";
+  let errorCode: string | undefined;
+
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object") {
+      if (typeof parsed.detail === "string") detail = parsed.detail;
+      if (typeof parsed.error_code === "string") errorCode = parsed.error_code;
+    }
+  } catch {
+    // Not JSON – fall back to the raw body below.
+  }
+
+  const message = detail || `CCC returned ${res.status}: ${text}`;
+  return new CccRequestError(message, res.status, errorCode);
+}
+
 export interface SubmitJobOptions {
   source?: string;
   tags?: string[];
@@ -233,8 +315,7 @@ export async function submitJob(
   }
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`CCC returned ${res.status}: ${text}`);
+    throw await toRequestError(res);
   }
 
   return res.json();
