@@ -114,12 +114,22 @@ export async function isAuthenticated(): Promise<boolean> {
   return !!result[STORAGE_KEY_AUTH];
 }
 
-/** Get auth headers (JWT or API key fallback). */
-async function getAuthHeaders(): Promise<Record<string, string>> {
+/**
+ * Get auth headers (JWT or API key fallback).
+ *
+ * Pass `null` for contentType when the body is FormData – the browser has to
+ * set the multipart boundary itself, and an explicit Content-Type breaks it.
+ */
+export async function getAuthHeaders(
+  contentType: string | null = "application/json"
+): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     Accept: "application/json",
   };
+
+  if (contentType) {
+    headers["Content-Type"] = contentType;
+  }
 
   const result = await browser.storage.local.get(STORAGE_KEY_AUTH);
   const tokens = result[STORAGE_KEY_AUTH];
@@ -129,6 +139,40 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   }
 
   return headers;
+}
+
+/**
+ * Call a CCC endpoint with auth, retrying once after a token refresh on 401.
+ *
+ * `buildInit` is a factory rather than a plain RequestInit because a request
+ * body can only be sent once: replaying a consumed FormData sends an empty
+ * body, which is exactly the corruption the backend's zero-byte chunk guard
+ * exists to catch. Building a fresh init per attempt makes that impossible.
+ */
+export async function authFetch(
+  path: string,
+  buildInit: (headers: Record<string, string>) => RequestInit,
+  contentType: string | null = "application/json"
+): Promise<Response> {
+  const cfg = await loadConfig();
+  if (!cfg.baseUrl) {
+    throw new Error("CCC server address is not configured. Open the extension options first.");
+  }
+
+  const url = `${cfg.baseUrl}${path}`;
+  let headers = await getAuthHeaders(contentType);
+  let res = await fetch(url, buildInit(headers));
+
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (!refreshed) {
+      throw new Error("Authentication expired. Please log in again.");
+    }
+    headers = await getAuthHeaders(contentType);
+    res = await fetch(url, buildInit(headers));
+  }
+
+  return res;
 }
 
 /** Fetch client preferences from backend. */

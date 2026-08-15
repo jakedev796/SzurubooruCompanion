@@ -4,8 +4,17 @@
  * Polls job status and shows a toast + notification when the job finishes or fails.
  * Also handles messages from content scripts for DOM-level media extraction (floating button).
  */
-import { fetchJob, submitJob, getNotificationsEnabled, getDefaultSafety } from "../utils/api";
+import {
+  fetchJob,
+  submitJob,
+  getNotificationsEnabled,
+  getDefaultSafety,
+  type SafetyRating,
+} from "../utils/api";
 import { isRejectedJobUrl } from "../utils/job_url_validation";
+import { fetchMediaBlob } from "../utils/media_bytes";
+import { deriveUploadFilename, uploadBlobAsJob } from "../utils/upload";
+import { planMediaFetch } from "../utils/url_reachability";
 import type { MediaInfo, ContentScriptMessage, BackgroundScriptResponse } from "../utils/types";
 
 const POLL_INTERVAL_MS = 3000;
@@ -142,6 +151,61 @@ async function pollUntilDone(
   );
 }
 
+/** Everything needed to turn one right-click or button press into a job. */
+interface SubmitTarget {
+  /** Where the media itself lives – the URL we would read bytes from. */
+  mediaUrl: string;
+  /** URL handed to the backend when it can download itself (often a post page). */
+  jobUrl: string;
+  source?: string;
+  tags?: string[];
+  safety?: SafetyRating;
+  filename?: string;
+}
+
+/**
+ * Submit one piece of media, uploading the bytes ourselves when the backend
+ * has no way to fetch the URL (loopback servers, blob:/data: URLs).
+ */
+async function submitMedia(
+  target: SubmitTarget,
+  tabId?: number
+): Promise<{ id: string; status: string }> {
+  const plan = planMediaFetch(target.mediaUrl);
+
+  if (plan.strategy === "backend") {
+    if (isRejectedJobUrl(target.jobUrl)) {
+      throw new Error("Use a direct link to a post or media, not a feed or homepage");
+    }
+    return submitJob(target.jobUrl, {
+      source: target.source,
+      tags: target.tags,
+      safety: target.safety,
+    });
+  }
+
+  if (plan.strategy === "unsupported") {
+    throw new Error(`Can't send this media: ${plan.reason}.`);
+  }
+
+  console.log(`[CCC] Uploading bytes instead of a URL – ${plan.reason}`);
+
+  let blob: Blob;
+  try {
+    blob = await fetchMediaBlob(target.mediaUrl, plan, tabId);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Couldn't read this media: ${detail}.`);
+  }
+
+  const filename = deriveUploadFilename(target.mediaUrl, blob.type, target.filename);
+  return uploadBlobAsJob(blob, filename, {
+    source: target.source,
+    tags: target.tags,
+    safety: target.safety,
+  });
+}
+
 /**
  * Handle SUBMIT_JOB message from content scripts.
  */
@@ -150,6 +214,8 @@ async function handleSubmitJob(
   tabId?: number
 ): Promise<BackgroundScriptResponse> {
   try {
+    // Checked here as well as inside submitMedia so the content script can
+    // render this one itself without a duplicate toast from the error path.
     if (isRejectedJobUrl(mediaInfo.url)) {
       return {
         success: false,
@@ -157,11 +223,17 @@ async function handleSubmitJob(
       };
     }
     const defaultSafety = await getDefaultSafety();
-    const job = await submitJob(mediaInfo.url, {
-      source: mediaInfo.source,
-      tags: mediaInfo.tags,
-      safety: mediaInfo.safety ?? defaultSafety,
-    });
+    const job = await submitMedia(
+      {
+        mediaUrl: mediaInfo.url,
+        jobUrl: mediaInfo.url,
+        source: mediaInfo.source,
+        tags: mediaInfo.tags,
+        safety: mediaInfo.safety ?? defaultSafety,
+        filename: mediaInfo.filename,
+      },
+      tabId
+    );
     
     console.log("[CCC] Job created from content script:", job.id, mediaInfo);
     
@@ -212,33 +284,37 @@ export default defineBackground(() => {
 
   // Handle context menu clicks
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
-    let url: string | undefined;
+    let target: SubmitTarget | undefined;
 
     switch (info.menuItemId) {
-      case "ccc-send-image":
-        url = tab?.url ?? info.srcUrl;
+      case "ccc-send-image": {
+        const pageUrl = tab?.url;
+        // The page URL is preferred so the backend can resolve full-size media
+        // with gallery-dl. When the page lives somewhere only this browser can
+        // reach, take the media element instead and upload its bytes.
+        if (pageUrl && planMediaFetch(pageUrl).strategy === "backend") {
+          target = { mediaUrl: pageUrl, jobUrl: pageUrl };
+        } else if (info.srcUrl) {
+          target = { mediaUrl: info.srcUrl, jobUrl: info.srcUrl, source: pageUrl };
+        } else if (pageUrl) {
+          target = { mediaUrl: pageUrl, jobUrl: pageUrl };
+        }
         break;
+      }
       case "ccc-send-link":
-        url = info.linkUrl;
+        if (info.linkUrl) {
+          target = { mediaUrl: info.linkUrl, jobUrl: info.linkUrl };
+        }
         break;
     }
 
-    if (!url) return;
-    if (isRejectedJobUrl(url)) {
-      await showToastAndNotification(
-        "Use a direct link to a post or media, not a feed or homepage",
-        "Szurubooru Companion – Error",
-        "error",
-        tab?.id
-      );
-      return;
-    }
+    if (!target) return;
 
     const tabId = tab?.id;
 
     try {
       const defaultSafety = await getDefaultSafety();
-      const job = await submitJob(url, { safety: defaultSafety });
+      const job = await submitMedia({ ...target, safety: defaultSafety }, tabId);
       console.log("[CCC] Job created:", job.id);
 
       const notificationsEnabled = await getNotificationsEnabled();
