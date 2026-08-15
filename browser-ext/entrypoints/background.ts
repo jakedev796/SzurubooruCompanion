@@ -5,6 +5,7 @@
  * Also handles messages from content scripts for DOM-level media extraction (floating button).
  */
 import {
+  CccRequestError,
   fetchJob,
   submitJob,
   getNotificationsEnabled,
@@ -14,7 +15,7 @@ import {
 import { isRejectedJobUrl } from "../utils/job_url_validation";
 import { fetchMediaBlob } from "../utils/media_bytes";
 import { deriveUploadFilename, uploadBlobAsJob } from "../utils/upload";
-import { planMediaFetch } from "../utils/url_reachability";
+import { planMediaFetch, type MediaFetchPlan } from "../utils/url_reachability";
 import type { MediaInfo, ContentScriptMessage, BackgroundScriptResponse } from "../utils/types";
 
 const POLL_INTERVAL_MS = 3000;
@@ -157,10 +158,35 @@ interface SubmitTarget {
   mediaUrl: string;
   /** URL handed to the backend when it can download itself (often a post page). */
   jobUrl: string;
+  /** Preferred byte source if the backend turns out not to reach jobUrl. */
+  fallbackMediaUrl?: string;
   source?: string;
   tags?: string[];
   safety?: SafetyRating;
   filename?: string;
+}
+
+/** Read a URL's bytes and create the job from them. */
+async function uploadMediaBytes(
+  bytesUrl: string,
+  plan: MediaFetchPlan,
+  target: SubmitTarget,
+  tabId?: number
+): Promise<{ id: string; status: string }> {
+  let blob: Blob;
+  try {
+    blob = await fetchMediaBlob(bytesUrl, plan, tabId);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Couldn't read this media: ${detail}.`);
+  }
+
+  const filename = deriveUploadFilename(bytesUrl, blob.type, target.filename);
+  return uploadBlobAsJob(blob, filename, {
+    source: target.source,
+    tags: target.tags,
+    safety: target.safety,
+  });
 }
 
 /**
@@ -177,11 +203,28 @@ async function submitMedia(
     if (isRejectedJobUrl(target.jobUrl)) {
       throw new Error("Use a direct link to a post or media, not a feed or homepage");
     }
-    return submitJob(target.jobUrl, {
-      source: target.source,
-      tags: target.tags,
-      safety: target.safety,
-    });
+    try {
+      return await submitJob(target.jobUrl, {
+        source: target.source,
+        tags: target.tags,
+        safety: target.safety,
+      });
+    } catch (err) {
+      // The backend knows its own network better than our classifier does. When
+      // it says it cannot reach the URL, read the bytes here instead. Older
+      // backends send no error_code, so this simply never fires against them.
+      if (!(err instanceof CccRequestError) || err.errorCode !== "blocked_address") {
+        throw err;
+      }
+      const bytesUrl = target.fallbackMediaUrl ?? target.mediaUrl;
+      console.log(`[CCC] Backend cannot reach ${target.jobUrl}; uploading bytes from ${bytesUrl}`);
+      return uploadMediaBytes(
+        bytesUrl,
+        { strategy: "extension", reason: "the backend cannot reach this address" },
+        target,
+        tabId
+      );
+    }
   }
 
   if (plan.strategy === "unsupported") {
@@ -189,21 +232,7 @@ async function submitMedia(
   }
 
   console.log(`[CCC] Uploading bytes instead of a URL – ${plan.reason}`);
-
-  let blob: Blob;
-  try {
-    blob = await fetchMediaBlob(target.mediaUrl, plan, tabId);
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(`Couldn't read this media: ${detail}.`);
-  }
-
-  const filename = deriveUploadFilename(target.mediaUrl, blob.type, target.filename);
-  return uploadBlobAsJob(blob, filename, {
-    source: target.source,
-    tags: target.tags,
-    safety: target.safety,
-  });
+  return uploadMediaBytes(target.mediaUrl, plan, target, tabId);
 }
 
 /**
@@ -294,7 +323,9 @@ export default defineBackground(() => {
         // with gallery-dl. When the page lives somewhere only this browser can
         // reach, take the media element instead and upload its bytes.
         if (pageUrl && planMediaFetch(pageUrl).strategy === "backend") {
-          target = { mediaUrl: pageUrl, jobUrl: pageUrl };
+          // srcUrl is kept aside: if the backend turns out not to reach the page,
+          // the image element is what we want the bytes from, not the page HTML.
+          target = { mediaUrl: pageUrl, jobUrl: pageUrl, fallbackMediaUrl: info.srcUrl };
         } else if (info.srcUrl) {
           target = { mediaUrl: info.srcUrl, jobUrl: info.srcUrl, source: pageUrl };
         } else if (pageUrl) {

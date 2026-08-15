@@ -227,6 +227,44 @@ export async function savePreferences(prefs: any): Promise<void> {
   if (!res.ok) throw new Error(`Failed to save preferences: ${res.status}`);
 }
 
+/**
+ * A non-OK response from the CCC backend.
+ *
+ * `errorCode` is the backend's machine-readable `error_code`; it is absent on
+ * older backends, which return only a `detail` string.
+ */
+export class CccRequestError extends Error {
+  readonly status: number;
+  readonly errorCode?: string;
+
+  constructor(message: string, status: number, errorCode?: string) {
+    super(message);
+    this.name = "CccRequestError";
+    this.status = status;
+    this.errorCode = errorCode;
+  }
+}
+
+/** Turn an error response into a CccRequestError, tolerating non-JSON bodies. */
+async function toRequestError(res: Response): Promise<CccRequestError> {
+  const text = await res.text();
+  let detail = "";
+  let errorCode: string | undefined;
+
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object") {
+      if (typeof parsed.detail === "string") detail = parsed.detail;
+      if (typeof parsed.error_code === "string") errorCode = parsed.error_code;
+    }
+  } catch {
+    // Not JSON – fall back to the raw body below.
+  }
+
+  const message = detail || `CCC returned ${res.status}: ${text}`;
+  return new CccRequestError(message, res.status, errorCode);
+}
+
 export interface SubmitJobOptions {
   source?: string;
   tags?: string[];
@@ -277,8 +315,7 @@ export async function submitJob(
   }
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`CCC returned ${res.status}: ${text}`);
+    throw await toRequestError(res);
   }
 
   return res.json();
