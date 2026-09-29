@@ -96,6 +96,14 @@ If the onboarding wizard doesn't appear or you need to reconfigure after skippin
 - **Skipped site credentials:** Go to Settings > Site Credentials to configure per-site authentication.
 - **Need to start over:** Delete the database volume (`docker compose down -v`) and restart. This will remove all data and re-trigger the onboarding wizard.
 
+## Szurubooru on the same machine
+
+Inside the CCC container, `localhost` is the container itself, not your machine. When the Szurubooru URL uses `localhost`, `127.0.0.1` or `[::1]`, CCC routes it to `host.docker.internal` (the Docker host) instead, so a Szurubooru/Oxibooru instance published on the host's ports (e.g. `http://localhost:8080`) works as entered. The stored URL is left untouched, so browser links keep using `localhost`.
+
+Docker Desktop (Windows/macOS) resolves `host.docker.internal` automatically. On Linux it needs the `extra_hosts` entry shipped in `docker-compose.yml` (or `--add-host=host.docker.internal:host-gateway` with `docker run`; the Unraid template includes it). If you run a custom setup where that alias is unavailable, use the host's LAN IP or the Szurubooru container's name on a shared Docker network instead.
+
+Override the alias with `CCC_SZURU_LOOPBACK_HOST`, or set it to an empty value to disable the rewrite. Outside a container the rewrite is off by default.
+
 ## Environment Variables Reference
 
 - **Production:** [ccc/backend/.env.example](../ccc/backend/.env.example)

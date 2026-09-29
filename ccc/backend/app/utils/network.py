@@ -13,6 +13,7 @@ import ipaddress
 import socket
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple, Union
+from urllib.parse import urlsplit, urlunsplit
 
 from app.config import get_settings
 
@@ -229,3 +230,43 @@ async def check_host(host: str, port: int = 0) -> HostCheck:
             message = f"{message} {PRIVATE_NETWORK_HINT}"
         return HostCheck(False, ERROR_BLOCKED_ADDRESS, message)
     return HostCheck(True)
+
+
+def _is_loopback_host(host: str) -> bool:
+    """True for localhost names and loopback address literals."""
+    name = host.lower().rstrip(".")
+    if name == "localhost" or name.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(name.split("%")[0])
+    except ValueError:
+        return False
+    embedded = _embedded_ipv4(address)
+    return address.is_loopback or (embedded is not None and embedded.is_loopback)
+
+
+def route_loopback_to_host(url: str) -> str:
+    """
+    Point a loopback URL at the configured container host alias.
+
+    Inside a container, localhost is the container itself, so a Szurubooru URL copied
+    from the host's browser would otherwise never connect. Returns the URL unchanged
+    when no alias is configured or the host is not loopback.
+    """
+    alias = get_settings().szuru_loopback_alias
+    if not alias or not url:
+        return url
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        return url
+    if not host or not _is_loopback_host(host):
+        return url
+
+    netloc = alias if port is None else f"{alias}:{port}"
+    userinfo, sep, _ = parts.netloc.rpartition("@")
+    if sep:
+        netloc = f"{userinfo}@{netloc}"
+    return urlunsplit(parts._replace(netloc=netloc))

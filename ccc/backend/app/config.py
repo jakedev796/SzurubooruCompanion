@@ -9,6 +9,12 @@ import os
 from dataclasses import dataclass
 
 
+def _default_loopback_alias() -> str:
+    """Docker's host alias when running inside a container, otherwise no rewrite."""
+    in_container = os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
+    return "host.docker.internal" if in_container else ""
+
+
 @dataclass(frozen=True)
 class Settings:
     """Application settings loaded from environment variables."""
@@ -43,6 +49,12 @@ class Settings:
     # Permit job URLs that resolve into RFC1918/ULA space (self-hosted boorus on the LAN).
     # Loopback, link-local and cloud metadata addresses stay blocked either way.
     allow_private_network_urls: bool = os.getenv("CCC_ALLOW_PRIVATE_NETWORK_URLS", "false").lower() == "true"
+
+    # --- Szurubooru ---
+    # Host substituted for localhost/127.0.0.1/::1 in Szurubooru URLs. Inside a container
+    # loopback is the container itself, so the default routes it to the Docker host.
+    # An empty value disables the rewrite.
+    szuru_loopback_alias: str = os.getenv("CCC_SZURU_LOOPBACK_HOST", _default_loopback_alias())
 
     # --- Worker & Paths ---
     # worker_concurrency requires a restart (workers are spawned at startup), so it lives in ENV.
