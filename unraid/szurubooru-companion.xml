@@ -19,7 +19,7 @@
   <WebUI>http://[IP]:[PORT:21425]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/unraid/szurubooru-companion.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/jakedev796/SzurubooruCompanion/main/misc/styling/reimu.jpg</Icon>
-  <ExtraParams/>
+  <ExtraParams>--add-host=host.docker.internal:host-gateway</ExtraParams>
   <Description>
     Szurubooru Companion (CCC) - A multi-component workflow for uploading media to Szurubooru or Oxibooru with AI tagging.
     Includes: FastAPI backend, React dashboard, PostgreSQL, Redis (all in one container via s6-overlay).

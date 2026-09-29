@@ -22,6 +22,7 @@ import aiohttp
 
 from app.config import get_settings
 from app.utils.mime import detect_mime_type, normalized_filename
+from app.utils.network import route_loopback_to_host
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -45,7 +46,7 @@ def set_current_user(username: Optional[str], token: Optional[str] = None, szuru
     """Set the Szurubooru user context for the current async task."""
     _current_user.set(username)
     _current_szuru_token.set(token)
-    _current_szuru_url.set(szuru_url)
+    _current_szuru_url.set(route_loopback_to_host(szuru_url) if szuru_url else szuru_url)
 
 
 # ---------------------------------------------------------------------------
@@ -438,7 +439,7 @@ async def download_post_content(post_id: int, dest_path: Path) -> Optional[Path]
     if not szuru_url:
         return None
     if content_url.startswith("http://") or content_url.startswith("https://"):
-        url = content_url
+        url = route_loopback_to_host(content_url)
     else:
         base = szuru_url.rstrip("/")
         url = f"{base}{content_url}" if content_url.startswith("/") else f"{base}/{content_url}"
@@ -554,16 +555,22 @@ async def fetch_tag_categories(szuru_url: str, username: str, token: str) -> dic
     encoded = base64.b64encode(raw.encode()).decode()
     headers = {"Authorization": f"Token {encoded}", "Accept": "application/json"}
 
+    api_url = route_loopback_to_host(szuru_url)
     try:
-        url = f"{szuru_url}/api/tag-categories"
+        url = f"{api_url}/api/tag-categories"
         async with _session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
             data = await resp.json()
             if resp.status == 200:
                 return data
             return {"error": f"HTTP {resp.status}", "details": data}
     except asyncio.TimeoutError:
-        logger.error("Timeout fetching tag categories from %s", szuru_url)
+        logger.error("Timeout fetching tag categories from %s", api_url)
         return {"error": "Timeout"}
     except Exception as exc:
-        logger.exception("Error fetching tag categories from %s", szuru_url)
+        logger.exception("Error fetching tag categories from %s", api_url)
+        if api_url != szuru_url:
+            return {
+                "error": f"{exc} (localhost inside the CCC container is the container itself, so it was "
+                "routed to the Docker host; if that host is unreachable, use its LAN IP instead)"
+            }
         return {"error": str(exc)}

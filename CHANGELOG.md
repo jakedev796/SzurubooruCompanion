@@ -7,6 +7,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Frontend
 
 ### CCC - Backend
+- Fixed a Szurubooru URL of `localhost`/`127.0.0.1`/`[::1]` failing to connect when CCC runs in Docker. Loopback there is the CCC container itself, so these hosts are now routed to `host.docker.internal` (the Docker host) for API calls; the stored URL is unchanged. Configurable via `CCC_SZURU_LOOPBACK_HOST` (empty disables it). The compose files and Unraid template now map `host.docker.internal` so this also works on Linux.
 
 ### Mobile App
 

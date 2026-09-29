@@ -12,6 +12,9 @@ services:
     restart: unless-stopped
     ports:
       - "21425:21425"
+    extra_hosts:
+      # Lets a Szurubooru URL of localhost reach the Docker host (automatic on Docker Desktop).
+      - "host.docker.internal:host-gateway"
     env_file:
       - ./ccc/backend/.env
     volumes:
