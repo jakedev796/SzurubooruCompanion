@@ -449,9 +449,8 @@ Future<void> scheduleFolderScanTask() async {
       return;
     }
 
-    // Foreground service is required whenever folder sync is enabled: Android
-    // requires a notification for dataSync services, and without it OEMs kill
-    // the process aggressively. The persistent-notification preference no
+    // Foreground service is required whenever folder sync is enabled: without
+    // it OEMs kill the process aggressively. The persistent-notification preference no
     // longer gates this — it was silently disabling folder sync.
     final granted = await NotificationService.instance
         .requestNotificationPermission();

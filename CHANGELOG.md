@@ -9,6 +9,7 @@ All notable changes to Szurubooru Companion (CCC, browser extension, mobile app)
 ### CCC - Backend
 
 ### Mobile App
+- Fixed the app crashing in the background after ~6 hours and folder sync silently stopping until reopened (Android 15+ `dataSync` foreground service time limit); the companion service now uses the `specialUse` type and stops cleanly instead of crashing if Android refuses a foreground start.
 
 ### Browser Extension
 

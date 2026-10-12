@@ -22,7 +22,7 @@ String buildCompanionNotificationBody({
 }
 
 /// Start or sync the single companion foreground service (one notification, optional bubble).
-/// Starts when folder sync and/or bubble is enabled. Uses one merged notification (dataSync type)
+/// Starts when folder sync and/or bubble is enabled. Uses one merged notification (specialUse type)
 /// so Android does not show a separate "overlay" system notification.
 /// Also starts SSE background service to maintain connection for job notifications.
 Future<void> startCompanionForegroundService({

@@ -25,7 +25,6 @@
 
     <!-- Foreground service for background uploads -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Floating bubble overlay -->
@@ -88,10 +87,15 @@
                 <data android:mimeType="video/*"/>
             </intent-filter>
         </activity>
+        <!-- specialUse: dataSync is capped at 6h/day in the background on Android 15+ -->
         <service
             android:name=".CompanionForegroundService"
-            android:foregroundServiceType="dataSync"
-            android:exported="false" />
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="persistent_backend_connection_and_folder_sync_status" />
+        </service>
         <service
             android:name=".FloatingBubbleService"
             android:foregroundServiceType="specialUse"
