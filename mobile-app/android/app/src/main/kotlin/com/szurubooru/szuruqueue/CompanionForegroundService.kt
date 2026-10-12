@@ -51,6 +51,7 @@ class CompanionForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createChannel()
 
         tokenRefreshReceiver = object : android.content.BroadcastReceiver() {
@@ -72,25 +73,11 @@ class CompanionForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val updateBodyOnly = intent?.getBooleanExtra(EXTRA_UPDATE_BODY_ONLY, false) == true
         val body = intent?.getStringExtra(EXTRA_BODY) ?: "SzuruCompanion active"
 
         val toggleBubble = intent?.getBooleanExtra(EXTRA_TOGGLE_BUBBLE, false) == true
         if (toggleBubble) {
-            handleToggleBubble()
-            return START_STICKY
-        }
-
-        if (updateBodyOnly) {
-            lastBodyBase = body.replace(Regex(" \u2022 Bubble on$"), "").trim()
-            val notification = buildNotification(body, lastShowBubble)
-            if (isForeground) {
-                getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-                isForeground = true
-            }
-            return START_STICKY
+            return if (handleToggleBubble()) START_STICKY else START_NOT_STICKY
         }
 
         val showBubble = if (intent?.hasExtra(EXTRA_SHOW_BUBBLE) == true) {
@@ -109,12 +96,8 @@ class CompanionForegroundService : Service() {
             removeBubbleOverlay()
         }
 
-        val notification = buildNotification(body, showBubble)
-        if (isForeground) {
-            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-            isForeground = true
+        if (!postNotification(buildNotification(body, showBubble))) {
+            return START_NOT_STICKY
         }
 
         // Ensure native SSE listener is running so job failure notifications
@@ -122,6 +105,50 @@ class CompanionForegroundService : Service() {
         startSseListenerIfNeeded()
         startNetworkMonitorIfNeeded()
         return START_STICKY
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        // specialUse has no runtime limit, but any typed-service timeout must stop
+        // within seconds or the system crashes the process.
+        Log.w(TAG, "Foreground service timed out (type=$fgsType), stopping")
+        stopSelf()
+    }
+
+    /**
+     * Replace the persistent notification body (e.g. connection status) without
+     * restarting the service. Must be called on the main thread.
+     */
+    fun updateBody(body: String) {
+        synchronized(bodyLock) {
+            lastBodyBase = body.replace(Regex(" \u2022 Bubble on$"), "").trim()
+        }
+        postNotification(buildNotification(body, lastShowBubble))
+    }
+
+    /**
+     * Post the persistent notification, entering the foreground first if needed.
+     * If Android refuses the foreground start (e.g. started from the background
+     * without an exemption), the service stops itself instead of crashing.
+     */
+    private fun postNotification(notification: Notification): Boolean {
+        if (isForeground) {
+            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
+            return true
+        }
+        return try {
+            startForeground(NOTIFICATION_ID, notification)
+            isForeground = true
+            true
+        } catch (e: IllegalStateException) {
+            // ForegroundServiceStartNotAllowedException extends IllegalStateException
+            Log.e(TAG, "Foreground start not allowed, stopping service", e)
+            stopSelf()
+            false
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Foreground start denied, stopping service", e)
+            stopSelf()
+            false
+        }
     }
 
     /**
@@ -148,6 +175,7 @@ class CompanionForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         removeBubbleOverlay()
         stopSse.set(true)
         sseThread?.interrupt()
@@ -220,7 +248,7 @@ class CompanionForegroundService : Service() {
             .build()
     }
 
-    private fun handleToggleBubble() {
+    private fun handleToggleBubble(): Boolean {
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val current = prefs.getBoolean("flutter.showFloatingBubble", false)
         val newValue = !current
@@ -234,8 +262,7 @@ class CompanionForegroundService : Service() {
         val base = synchronized(bodyLock) { lastBodyBase }
         val newBody = if (base.isEmpty()) "SzuruCompanion active" else base +
             if (newValue) " \u2022 Bubble on" else ""
-        val notification = buildNotification(newBody, newValue)
-        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
+        return postNotification(buildNotification(newBody, newValue))
     }
 
     // -- Bubble overlay (BubbleOverlayHelper) ---------------------------------
@@ -693,8 +720,29 @@ class CompanionForegroundService : Service() {
         private const val JOB_FAILURE_CHANNEL_ID = "job_failures"
         const val EXTRA_SHOW_BUBBLE = "showBubble"
         const val EXTRA_BODY = "body"
-        const val EXTRA_UPDATE_BODY_ONLY = "updateBodyOnly"
         const val EXTRA_TOGGLE_BUBBLE = "toggleBubble"
         private const val PENDING_UPLOAD_FILES_KEY = "pending_upload_files"
+
+        /** The running service, if any. Only touched on the main thread. */
+        var instance: CompanionForegroundService? = null
+            private set
+
+        /**
+         * Start (or deliver an intent to) the service. Returns false instead of
+         * throwing when Android refuses a foreground start from the background.
+         */
+        fun start(context: Context, intent: Intent): Boolean {
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+                true
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "Unable to start companion service", e)
+                false
+            }
+        }
     }
 }

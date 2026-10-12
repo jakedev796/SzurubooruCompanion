@@ -99,25 +99,15 @@ class MainActivity : FlutterFragmentActivity() {
                         putExtra(CompanionForegroundService.EXTRA_SHOW_BUBBLE, bubbleEnabled)
                         putExtra(CompanionForegroundService.EXTRA_BODY, body)
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        startForegroundService(intent)
-                    } else {
-                        startService(intent)
-                    }
+                    CompanionForegroundService.start(this, intent)
                     result.success(null)
                 }
                 "updateCompanionNotification" -> {
+                    // Update the running service directly; starting a foreground
+                    // service just to change text is refused from the background.
                     val statusBody = call.argument<String>("statusBody")
                     if (statusBody != null) {
-                        val intent = Intent(this, CompanionForegroundService::class.java).apply {
-                            putExtra(CompanionForegroundService.EXTRA_BODY, statusBody)
-                            putExtra(CompanionForegroundService.EXTRA_UPDATE_BODY_ONLY, true)
-                        }
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
-                        }
+                        CompanionForegroundService.instance?.updateBody(statusBody)
                     }
                     result.success(null)
                 }
