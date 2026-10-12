@@ -35,7 +35,7 @@ class FolderScanner {
 
   /// Convert relative folder URI to absolute path
   String _toAbsolutePath(String uri) {
-    if (uri.startsWith('/')) {
+    if (path.isAbsolute(uri)) {
       return uri;
     }
     // Relative path like "Pictures/Twitter" → "/storage/emulated/0/Pictures/Twitter"
@@ -125,6 +125,12 @@ class FolderScanner {
       debugPrint('[FolderScanner] backendClient returned jobId: ${result.jobId}, error: ${result.error}');
 
       if (result.error != null) {
+        // With delete-after-sync the file stays in the folder and the next scan
+        // retries it; queuing it as well would upload it twice.
+        if (_settings.deleteMediaAfterSync) {
+          debugPrint('[FolderScanner] Upload failed, next scan will retry: ${result.error}');
+          return null;
+        }
         debugPrint('[FolderScanner] Upload failed, queuing for offline retry: ${result.error}');
         await OfflineQueue.enqueueFile(
           filePath: filePath,
@@ -188,11 +194,20 @@ class FolderScanner {
     debugPrint('[FolderScanner] Settings: deleteAfterUpload=$deleteAfterUpload, enqueueDeleteForLater=$enqueueDeleteForLater, filterByMtime=$filterByMtime');
 
     debugPrint('[FolderScanner] Scanning folder: ${folder.name} at URI: ${folder.uri}');
-    final mediaFiles = await scanFolder(
+    final scannedFiles = await scanFolder(
       folder,
       sinceTimestamp: filterByMtime ? folder.lastRunTimestamp : 0,
     );
-    debugPrint('[FolderScanner] Scan complete: found ${mediaFiles.length} media files');
+
+    // Files already uploaded but awaiting deferred deletion stay on disk until
+    // their job finishes; re-uploading them would create a duplicate job.
+    final pendingPaths = (await _settings.getPendingUploadFiles()).values.toSet();
+    final mediaFiles =
+        scannedFiles.where((f) => !pendingPaths.contains(f)).toList();
+    debugPrint(
+      '[FolderScanner] Scan complete: found ${mediaFiles.length} media files '
+      '(${scannedFiles.length - mediaFiles.length} awaiting deletion skipped)',
+    );
 
     if (mediaFiles.isEmpty) {
       debugPrint('[FolderScanner] No media files found in ${folder.name}');

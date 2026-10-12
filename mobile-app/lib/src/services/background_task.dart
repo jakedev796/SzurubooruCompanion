@@ -318,14 +318,11 @@ Future<FolderScanOutcome> processScheduledFolders() async {
     for (final folder in dueFolders) {
       try {
         debugPrint('[FolderSync] Processing folder: ${folder.name}');
+        // processFolder records the scan start as lastRun. It is always after
+        // boundaryStart, so the folder counts as done for this boundary, and
+        // it doubles as the mtime cutoff for the next scan.
         final result = await scanner.processFolder(folder);
         totalUploaded += result.filesUploaded;
-        // Only update timestamp if at least some files uploaded successfully.
-        // If all uploads failed (filesUploaded == 0 but filesFound > 0),
-        // keep old timestamp so files are retried on next scan.
-        if (result.filesFound == 0 || result.filesUploaded > 0) {
-          await settings.updateFolderLastRun(folder.id, boundaryStart);
-        }
         debugPrint(
           '[FolderSync] Folder ${folder.name}: found ${result.filesFound}, '
           'uploaded ${result.filesUploaded}',

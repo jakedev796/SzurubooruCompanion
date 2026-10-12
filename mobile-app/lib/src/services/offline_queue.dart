@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/fresh_prefs.dart';
 import 'backend_client.dart';
 import 'network_gate.dart';
 import 'notification_service.dart';
@@ -180,7 +181,7 @@ class OfflineQueue {
   }
 
   static Future<List<OfflineQueueEntry>> _getEntries() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await freshPrefs();
     final json = prefs.getString(_key);
     if (json == null) return [];
     try {

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/auth.dart';
 import '../models/scheduled_folder.dart';
+import '../utils/fresh_prefs.dart';
 
 /// Settings model for the SzuruCompanion app.
 ///
@@ -369,7 +370,7 @@ class SettingsModel extends ChangeNotifier {
 
   /// Get all scheduled folders
   Future<List<ScheduledFolder>> getScheduledFolders() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await freshPrefs();
     final jsonString = prefs.getString(_scheduledFoldersKey);
     if (jsonString == null) return [];
     
@@ -451,7 +452,7 @@ class SettingsModel extends ChangeNotifier {
 
   /// Map a jobId to the local file path that should be deleted after the job completes.
   Future<void> addPendingUploadFile(String jobId, String filePath) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await freshPrefs();
     final jsonString = prefs.getString(_pendingUploadFilesKey);
     final map = jsonString != null
         ? Map<String, String>.from(jsonDecode(jsonString) as Map)
@@ -462,7 +463,7 @@ class SettingsModel extends ChangeNotifier {
 
   /// Get all pending upload file mappings.
   Future<Map<String, String>> getPendingUploadFiles() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await freshPrefs();
     final jsonString = prefs.getString(_pendingUploadFilesKey);
     if (jsonString == null) return {};
     try {
@@ -475,7 +476,7 @@ class SettingsModel extends ChangeNotifier {
 
   /// Remove a pending upload file mapping.
   Future<void> removePendingUploadFile(String jobId) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await freshPrefs();
     final jsonString = prefs.getString(_pendingUploadFilesKey);
     if (jsonString == null) return;
     final map = Map<String, String>.from(jsonDecode(jsonString) as Map);

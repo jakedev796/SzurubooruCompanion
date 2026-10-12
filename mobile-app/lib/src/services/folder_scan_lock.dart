@@ -1,7 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../utils/fresh_prefs.dart';
 
 /// Cross-isolate mutex for the folder sync pipeline.
 ///
@@ -17,7 +18,7 @@ class FolderScanLock {
 
   /// Try to acquire the lock. Returns true if acquired; caller must release.
   static Future<bool> acquire(String owner) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await freshPrefs();
     final existing = prefs.getString(_key);
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
@@ -46,7 +47,7 @@ class FolderScanLock {
 
   /// Release the lock if we still own it. Safe to call even if we don't.
   static Future<void> release(String owner) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await freshPrefs();
     final existing = prefs.getString(_key);
     if (existing == null) return;
     try {

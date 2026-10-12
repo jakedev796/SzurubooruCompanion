@@ -58,9 +58,6 @@ mobile-app/macos/
 mobile-app/web/
 mobile-app/windows/
 
-# Flutter - test directory
-mobile-app/test/
-
 # Flutter Android - generated files
 mobile-app/android/.gradle/
 mobile-app/android/.kotlin/
