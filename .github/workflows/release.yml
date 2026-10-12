@@ -260,6 +260,9 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: 11076708
+          # The action's default also installs the legacy "tools" package, which
+          # Google removed from the SDK repository. Gradle fetches platforms itself.
+          packages: platform-tools
           log-accepted-android-sdk-licenses: false
 
       - name: Set up Flutter
